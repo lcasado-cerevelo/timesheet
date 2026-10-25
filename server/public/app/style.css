@@ -117,3 +117,12 @@ input::-ms-reveal,input::-ms-clear{display:none}
 .loginband .logo{background:#fff;border-radius:8px;padding:6px 12px;display:inline-flex}.loginband .logo img{max-height:40px;max-width:200px;display:block}
 .login input[readonly]{background:#EEEFF0;color:var(--muted)}
 .login .row .btn{width:auto}
+
+/* Brand: logo alone, color fields */
+.hdr .brand.solo img{max-height:52px;max-width:260px}
+.loginband.solo{justify-content:center}.loginband.solo .logo img{max-height:52px;max-width:260px}
+.colorf .crow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.colorf input[type=color]{width:46px;height:38px;padding:2px;flex:none}
+.colorf .hx{width:96px;font-family:ui-monospace,Consolas,monospace}.colorf .rgb{width:62px}.colorf .badhex{border-color:var(--danger);outline-color:var(--danger)}
+.colorf .cnote{display:block;margin-top:4px;font-size:12px}.colorf .cnote .bad{color:var(--danger);font-weight:600}.colorf .cnote .ok{color:var(--muted)}
+.preview .ph img{vertical-align:middle}
+.colorf{grid-column:span 2}

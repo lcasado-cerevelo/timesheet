@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useT } from '../src/i18n';
 import { loginErrorMessage } from '../src/lib/authErrors';
+import { NetworkError } from '../src/lib/api';
 import { useAuth } from '../src/store/auth';
 import { useBottomPad } from '../src/ui';
 import { Btn, C, Card, Field, Msg, PasswordInput, useTheme } from '../src/ui';
@@ -10,7 +11,8 @@ export default function Login() {
   const th = useTheme();
   const { t } = useT();
   const bottom = useBottomPad(20);
-  const { baseUrl, serverFixed, misconfigured, sessionClosed, login } = useAuth();
+  const { baseUrl, serverFixed, misconfigured, sessionClosed, login, me, enterLimited, reconnected } = useAuth();
+  const [offlineFail, setOfflineFail] = useState(false);
   const [url, setUrl] = useState(baseUrl);
   const [devOpen, setDevOpen] = useState(false);
   const [email, setEmail] = useState('');
@@ -23,10 +25,13 @@ export default function Login() {
   const submit = async () => {
     setBusy(true);
     setError('');
+    setOfflineFail(false);
     try {
       await login(email.trim(), password, showDeveloper ? url : undefined);
     } catch (e) {
       setError(loginErrorMessage(e));
+      // Con la regla en 0 y sin llegar al servidor, se ofrece el modo limitado (solo anotar horas).
+      setOfflineFail(e instanceof NetworkError && me?.remember_days === 0);
     } finally {
       setBusy(false);
     }
@@ -40,12 +45,14 @@ export default function Login() {
         </View>
         <Card>
           <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 12 }}>{t('login.title')}</Text>
-          {sessionClosed && !error ? <Msg kind="warn" text={t('api.expired')} /> : null}
+          {reconnected && !error ? <Msg kind="warn" text={t('login.reconnected')} /> : null}
+          {sessionClosed && !error && !reconnected ? <Msg kind="warn" text={t('api.expired')} /> : null}
           {misconfigured && !showDeveloper ? <Msg kind="err" text={t('login.no_server')} /> : null}
           {error ? <Msg kind="err" text={error} /> : null}
           <Field testID="email" label={t('login.email')} value={email} onChangeText={setEmail} keyboardType="email-address" />
           <PasswordInput testID="password" label={t('login.password')} value={password} onChangeText={setPassword} />
           <Btn testID="login" title={busy ? t('login.busy') : t('login.title')} kind="pri" disabled={busy || !email || !password || (!showDeveloper && misconfigured)} onPress={submit} />
+          {offlineFail ? <Btn testID="continue-limited" title={t('login.continue_limited')} kind="ghost" onPress={() => enterLimited()} /> : null}
           <Text style={{ color: C.muted, fontSize: 12, marginTop: 14 }}>{t('login.help')}</Text>
         </Card>
         {showDeveloper ? (

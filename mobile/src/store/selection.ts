@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { activeServices, effectiveMode, resolveService } from '../lib/services';
+import { pushRecent } from '../lib/projectSearch';
 import { kv } from '../lib/storage';
 import type { CaptureMode, Project, Service } from '../lib/types';
 import { useAuth } from './auth';
@@ -7,12 +8,15 @@ import { useEntries } from './entries';
 
 const PROJECT_KEY = 'lastProject.v1';
 const SERVICE_KEY = 'lastService.v1';
+const RECENT_KEY = 'recentProjects.v1';
 
 interface SelectionState {
   loaded: boolean;
   projectId: number | null;
   /** Servicio recordado por proyecto. */
   services: Record<string, number>;
+  /** Últimos proyectos usados (hasta 5), el más reciente primero. */
+  recent: number[];
   load: () => Promise<void>;
   setProject: (id: number) => void;
   setService: (projectId: number, serviceId: number) => void;
@@ -24,13 +28,16 @@ export const useSelection = create<SelectionState>((set, get) => ({
   loaded: false,
   projectId: null,
   services: {},
+  recent: [],
   async load() {
-    const [projectId, services] = await Promise.all([kv.get<number | null>(PROJECT_KEY, null), kv.get<Record<string, number>>(SERVICE_KEY, {})]);
-    set({ projectId, services, loaded: true });
+    const [projectId, services, recent] = await Promise.all([kv.get<number | null>(PROJECT_KEY, null), kv.get<Record<string, number>>(SERVICE_KEY, {}), kv.get<number[]>(RECENT_KEY, [])]);
+    set({ projectId, services, recent, loaded: true });
   },
   setProject(id) {
-    set({ projectId: id });
+    const recent = pushRecent(get().recent, id);
+    set({ projectId: id, recent });
     void kv.set(PROJECT_KEY, id);
+    void kv.set(RECENT_KEY, recent);
   },
   setService(projectId, serviceId) {
     const services = { ...get().services, [String(projectId)]: serviceId };
@@ -38,7 +45,8 @@ export const useSelection = create<SelectionState>((set, get) => ({
     void kv.set(SERVICE_KEY, services);
   },
   reset() {
-    set({ projectId: null, services: {} });
+    set({ projectId: null, services: {}, recent: [] });
+    void kv.del(RECENT_KEY);
     void kv.del(PROJECT_KEY);
     void kv.del(SERVICE_KEY);
   },

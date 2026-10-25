@@ -16,7 +16,7 @@ use Illuminate\Validation\ValidationException;
 class BrandController extends Controller
 {
     private const FIELDS = ['brand_name', 'color_primary', 'color_accent', 'email_from_name', 'email_from_address', 'email_footer',
-        'logo_path', 'logo_dark_path'];
+        'logo_path', 'logo_dark_path', 'show_brand_name'];
 
     public function show(Request $request)
     {
@@ -36,14 +36,24 @@ class BrandController extends Controller
             'logo' => 'nullable|file|mimes:png,jpg,jpeg,webp|max:1024',
             'logo_dark' => 'nullable|file|mimes:png,jpg,jpeg,webp|max:1024',
             'remove_logo' => 'nullable|boolean',
+            'show_name' => 'sometimes|boolean',
         ]);
+
+        // Un color vacío significa "no cambiar" (la base no admite colores nulos).
+        foreach (['color_primary', 'color_accent'] as $f) {
+            if (array_key_exists($f, $data) && ($data[$f] === null || $data[$f] === '')) {
+                unset($data[$f]);
+            }
+        }
 
         foreach (['color_primary', 'color_accent'] as $f) {
             if (isset($data[$f])) {
                 if (! Color::isHex($data[$f])) {
                     throw ValidationException::withMessages([$f => __('El color debe ser hexadecimal, por ejemplo #1f4e79.')]);
                 }
-                if (Color::contrastWithWhite($data[$f]) < 4.5) {
+                // Solo se exige contraste a un color que se está cambiando; uno que ya estaba guardado no bloquea el resto de los cambios.
+                $unchanged = strtolower($data[$f]) === strtolower((string) $company->{$f});
+                if (! $unchanged && Color::contrastWithWhite($data[$f]) < 4.5) {
                     throw ValidationException::withMessages([$f => __('El texto blanco no se lee bien sobre ese color. Usa uno más oscuro.')]);
                 }
             }
@@ -51,6 +61,11 @@ class BrandController extends Controller
 
         $before = $company->only(self::FIELDS);
         $changes = array_intersect_key($data, array_flip(['brand_name', 'color_primary', 'color_accent', 'email_from_name', 'email_from_address', 'email_footer']));
+
+        // show_name ausente = no cambia.
+        if ($request->has('show_name') && $request->input('show_name') !== null) {
+            $changes['show_brand_name'] = $request->boolean('show_name');
+        }
 
         if ($request->hasFile('logo')) {
             $changes['logo_path'] = $request->file('logo')->store('logos/'.$company->id, 'public');

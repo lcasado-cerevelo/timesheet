@@ -13,7 +13,7 @@ class Company extends Model
 
     protected function casts(): array
     {
-        return ['rules' => 'array'];
+        return ['rules' => 'array', 'show_brand_name' => 'boolean'];
     }
 
     public function users(): HasMany
@@ -49,7 +49,14 @@ class Company extends Model
     public function publicBrand(): array
     {
         return ['name' => $this->displayName(), 'logo_url' => $this->logoUrl(),
-            'color_primary' => $this->color_primary, 'color_accent' => $this->color_accent];
+            'color_primary' => $this->color_primary, 'color_accent' => $this->color_accent,
+            'show_name' => $this->showName()];
+    }
+
+    /** Si el nombre de la marca se muestra junto al logo (por defecto sí). */
+    public function showName(): bool
+    {
+        return $this->show_brand_name === null ? true : (bool) $this->show_brand_name;
     }
 
     public function displayName(): string
@@ -72,6 +79,7 @@ class Company extends Model
             'logo_dark_url' => $this->logoUrl(true),
             'color_primary' => $this->color_primary,
             'color_accent' => $this->color_accent,
+            'show_name' => $this->showName(),
             'email_from_name' => $this->email_from_name ?: $this->displayName(),
             'email_from_address' => $this->email_from_address,
             'email_footer' => $this->email_footer,

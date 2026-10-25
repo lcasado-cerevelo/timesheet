@@ -71,6 +71,13 @@ class ProjectController extends Controller
             'user_ids' => 'nullable|array',
             'user_ids.*' => 'integer',
         ]);
+        // Un proyecto facturable necesita cliente (el que se envía o, al editar, el que ya tiene).
+        $billable = array_key_exists('billable', $v) ? (bool) $v['billable'] : ($project ? (bool) $project->billable : true);
+        $customerId = array_key_exists('customer_id', $v) ? $v['customer_id'] : $project?->customer_id;
+        if ($billable && ! $customerId) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'customer_id' => __('Un proyecto facturable necesita un cliente. Elige uno o marca el proyecto como no facturable.')]);
+        }
         $ids = $v['user_ids'] ?? null;
         unset($v['user_ids']);
         return ['fields' => $v, 'user_ids' => $ids];

@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('logo_path')->nullable();
             $table->string('logo_dark_path')->nullable();
             $table->string('color_primary', 7)->default('#1f4e79');
-            $table->string('color_accent', 7)->default('#2e8b57');
+            $table->string('color_accent', 7)->default('#14603B');
             $table->string('email_from_name')->nullable();
             $table->string('email_from_address')->nullable();
             $table->string('email_footer', 500)->nullable();

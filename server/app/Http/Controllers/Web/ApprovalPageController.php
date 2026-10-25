@@ -253,7 +253,7 @@ class ApprovalPageController extends Controller
     private function invalid(?ApprovalToken $token, ?string $message)
     {
         $brand = $token?->approver?->company?->brand() ?? ['name' => config('app.name'), 'logo_url' => null,
-            'color_primary' => '#1f4e79', 'color_accent' => '#2e8b57', 'email_footer' => null];
+            'color_primary' => '#1f4e79', 'color_accent' => '#14603B', 'email_footer' => null];
         return response()->view('approval.done', ['brand' => $brand, 'title' => __('No se puede abrir'), 'message' => $message], 410);
     }
 }

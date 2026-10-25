@@ -32,6 +32,12 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Sesión vencida por inactividad: 401 con código propio para que la web y el móvil sepan que deben volver a entrar.
+        $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, Request $request) {
+            if ($request->attributes->get('session_expired') && ($request->is('api/*') || $request->expectsJson())) {
+                return response()->json(['message' => \App\Support\SessionExpiry::message(), 'code' => 'session_expired'], 401);
+            }
+        });
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

@@ -2,6 +2,17 @@
    exact: whole texts. patterns: texts with numbers or names inside (function or $1 replacements). */
 window.I18N_ES = {
   exact: {
+    // --- v2: edit approvers/clients, brand, sign-in rule ---
+    'Approver saved.': 'Aprobador guardado.', 'Client saved.': 'Cliente guardado.',
+    'A billable project needs a client. Non-billable (internal) projects can have none.': 'Un proyecto facturable necesita un cliente. Los no facturables (internos) pueden quedar sin cliente.',
+    'Pick a client: a billable project needs one.': 'Escoge un cliente: un proyecto facturable lo necesita.',
+    'Show the name next to the logo': 'Mostrar el nombre junto al logo',
+    'Unchecked, the header and the sign-in page show only the logo. Without a logo the name always shows.': 'Sin marcar, el encabezado y la página de entrada muestran solo el logo. Sin logo el nombre siempre se muestra.',
+    'Contrast with white text': 'Contraste con texto blanco', 'White text is hard to read on this color. Use a darker one.': 'El texto blanco se lee mal sobre este color. Usa uno más oscuro.',
+    'Sign-in': 'Acceso', 'How long people stay signed in.': 'Cuánto tiempo se mantiene la sesión de la gente.',
+    'Remember for (days since last use)': 'Recordar por (días desde el último uso)',
+    'Applies to everyone: how many days without using the app before asking for the password again. For approvers it is also how long a trusted device skips the emailed code. 0 = never remember: the browser session ends when it closes and the mobile app asks for the password every time it opens (it needs signal; without signal it only lets people record hours).': 'Vale para todos: cuántos días sin usar la app antes de volver a pedir la contraseña. Para los aprobadores es también el tiempo que un equipo de confianza se salta el código del correo. 0 = no recordar: la sesión del navegador termina al cerrarlo y la app móvil pide la contraseña cada vez que se abre (necesita señal; sin señal solo deja anotar horas).',
+    'Your session expired. Sign in again.': 'Tu sesión venció. Entra de nuevo.',
     // --- accounts and passwords ---
     'Password (saved)': 'Contraseña (guardada)', 'API key': 'Clave API', 'API key (saved)': 'Clave API (guardada)', 'unchanged': 'sin cambios',
     'Show password': 'Mostrar contraseña', 'Hide password': 'Ocultar contraseña', 'Caps Lock is on': 'Las mayúsculas están activadas',
@@ -209,6 +220,7 @@ window.I18N_ES = {
     'Session expired': 'Sesión vencida', 'The file could not be downloaded': 'No se pudo descargar el archivo', 
   },
   patterns: [
+    [/^Client [*]$/, 'Cliente *'],
     [/^Type the 6-digit code we sent to (.+)$/, 'Escribe el código de 6 dígitos que enviamos a $1'],
     [/^Remember this device for (\d+) days$/, 'Recordar este equipo por $1 días'],
     [/^Resend code \((\d+) s\)$/, 'Reenviar código ($1 s)'],

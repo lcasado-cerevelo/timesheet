@@ -118,6 +118,16 @@ export const es = {
   'day.clock_running': 'Reloj corriendo',
   'day.since': 'desde {time}',
   'day.empty': 'Sin entradas',
+
+  // buscador de proyecto y modo limitado
+  'search.label': 'Buscar proyecto',
+  'search.placeholder': 'Buscar por código, nombre o cliente',
+  'search.clear': 'Limpiar búsqueda',
+  'search.empty': 'Sin resultados',
+  'search.recent': 'Reciente',
+  'limited.banner': 'Sin señal: solo puedes anotar horas. Al volver la señal te pediremos la contraseña y se enviará todo.',
+  'login.continue_limited': 'Continuar sin señal (solo anotar horas)',
+  'login.reconnected': 'Volvió la señal. Escribe tu contraseña para enviar lo que anotaste.',
   'day.col_in': 'Entrada',
   'day.col_out': 'Salida',
   'day.col_total': 'Total',

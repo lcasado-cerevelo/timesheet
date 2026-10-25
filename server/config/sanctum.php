@@ -50,7 +50,13 @@ return [
     |
     */
 
-    'expiration' => (int) env('SANCTUM_EXPIRATION', 43200), // 30 días
+    // Sin vencimiento fijo desde la creación: la vigencia de la sesión es DESLIZANTE por inactividad y la define la regla de la
+    // compañía rules.remember_days (ver App\Support\SessionExpiry, registrado en AppServiceProvider). No pongas aquí un valor
+    // distinto de null o chocaría con esa regla.
+    'expiration' => null,
+
+    // La marca de último uso la actualiza SessionExpiry (como mucho cada pocos minutos) en lugar de Sanctum en cada petición.
+    'last_used_at' => false,
 
     /*
     |--------------------------------------------------------------------------

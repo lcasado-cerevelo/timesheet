@@ -324,5 +324,7 @@
     "Volver a la lista": "Back to the list",
     "Ya existe un usuario con ese correo.": "A user with that email already exists.",
     "Ya existe una cuenta con ese correo.": "An account with that email already exists.",
-    "Ya hay un reloj corriendo.": "A clock is already running."
+    "Ya hay un reloj corriendo.": "A clock is already running.",
+    "Un proyecto facturable necesita un cliente. Elige uno o marca el proyecto como no facturable.": "A billable project needs a customer. Choose one or mark the project as non-billable.",
+    "Tu sesión venció por inactividad. Inicia sesión de nuevo.": "Your session expired due to inactivity. Sign in again."
 }

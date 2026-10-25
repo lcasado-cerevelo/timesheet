@@ -434,3 +434,12 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - **Móvil con servidor fijo al compilar** (`EXPO_PUBLIC_SERVER_URL` o `extra.serverUrl`; ejemplo en `mobile/eas.json`): una compilación por compañía. El login no muestra el servidor (solo en desarrollo, en una sección plegada) y en producción solo acepta https.
 - **Ojito** para ver la contraseña en todos los campos (web y móvil). En la web se oculta el botón nativo de Edge para que no salga doble. En Integración solo muestra lo que se escribe, nunca lo guardado.
 - **Ícono**: el reloj de arena de `branding/` es el favicon y el ícono de instalación de la web y el ícono de la app (Android adaptable e iOS).
+
+---
+
+# Adenda v1.7 (2026-10-26) — edición, marca, acceso y buscador móvil
+
+- **Editar Aprobadores y Clientes** en la web (como Proyectos y Personas). Un proyecto **facturable** exige cliente (el servidor responde 422 en `customer_id`); los no facturables pueden quedar sin cliente. La hora se asocia al proyecto y el cliente sale del proyecto, por eso el móvil no pide cliente.
+- **Marca**: casilla "Mostrar el nombre junto al logo" (`companies.show_brand_name`, `brand.show_name`); apagada, el encabezado y las pantallas de entrada muestran solo el logo. Los colores se escriben en hexadecimal o en R, G, B, sincronizados con el selector, con el contraste calculado en pantalla. El servidor solo exige contraste (4.5) a un color que se cambia; uno ya guardado no bloquea el resto del formulario, y un color vacío significa "no cambiar".
+- **Acceso** (tarjeta "Sign-in" de Reglas): `remember_days` = días sin usar antes de volver a pedir la contraseña, igual para todos (web, móvil y aprobadores; para aprobadores, también el tiempo que un equipo de confianza se salta el código). El vencimiento es deslizante por inactividad (`SessionExpiry`, token vencido → 401 `session_expired`). Con **0 = no recordar**: la web guarda la sesión solo mientras el navegador está abierto (sessionStorage; respaldo del servidor de 12 h sin uso) y el móvil pide la contraseña cada vez que se abre. Sin señal, el móvil entra en **modo limitado**: solo permite anotar horas; al volver la señal pide la contraseña y se sincroniza todo.
+- **Móvil**: buscador de proyecto escribiendo (sin tildes ni mayúsculas, por código, nombre y cliente; recientes primero; funciona sin conexión).

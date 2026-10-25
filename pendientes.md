@@ -74,3 +74,18 @@ Falta: probar el móvil en teléfono/emulador; revisar la web contra el mockup p
 Cuentas de aprobador (invitación, código por correo, recordar equipo configurable, vista Aprobaciones), contraseñas sin que nadie las maneje (invitación, reseteo del dueño, cambio con la actual, comando para el dueño), ojito en todos los campos, login web con marca por dominio, dominio por compañía, móvil con servidor fijo al compilar, ícono del reloj de arena. 144 pruebas del servidor, 62 del móvil, tsc en verde.
 Por probar en la vida real: móvil en teléfono/emulador (ojito, servidor fijo, ícono), Caddy con varios dominios, Turnstile con el aprobador, correos reales con Brevo.
 Prueba en desarrollo: se creó la cuenta de aprobador de Jorge Ramos (jorge@cliente.test, clave de prueba) y se aprobó la hoja de Ana de la semana 25 oct.
+
+## Lista aprobada en conversación, a construir cuando Luis diga "empieza y construye" (2026-10-26)
+1. Web: botón Editar en Aprobadores y Clientes (el servidor ya lo permite).
+2. Regla: un proyecto facturable debe tener cliente; los internos (no facturables) pueden quedar sin cliente.
+3. Móvil: buscador para escoger proyecto escribiendo (sin filtro por cliente; el cliente sale del proyecto). Recientes primero, sin tildes ni mayúsculas, funciona sin conexión.
+4. Marca: opción "mostrar el nombre junto al logo" (apagada = solo el logo) y logo horizontal más alto en el encabezado.
+5. Marca: además del cuadro de color, campos para escribir el color en hexadecimal y en RGB (R, G, B), sincronizados con el selector.
+6. Colores de Cerevelo recomendados: principal #04297C = RGB(4, 41, 124); acento #087A85 = RGB(8, 122, 133). Alternativa de principal: #0641BA = RGB(6, 65, 186). Turquesa vivo del logo #3BF3E2 = RGB(59, 243, 226), solo para detalles.
+(Hecho ya: el arreglo que bloqueaba guardar la marca por el contraste del verde viejo; falta subirlo a GitHub.)
+7. Reglas: "Recordar por (días desde el último uso)" vale igual para TODOS (sesión de web y móvil) y, para aprobadores, también el tiempo que un equipo de confianza se salta el código. Va en una tarjeta propia "Sign-in" (Acceso) de Reglas, no dentro de Approvals. Mínimo 1 día, por omisión 30. Sin conexión, la app móvil sigue funcionando con lo guardado; la contraseña se pide una vez al volver la señal y entonces se sincroniza todo.
+7b. Corrección (Luis): la regla "Recordar por (días)" SÍ admite 0 = no recordar (pedir contraseña cada vez que se abre; a aprobadores, también el código cada vez). Web: la sesión vive solo mientras el navegador sigue abierto. Móvil con 0: pide la contraseña cada vez que se abre la app, lo que exige señal; la ayuda de la regla debe avisarlo. Pendiente que Luis decida si en el móvil con 0 se permite anotar horas sin señal en un modo limitado.
+7c. Decidido por Luis: con "Recordar = 0", sin señal el móvil permite solo anotar horas (modo limitado, sin ver lo anterior); la contraseña se pide al volver la señal y entonces se sincroniza todo.
+
+## Estado al 2026-10-26 (tarde): lista 1–7 construida y probada, SIN subir
+154 pruebas del servidor, 84 del móvil, tsc y revisión de la web en verde. Falta ver el móvil en un teléfono o emulador (buscador, modo limitado, ojito, ícono, servidor fijo), probar Caddy con varios dominios y el flujo del aprobador con Turnstile real, y decidir si se instala Laravel Boost (lo pide server/CLAUDE.md; no se instaló).

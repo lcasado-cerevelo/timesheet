@@ -5,8 +5,10 @@ import { useT } from '../../src/i18n';
 import { ProjectSheet } from '../../src/pickers';
 import { elapsedMs, fmtElapsed } from '../../src/lib/clock';
 import { activeServices } from '../../src/lib/services';
+import { dayActionAllowed, visibleEntries } from '../../src/lib/access';
 import { kv } from '../../src/lib/storage';
 import { addDays, fmtHours, longDate, nowHM, to12h, today } from '../../src/lib/time';
+import { useAuth } from '../../src/store/auth';
 import { useClock } from '../../src/store/clock';
 import { useEntries } from '../../src/store/entries';
 import { useCurrent, useSelection } from '../../src/store/selection';
@@ -27,6 +29,7 @@ export default function Day() {
   const { clock, start, stop, switchTo } = useClock();
   const sel = useSelection();
   const cur = useCurrent();
+  const limited = useAuth((s) => s.limited);
   const [list, setList] = useState<List>(null);
   const [switchTarget, setSwitchTarget] = useState<number | null>(null);
   const [tmpl, setTmpl] = useState(false);
@@ -47,8 +50,8 @@ export default function Day() {
   }, [clock]);
 
   const day = useMemo(
-    () => entries.filter((e) => e.work_date === selectedDate && e.sync !== 'deleted').sort((a, b) => (a.start_time ?? '').localeCompare(b.start_time ?? '')),
-    [entries, selectedDate],
+    () => visibleEntries(entries, limited).filter((e) => e.work_date === selectedDate && e.sync !== 'deleted').sort((a, b) => (a.start_time ?? '').localeCompare(b.start_time ?? '')),
+    [entries, selectedDate, limited],
   );
   const total = day.reduce((a, e) => a + e.hours, 0);
   const project = (id: number) => projects.find((p) => p.id === id);
@@ -234,12 +237,13 @@ export default function Day() {
         {!fromTo && <GridBtn wide testID="add-hours" title={t('day.add_hours')} onPress={() => router.push({ pathname: '/entry', params: { date: selectedDate } })} />}
         {/* 7. Cambiar proyecto y Repetir */}
         <GridBtn testID="switch" title={t('day.change_project')} onPress={() => setList(clock ? 'switch' : 'choose')} />
-        <GridBtn testID="template" title={t('day.repeat')} onPress={() => setTmpl(true)} />
-        <GridBtn testID="copy-prev" title={t('day.copy_prev')} onPress={copyPrevious} />
+        {dayActionAllowed('repeat', limited) && <GridBtn testID="template" title={t('day.repeat')} onPress={() => setTmpl(true)} />}
+        {dayActionAllowed('copy_prev', limited) && <GridBtn testID="copy-prev" title={t('day.copy_prev')} onPress={copyPrevious} />}
         <GridBtn testID="today" title={t('day.go_today')} onPress={() => setDate(today())} />
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+        {limited ? <Msg kind="warn" text={t('limited.banner')} /> : null}
         {err ? <Msg kind="err" text={err} /> : null}
         {lastError && !syncing ? <Msg kind="warn" text={lastError} /> : null}
         {day.length === 0 ? (

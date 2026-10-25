@@ -54,7 +54,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   }
   if (res.status === 401 && cfg.token) {
     cfg.onUnauthorized?.();
-    throw new ApiError(t('api.expired'), 401);
+    throw new ApiError(t('api.expired'), 401, undefined, data?.code ?? 'session_expired');
   }
   if (!res.ok) {
     const first = data?.errors ? (Object.values(data.errors).flat() as string[])[0] : undefined;

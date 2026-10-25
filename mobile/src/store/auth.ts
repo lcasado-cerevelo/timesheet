@@ -3,6 +3,8 @@ import { api, configureApi } from '../lib/api';
 import { normalizeLocale, t } from '../i18n';
 import type { Locale } from '../i18n';
 import { loadLocale, pendingLocale, saveLocale } from '../i18n/persist';
+import { bootDecision } from '../lib/access';
+import { isOnline } from '../lib/net';
 import { kv, secure } from '../lib/storage';
 import { devDefaultServerUrl, fixedServerUrl, normalizeServerUrl, resolveServer } from '../lib/server';
 import type { Brand, Me } from '../lib/types';
@@ -18,12 +20,20 @@ interface AuthState {
   misconfigured: boolean;
   /** El servidor cerró la sesión (401): el login lo avisa. Las entradas guardadas sin conexión se conservan. */
   sessionClosed: boolean;
+  /** Modo limitado (remember_days = 0 y sin señal al abrir): solo se pueden anotar horas; sin token. */
+  limited: boolean;
+  /** Volvió la señal estando en modo limitado: el login lo explica. */
+  reconnected: boolean;
   token: string | null;
   me: Me | null;
   brand: Brand;
   init: () => Promise<void>;
   /** devUrl solo se usa en desarrollo y sin servidor fijo. */
   login: (email: string, password: string, devUrl?: string) => Promise<void>;
+  /** Entra al modo limitado (solo anotar horas) si la regla es 0 y hay una sesión guardada en este teléfono. */
+  enterLimited: () => boolean;
+  /** Vuelve la señal: se sale del modo limitado y se pide la contraseña. */
+  leaveLimited: () => void;
   /** Cierre forzado por el servidor (401): solo limpia la sesión local, sin llamar al servidor. */
   sessionExpired: () => Promise<void>;
   refreshMe: () => Promise<void>;
@@ -38,16 +48,23 @@ export const useAuth = create<AuthState>((set, get) => ({
   serverFixed: false,
   misconfigured: false,
   sessionClosed: false,
+  limited: false,
+  reconnected: false,
   token: null,
   me: null,
   brand: NEUTRAL,
 
   async init() {
     await loadLocale();
-    const [token, baseUrl, me] = await Promise.all([secure.get('token'), kv.get<string>('baseUrl', ''), kv.get<Me | null>('me', null)]);
+    const [storedToken, baseUrl, me] = await Promise.all([secure.get('token'), kv.get<string>('baseUrl', ''), kv.get<Me | null>('me', null)]);
     const srv = resolveServer({ fixed: fixedServerUrl(), stored: baseUrl, devDefault: devDefaultServerUrl(), dev: __DEV__ });
+    // Con remember_days = 0 el token guardado nunca se reutiliza: cada apertura en frío pide la contraseña.
+    const rememberDays = me?.remember_days;
+    const decision = bootDecision({ rememberDays, online: rememberDays === 0 ? await isOnline() : true, hasToken: !!storedToken, hasSavedSession: !!me });
+    if (rememberDays === 0 && storedToken) await secure.del('token');
+    const token = decision === 'resume' ? storedToken : null;
     configureApi({ baseUrl: srv.url, token, onUnauthorized: () => void get().sessionExpired() });
-    set({ ready: true, token, baseUrl: srv.url, serverFixed: srv.fixed, misconfigured: srv.misconfigured, me, brand: me?.brand ?? NEUTRAL });
+    set({ ready: true, token, limited: decision === 'limited', baseUrl: srv.url, serverFixed: srv.fixed, misconfigured: srv.misconfigured, me, brand: me?.brand ?? NEUTRAL });
     if (token) void get().refreshMe().catch(() => undefined); // la marca se actualiza sola si hay conexión
   },
 
@@ -63,7 +80,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     const l = normalizeLocale(r.user.locale);
     if (l) await saveLocale(l);
     await pendingLocale.clear();
-    set({ token: r.token, baseUrl: url, sessionClosed: false, me: r.user, brand: r.user.brand });
+    set({ token: r.token, baseUrl: url, sessionClosed: false, limited: false, reconnected: false, me: r.user, brand: r.user.brand });
   },
 
   async refreshMe() {
@@ -98,9 +115,21 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
   },
 
+  enterLimited() {
+    const me = get().me;
+    if (!me || me.remember_days !== 0) return false;
+    set({ limited: true });
+    return true;
+  },
+
+  leaveLimited() {
+    if (get().limited) set({ limited: false, reconnected: true });
+  },
+
   async sessionExpired() {
     if (!get().token) return;
-    await Promise.all([secure.del('token'), kv.del('me')]);
+    // 'me' se conserva en el teléfono (con remember_days): permite el modo limitado si la regla es 0 y no hay señal.
+    await secure.del('token');
     configureApi({ token: null });
     set({ token: null, me: null, brand: NEUTRAL, sessionClosed: true });
   },

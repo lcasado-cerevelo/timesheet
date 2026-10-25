@@ -15,7 +15,7 @@ import { useSelection } from '../src/store/selection';
 import { useSettings } from '../src/store/settings';
 
 export default function Root() {
-  const { ready, token, brand, init, me } = useAuth();
+  const { ready, token, brand, init, me, limited } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const { t, locale } = useT();
@@ -42,7 +42,11 @@ export default function Root() {
   // Al recuperar la conexión se sincroniza solo.
   useEffect(() => {
     const unsub = NetInfo.addEventListener((st) => {
-      if (st.isConnected && st.isInternetReachable !== false) void useEntries.getState().sync();
+      if (st.isConnected && st.isInternetReachable !== false) {
+        // Modo limitado: vuelve la señal, se sale al login (la contraseña se pide y luego se sincroniza todo).
+        useAuth.getState().leaveLimited();
+        void useEntries.getState().sync();
+      }
     });
     return unsub;
   }, []);
@@ -64,9 +68,9 @@ export default function Root() {
   useEffect(() => {
     if (!ready) return;
     const inLogin = segments[0] === 'login';
-    if (!token && !inLogin) router.replace('/login');
-    if (token && inLogin) router.replace('/');
-  }, [ready, token, segments, router]);
+    if (!token && !limited && !inLogin) router.replace('/login');
+    if ((token || limited) && inLogin) router.replace('/');
+  }, [ready, token, limited, segments, router]);
 
   return (
     <>

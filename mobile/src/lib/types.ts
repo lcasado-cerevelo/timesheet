@@ -36,6 +36,8 @@ export interface Me {
   company: { id: number; name: string; timezone: string };
   brand: Brand;
   rules: Rules;
+  /** Regla de la compañía: días que se recuerda la sesión desde el último uso. 0 = pedir contraseña cada vez que se abre la app. */
+  remember_days?: number;
 }
 
 export interface Service {
@@ -62,6 +64,8 @@ export interface Project {
   geo_radius_m: number | null;
   /** Servicios del proyecto (sin tarifas). Proyectos guardados antes de que existieran los servicios no lo traen. */
   services?: Service[];
+  /** Cliente del proyecto, si el servidor lo envía. */
+  customer?: { id?: number; name: string } | null;
 }
 
 /** 'synced' = igual que el servidor; 'dirty' = por enviar; 'deleted' = borrada localmente, por enviar;

@@ -169,6 +169,7 @@ class AuthController extends Controller
             // La app móvil lee la marca aquí: cambiarla en el servidor no requiere publicar la app.
             'brand' => $company->brand(),
             'rules' => $company->rules()->all(),
+            'remember_days' => (int) $company->rules()->get('remember_days'),
         ];
     }
 }

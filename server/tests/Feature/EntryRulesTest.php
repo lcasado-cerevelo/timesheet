@@ -75,7 +75,7 @@ class EntryRulesTest extends TestCase
         Sanctum::actingAs($this->worker);
         $this->postJson('/api/projects', ['code' => 'X', 'name' => 'X'])->assertForbidden();
         Sanctum::actingAs($this->owner);
-        $this->postJson('/api/projects', ['code' => 'X', 'name' => 'X', 'user_ids' => [$this->worker->id]])->assertCreated();
+        $this->postJson('/api/projects', ['code' => 'X', 'name' => 'X', 'billable' => false, 'user_ids' => [$this->worker->id]])->assertCreated();
     }
 
     public function test_future_dates_overlaps_and_daily_maximum_are_rejected(): void

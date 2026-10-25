@@ -207,7 +207,7 @@ export function Sheet(props: { visible: boolean; title: string; onClose: () => v
             <Text style={{ flex: 1, fontSize: 18, fontWeight: '700' }}>{props.title}</Text>
             <Btn title={t('common.close')} kind="ghost" small onPress={props.onClose} />
           </View>
-          <ScrollView>{props.children}</ScrollView>
+          <ScrollView keyboardShouldPersistTaps="handled">{props.children}</ScrollView>
         </View>
       </View>
     </Modal>

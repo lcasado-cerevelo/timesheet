@@ -1,7 +1,7 @@
 /* Tiempo web interface. No build step: runs on any PHP hosting. Talks to /api. */
 (() => {
 const $app = document.getElementById('app');
-const S = { token: localStorage.getItem('tt'), me: null, login: null, flash: null, weekDate: today(), cache: {},
+const S = { token: sessionStorage.getItem('tt') || localStorage.getItem('tt'), me: null, login: null, flash: null, weekDate: today(), cache: {},
   lang: localStorage.getItem('lang') || ((navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en') };
 const LANG = () => (S.me && S.me.locale) || S.lang;
 /* Translation: the screens are written in English; i18n-es.js holds the Spanish. T() translates one text; localizeHtml() the text nodes and
@@ -54,7 +54,7 @@ async function api(path, o = {}) {
   const r = await fetch('/api' + path, { method: o.method || 'GET', headers, body });
   if (o.blob) { if (!r.ok) throw new Error('The file could not be downloaded'); return r; }
   const data = await r.json().catch(() => ({}));
-  if (r.status === 401 && S.token && !o.anon) { logout(); throw new Error('Session expired'); }
+  if (r.status === 401 && S.token && !o.anon) { logout('Your session expired. Sign in again.'); throw new Error('Session expired'); }
   if (!r.ok) {
     const first = data.errors ? Object.values(data.errors).flat()[0] : null;
     const e = new Error(first || data.message || 'Error ' + r.status); e.status = r.status; e.errors = data.errors; e.code = data.code; e.data = data; e.needs_code = !!data.needs_code; throw e;
@@ -84,7 +84,20 @@ function exportBar(ds, q = {}) {
   return `<span class="xbar" title="Export this table">${[['csv', 'CSV'], ['xlsx', 'Excel'], ['pdf', 'PDF']].map(([f, l]) => `<button class="btn ghost sm" type="button" data-act="tx" data-ds="${ds}" data-fmt="${f}" data-q="${j}">${l}</button>`).join('')}</span>`;
 }
 function flash(text, kind = 'ok') { S.flash = { text, kind }; }
-function logout() { S.token = null; S.me = null; localStorage.removeItem('tt'); location.hash = ''; render(); }
+/* Where the session lives depends on the rule "Remember for (days)": 0 = only while the browser stays open (sessionStorage), otherwise localStorage. */
+function keepSession(days) {
+  try {
+    if (Number(days) === 0) { sessionStorage.setItem('tt', S.token); localStorage.removeItem('tt'); localStorage.removeItem('dt'); }
+    else { localStorage.setItem('tt', S.token); sessionStorage.removeItem('tt'); if (S.cache.newDt) localStorage.setItem('dt', S.cache.newDt); }
+    S.cache.newDt = null;
+  } catch { /* storage blocked */ }
+}
+function logout(msg) {
+  S.token = null; S.me = null; S.cache.newDt = null;
+  try { localStorage.removeItem('tt'); sessionStorage.removeItem('tt'); } catch { /* storage blocked */ }
+  S.cache.sessionMsg = typeof msg === 'string' ? msg : null;
+  location.hash = ''; render();
+}
 function applyBrand(b) {
   if (!b) return;
   const r = document.documentElement.style;
@@ -150,13 +163,13 @@ const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).
 let RID = 0, LAST = null;
 
 function shell(name, body, withFlash) {
-  const b = S.me.brand || { name: 'Tiempo' };
+  const b = S.me.brand || { name: 'Tiempo' }; const solo = !!b.logo_url && b.show_name === false;
   const groups = GROUPS.map(g => ({ ...g, vis: g.r.filter(canSee) })).filter(g => g.vis.length).map(g => (g.vis.length === 1 && g.vis[0] === 'account' ? { ...g, t: 'My account' } : g));
   const cur = groups.find(g => g.vis.includes(name));
   const fl = withFlash && S.flash ? `<div class="msg ${S.flash.kind}">${esc(T(S.flash.text))}</div>` : '';
   if (withFlash) S.flash = null;
   const sub = cur && cur.vis.length > 1 ? `<div class="subtabs">${cur.vis.map(k => `<a href="#/${k}" class="${k === name ? 'on' : ''}">${ROUTES[k].t}</a>`).join('')}</div>` : '';
-  return `<header class="hdr"><div class="brand">${b.logo_url ? `<img src="${esc(b.logo_url)}" alt="${esc(b.name)}"><span class="sep"></span>` : ''}<div><b>${esc(b.name)}</b><small>Timesheets &amp; invoices</small></div></div>
+  return `<header class="hdr"><div class="brand ${solo ? 'solo' : ''}">${b.logo_url ? `<img src="${esc(b.logo_url)}" alt="${esc(b.name)}">${solo ? '' : '<span class="sep"></span>'}` : ''}${solo ? '' : `<div><b>${esc(b.name)}</b><small>Timesheets &amp; invoices</small></div>`}</div>
     <span class="spacer"></span><div class="who"><span class="av">${esc(initials(S.me.name))}</span><div><b>${esc(S.me.name)}</b><small>${roleLabel(S.me)}</small></div></div>
     <button class="btn ghost sm" data-act="lang" data-to="${LANG() === 'es' ? 'en' : 'es'}" title="Language">${LANG() === 'es' ? 'English' : 'Español'}</button>
     <button class="btn ghost sm" data-act="logout">Sign out</button></header>
@@ -173,7 +186,7 @@ async function render() {
   const rid = ++RID;
   if (!$app.firstChild) $app.innerHTML = '<div class="loading">' + T('Loading…') + '</div>';   // never a blank page while the first data arrives
   try {
-    if (!S.me) { S.me = await api('/me'); S.lang = S.me.locale; localStorage.setItem('lang', S.lang); }
+    if (!S.me) { S.me = await api('/me'); S.lang = S.me.locale; localStorage.setItem('lang', S.lang); keepSession(S.me.remember_days); }
     if (rid !== RID) return;
     applyBrand(S.me.brand);
     const name = canSee(route()) ? route() : home();
@@ -206,7 +219,7 @@ function pwStrength(v) {
 }
 
 /* ---------- sign in ---------- */
-const authBand = b => (b ? `<div class="loginband">${b.logo_url ? `<span class="logo"><img src="${esc(b.logo_url)}" alt="${esc(b.name)}"></span>` : `<b>${esc(b.name)}</b>`}<small>Timesheets &amp; invoices</small></div>` : '<div class="stripe"></div>');
+const authBand = b => (b ? (b.logo_url && b.show_name === false ? `<div class="loginband solo"><span class="logo"><img src="${esc(b.logo_url)}" alt="${esc(b.name)}"></span></div>` : `<div class="loginband">${b.logo_url ? `<span class="logo"><img src="${esc(b.logo_url)}" alt="${esc(b.name)}"></span>` : `<b>${esc(b.name)}</b>`}<small>Timesheets &amp; invoices</small></div>`) : '<div class="stripe"></div>');
 const langBtn = () => `<p style="text-align:center;margin:14px 0 0"><button class="btn ghost sm" type="button" data-act="lang" data-to="${LANG() === 'es' ? 'en' : 'es'}">${LANG() === 'es' ? 'English' : 'Español'}</button></p>`;
 const resendLeft = () => Math.max(0, Math.ceil(((S.login?.resendAt || 0) - Date.now()) / 1000));
 async function loadPub() {
@@ -226,10 +239,11 @@ function loginError(e) {
 /* Sign in. If the server has Cloudflare Turnstile keys, the anti-bot challenge is shown first. An approver then types a 6-digit code sent by email. */
 async function loginView(err, info) {
   LAST = null;
+  if (!err && !info && S.cache.sessionMsg) { err = S.cache.sessionMsg; S.cache.sessionMsg = null; }
   const pub = await loadPub(); const brand = pub.brand || null;
   applyBrand(brand);
   const key = pub.turnstile_site_key; const L = S.login;
-  const msg = (err ? `<div class="msg err" role="alert">${esc(err)}</div>` : '') + (info ? `<div class="msg ok" role="status">${esc(info)}</div>` : '');
+  const msg = (err ? `<div class="msg err" role="alert">${esc(T(err))}</div>` : '') + (info ? `<div class="msg ok" role="status">${esc(info)}</div>` : '');
   const eyebrow = brand ? '' : '<div class="eyebrow">Tiempo · Timesheets &amp; invoices</div>';
   let inner;
   if (L && L.step === 'code') {
@@ -263,8 +277,8 @@ async function loginView(err, info) {
   }
 }
 function finishLogin(r) {
-  S.token = r.token; localStorage.setItem('tt', r.token);
-  if (r.device_token) localStorage.setItem('dt', r.device_token);
+  S.token = r.token; S.cache.newDt = r.device_token || null;
+  try { sessionStorage.setItem('tt', r.token); } catch { /* storage blocked */ }   // moved to localStorage after /me if the rule says to remember
   S.login = null; S.me = null; clearInterval(S.cache.rt);
   location.hash = '#/' + (r.user?.role === 'approver' ? 'approvals' : 'week'); render();
 }
@@ -593,7 +607,7 @@ async function projectsView() {
     <td class="r"><button class="btn ghost sm" data-act="edit-project" data-id="${x.id}">Edit</button></td></tr>`).join('')}</table></div>
     <div class="card"><h2>${p ? 'Edit ' + esc(p.code) : 'New project'}</h2><form data-form="project"><input type="hidden" name="id" value="${p?.id || ''}">
     <div class="grid"><div><label>Code</label><input name="code" required value="${esc(p?.code)}"></div><div><label>Name</label><input name="name" required value="${esc(p?.name)}"></div>
-    <div><label>Client</label><select name="customer_id"><option value="">—</option>${customers.map(c => `<option value="${c.id}" ${p?.customer_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div><label>Client${(p ? p.billable : true) ? ' *' : ''}</label><select name="customer_id" ${(p ? p.billable : true) ? 'required' : ''}><option value="">—</option>${customers.map(c => `<option value="${c.id}" ${p?.customer_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select><small class="muted">A billable project needs a client. Non-billable (internal) projects can have none.</small></div>
     <div><label>Approver (optional)</label><select name="approver_id"><option value="">Use the person's approver</option>${approvers.map(a => `<option value="${a.id}" ${p?.approver_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>
     <div><label>Invoice detail</label><select name="invoice_detail">${[['hours_total', 'Total hours only'], ['by_day', 'Hours by day'], ['with_times', 'With start and end time']].map(([v, t]) => `<option value="${v}" ${p?.invoice_detail === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
     <div><label>Default billing rate (services without their own)</label><input name="bill_rate" type="number" step="0.01" min="0" value="${esc(p?.bill_rate)}"></div>
@@ -601,7 +615,7 @@ async function projectsView() {
     <div><label>Latitude (work site)</label><input name="geo_lat" type="number" step="0.000001" value="${esc(p?.geo_lat)}"></div>
     <div><label>Longitude</label><input name="geo_lng" type="number" step="0.000001" value="${esc(p?.geo_lng)}"></div>
     <div><label>Radius (m)</label><input name="geo_radius_m" type="number" min="50" max="5000" value="${esc(p?.geo_radius_m)}"></div></div>
-    <p class="row"><label class="chk"><input type="checkbox" name="billable" ${p ? (p.billable ? 'checked' : '') : 'checked'}> Billable</label>
+    <p class="row"><label class="chk"><input type="checkbox" name="billable" data-act-change="proj-billable" ${p ? (p.billable ? 'checked' : '') : 'checked'}> Billable</label>
     <label class="chk"><input type="checkbox" name="active" ${p ? (p.active ? 'checked' : '') : 'checked'}> Active</label></p>
     <p><label>Fields (key=value, one per line)</label><textarea name="meta" rows="3">${esc(metaTxt)}</textarea></p>
     <p><label>Assigned people</label><span class="row">${users.filter(u => u.active).map(u => `<label class="chk"><input type="checkbox" data-multi="1" name="user_ids" value="${u.id}" ${p?.user_ids?.includes(u.id) ? 'checked' : ''}> ${esc(u.name)}</label>`).join('')}</span></p>
@@ -663,42 +677,85 @@ async function peopleView() {
 
 async function approversView() {
   const list = await api('/approvers');
+  const ea = S.cache.editApprover ? list.find(x => x.id === S.cache.editApprover) : null;
   const F = FL('approvers');
   const shown = list.filter(a => matchQ(F.q, [a.name, a.email]) && sameFlag(F.active, a.active));
   return `<h1>Approvers</h1><p class="sub">They can be external and need no account: they receive an email with a secure link. Optionally they can also sign in to the system to see their approvals.</p>
     <div class="card">${exportBar('approvers', activeF('approvers'))}${filterBar('approvers', [{ k: 'q', label: 'Search', ph: 'Name or email' }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }])}
     <table><tr><th>Name</th><th>Email</th><th>Extra code</th><th>Can sign in</th><th>Account</th><th>Status</th><th></th></tr>${shown.map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.email)}</td><td>${a.require_code ? pill('Yes', 'blue') : pill('No')}</td><td>${a.can_login ? pill('Yes', 'blue') : pill('No')}</td><td>${accountPill(a.account_status)}</td><td>${activePill(a.active)}</td>
-    <td class="r"><button class="btn ghost sm" data-act="toggle-login" data-id="${a.id}">${a.can_login ? 'Remove sign-in' : 'Allow sign-in'}</button> <button class="btn ghost sm" data-act="toggle-approver" data-id="${a.id}">${a.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table></div>
-    <div class="card"><h2>New approver</h2><form data-form="approver" class="grid"><div><label>Name</label><input name="name" required></div><div><label>Email</label><input name="email" type="email" required></div>
-    <div><label class="chk"><input type="checkbox" name="require_code"> Always ask for a 6-digit code</label></div>
-    <div style="grid-column:1/-1"><label class="chk"><input type="checkbox" name="can_login"> Can sign in to the system</label><div class="muted">The person receives an invitation at the same email, creates a password and signs in with a code sent by email.</div></div>
-    <div style="align-self:end"><button class="btn pri" type="submit">Add</button></div></form></div>`;
+    <td class="r"><button class="btn ghost sm" data-act="edit-approver" data-id="${a.id}">Edit</button> <button class="btn ghost sm" data-act="toggle-login" data-id="${a.id}">${a.can_login ? 'Remove sign-in' : 'Allow sign-in'}</button> <button class="btn ghost sm" data-act="toggle-approver" data-id="${a.id}">${a.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table></div>
+    <div class="card"><h2>${ea ? 'Edit ' + esc(ea.name) : 'New approver'}</h2><form data-form="approver" class="grid"><input type="hidden" name="id" value="${ea?.id || ''}"><div><label>Name</label><input name="name" required value="${esc(ea?.name)}"></div><div><label>Email</label><input name="email" type="email" required value="${esc(ea?.email)}"></div>
+    <div><label class="chk"><input type="checkbox" name="require_code" ${ea?.require_code ? 'checked' : ''}> Always ask for a 6-digit code</label></div>
+    <div style="grid-column:1/-1"><label class="chk"><input type="checkbox" name="can_login" ${ea?.can_login ? 'checked' : ''}> Can sign in to the system</label><div class="muted">The person receives an invitation at the same email, creates a password and signs in with a code sent by email.</div></div>
+    ${ea ? `<div><label class="chk"><input type="checkbox" name="active" ${ea.active ? 'checked' : ''}> Active</label></div>` : ''}
+    <div style="align-self:end"><button class="btn pri" type="submit">${ea ? 'Save' : 'Add'}</button> ${ea ? '<button class="btn ghost" type="button" data-act="new-approver">New</button>' : ''}</div></form></div>`;
 }
 
 async function customersView() {
   const list = await api('/customers');
+  S.cache.cl = list;
+  const ec = S.cache.editCustomer ? list.find(x => x.id === S.cache.editCustomer) : null;
   const F = FL('customers');
   const shown = list.filter(c => matchQ(F.q, [c.name, c.email]) && sameFlag(F.active, c.active) && sameFlag(F.linked, c.accountisi_id));
   return `<h1>Clients</h1><p class="sub">For Consultorio 1500, each client is an office.</p>
-    <div class="card">${exportBar('customers', activeF('customers'))}${filterBar('customers', [{ k: 'q', label: 'Search', ph: 'Name or email' }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }, { k: 'linked', label: 'Accountisi', type: 'select', opts: YN('Linked', 'Not linked') }])}<table><tr><th>Name</th><th>Email</th><th>Accountisi</th><th>Status</th></tr>${shown.map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.email || '')}</td><td>${c.accountisi_id ? pill('Linked', 'green') + ' <span class="muted">' + esc(c.accountisi_id) + '</span>' : pill('Not linked')}</td><td>${activePill(c.active)}</td></tr>`).join('')}</table></div>
-    <div class="card"><h2>New client</h2><form data-form="customer" class="grid"><div><label>Name</label><input name="name" required></div><div><label>Email</label><input name="email" type="email"></div>
-    <div style="align-self:end"><button class="btn pri" type="submit">Add</button></div></form></div>`;
+    <div class="card">${exportBar('customers', activeF('customers'))}${filterBar('customers', [{ k: 'q', label: 'Search', ph: 'Name or email' }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }, { k: 'linked', label: 'Accountisi', type: 'select', opts: YN('Linked', 'Not linked') }])}<table><tr><th>Name</th><th>Email</th><th>Accountisi</th><th>Status</th><th></th></tr>${shown.map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.email || '')}</td><td>${c.accountisi_id ? pill('Linked', 'green') + ' <span class="muted">' + esc(c.accountisi_id) + '</span>' : pill('Not linked')}</td><td>${activePill(c.active)}</td><td class="r"><button class="btn ghost sm" data-act="edit-customer" data-id="${c.id}">Edit</button></td></tr>`).join('')}</table></div>
+    <div class="card"><h2>${ec ? 'Edit ' + esc(ec.name) : 'New client'}</h2><form data-form="customer" class="grid"><input type="hidden" name="id" value="${ec?.id || ''}"><div><label>Name</label><input name="name" required value="${esc(ec?.name)}"></div><div><label>Email</label><input name="email" type="email" value="${esc(ec?.email)}"></div>
+    ${ec ? `<div><label>Accountisi</label><div>${ec.accountisi_id ? pill('Linked', 'green') + ' <span class="muted">' + esc(ec.accountisi_id) + '</span>' : pill('Not linked')}</div></div><div><label class="chk"><input type="checkbox" name="active" ${ec.active ? 'checked' : ''}> Active</label></div>` : ''}
+    <div style="align-self:end"><button class="btn pri" type="submit">${ec ? 'Save' : 'Add'}</button> ${ec ? '<button class="btn ghost" type="button" data-act="new-customer">New</button>' : ''}</div></form></div>`;
 }
 
 /* --- Branding --- */
+const HEX = /^#?([0-9a-f]{6})$/i;
+const lum = h => { const c = [0, 2, 4].map(i => parseInt(h.slice(1 + i, 3 + i), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const contrastWhite = h => 1.05 / (lum(h) + 0.05);
+function contrastNote(h) {
+  const c = contrastWhite(h); const bad = c < 4.5;
+  return `<span class="${bad ? 'bad' : 'ok'}">${esc(T('Contrast with white text'))}: ${c.toFixed(1)}:1</span>${bad ? ' · ' + esc(T('White text is hard to read on this color. Use a darker one.')) : ''}`;
+}
+/* A color: picker + hexadecimal + R, G, B, all in sync. Only the picker carries the name, so the form sends #rrggbb. */
+function colorField(name, label, value) {
+  const v = HEX.test(value || '') ? '#' + HEX.exec(value)[1].toLowerCase() : '#000000'; const [r, g, b] = [1, 3, 5].map(i => parseInt(v.slice(i, i + 2), 16));
+  return `<div class="colorf"><label>${label}</label><div class="crow"><input name="${name}" type="color" value="${v}" aria-label="${label}">
+    <input class="hx" data-c="hex" value="${v}" maxlength="7" placeholder="#RRGGBB" spellcheck="false" autocapitalize="none" aria-label="Hex"> ${['R', 'G', 'B'].map((k, i) => `<input class="rgb" data-c="${k}" type="number" min="0" max="255" value="${[r, g, b][i]}" aria-label="${k}" title="${k}">`).join('')}</div>
+    <small class="cnote">${contrastNote(v)}</small></div>`;
+}
+const h2 = n => Math.max(0, Math.min(255, Math.round(Number(n) || 0))).toString(16).padStart(2, '0');
+function syncColor(inp) {
+  const box = inp.closest('.colorf'); const pick = box.querySelector('input[type=color]'); const hx = box.querySelector('[data-c=hex]');
+  const rgb = ['R', 'G', 'B'].map(k => box.querySelector('[data-c=' + k + ']'));
+  let v = null;
+  if (inp === hx) { const m = HEX.exec(hx.value.trim()); hx.classList.toggle('badhex', !m); if (m) v = '#' + m[1].toLowerCase(); }
+  else if (inp === pick) v = pick.value;
+  else if (rgb.every(x => x.value !== '')) v = '#' + rgb.map(x => h2(x.value)).join('');
+  if (!v) return;
+  pick.value = v; if (inp !== hx) { hx.value = v; hx.classList.remove('badhex'); }
+  if (!rgb.includes(inp)) rgb.forEach((x, i) => { x.value = parseInt(v.slice(1 + 2 * i, 3 + 2 * i), 16); });
+  box.querySelector('.cnote').innerHTML = contrastNote(v);
+  brandPreview(box.closest('form'));
+}
+function brandPreview(f) {
+  const pv = document.getElementById('bpreview'); if (!pv || !f) return;
+  pv.querySelector('.ph').style.background = f.elements.color_primary.value; pv.querySelector('.pvbtn').style.background = f.elements.color_accent.value;
+  const nm = pv.querySelector('.pvname'); if (nm) { nm.hidden = !f.elements.show_name.checked; pv.querySelector('.ph img').style.maxHeight = f.elements.show_name.checked ? '34px' : '52px'; }
+}
+document.addEventListener('input', e => { const i = e.target.closest?.('.colorf input'); if (i) syncColor(i); });
+document.addEventListener('focusout', e => { const i = e.target.closest?.('.colorf [data-c=hex]'); if (i && i.classList.contains('badhex')) syncColor(i.closest('.colorf').querySelector('input[type=color]')); });
+document.addEventListener('change', e => { if (e.target.name === 'show_name') brandPreview(e.target.form); });
 async function brandView() {
   const [b, hist] = await Promise.all([api('/brand'), api('/brand/history')]);
+  const sn = b.show_name !== false;
   return `<h1>Branding</h1><p class="sub">Applies to the web app, emails, PDF invoices and the mobile app, without touching code.</p>
     <div class="card"><form data-form="brand"><div class="grid"><div><label>Business name</label><input name="brand_name" value="${esc(b.name)}"></div>
-    <div><label>Main color</label><input name="color_primary" type="color" value="${esc(b.color_primary)}"></div>
-    <div><label>Accent color (buttons)</label><input name="color_accent" type="color" value="${esc(b.color_accent)}"></div>
+    ${colorField('color_primary', 'Main color', b.color_primary)}
+    ${colorField('color_accent', 'Accent color (buttons)', b.color_accent)}
     <div><label>Logo (png, jpg or webp; max 1 MB)</label><input name="logo" type="file" accept="image/*"></div>
     <div><label>Sender name</label><input name="email_from_name" value="${esc(b.email_from_name)}"></div>
     <div><label>Sender email</label><input name="email_from_address" type="email" value="${esc(b.email_from_address)}"></div></div>
     <p><label>Footer of emails and invoices</label><input name="email_footer" value="${esc(b.email_footer)}"></p>
     <p><label class="chk"><input type="checkbox" name="remove_logo"> Remove the logo</label></p>
-    <div class="preview" id="bpreview" style="margin:12px 0"><div class="ph" style="background:${esc(b.color_primary)}">${b.logo_url ? `<img src="${esc(b.logo_url)}" style="max-height:34px">` : esc(b.name)}</div>
-    <div class="pb"><p>This is how the header and button of an approval email look.</p><span class="btn" style="background:${esc(b.color_accent)}">Review and decide</span></div></div>
+    <p><label class="chk"><input type="checkbox" name="show_name" ${sn ? 'checked' : ''}> Show the name next to the logo</label><small class="muted" style="display:block">Unchecked, the header and the sign-in page show only the logo. Without a logo the name always shows.</small></p>
+    <div class="preview" id="bpreview" style="margin:12px 0"><div class="ph" style="background:${esc(b.color_primary)}">${b.logo_url ? `<img src="${esc(b.logo_url)}" style="max-height:${sn ? 34 : 52}px"> <span class="pvname" ${sn ? '' : 'hidden'}>${esc(b.name)}</span>` : esc(b.name)}</div>
+    <div class="pb"><p>This is how the header and button of an approval email look.</p><span class="btn pvbtn" style="background:${esc(b.color_accent)}">Review and decide</span></div></div>
     <button class="btn pri" type="submit">Save branding</button></form></div>
     <div class="card"><h2>History</h2>${hist.length ? `<table>${hist.map(h => `<tr><td>${esc(String(h.created_at).slice(0, 16).replace('T', ' '))}</td><td>${esc(h.before.brand_name || '—')} ${esc(h.before.color_primary)} → ${esc(h.after.brand_name || '—')} ${esc(h.after.color_primary)}</td>
     <td class="r"><button class="btn ghost sm" data-act="revert-brand" data-id="${h.id}">Restore the previous one</button></td></tr>`).join('')}</table>` : '<p class="muted">No changes yet.</p>'}</div>`;
@@ -728,8 +785,9 @@ async function rulesView() {
     ${row('Repeat the reminder every (days)', 'Until a decision is made.', `<input name="remind_every_days" type="number" min="1" value="${r.remind_every_days}">`)}
     ${row('Approval link validity (days)', 'After that the link stops working.', `<input name="token_days" type="number" min="1" value="${r.token_days}">`)}
     ${row('Wait before notifying a change (minutes)', 'When a submitted timesheet is edited.', `<input name="change_notice_minutes" type="number" min="0" value="${r.change_notice_minutes}">`)}
-    ${row('Timesheets above these hours need individual approval with a code', 'Leave empty for no limit.', `<input name="second_approval_hours" type="number" step="0.5" value="${esc(r.second_approval_hours)}" placeholder="no limit">`)}
-    ${row('Remember this device (days)', 'Applies to approvers who sign in with an emailed code. 0 = never remember.', `<input name="remember_days" type="number" min="0" max="365" value="${esc(r.remember_days ?? 0)}">`)}</div>
+    ${row('Timesheets above these hours need individual approval with a code', 'Leave empty for no limit.', `<input name="second_approval_hours" type="number" step="0.5" value="${esc(r.second_approval_hours)}" placeholder="no limit">`)}</div>
+    <div class="card"><h2>Sign-in</h2><p class="muted" style="margin-top:-6px">How long people stay signed in.</p>
+    ${row('Remember for (days since last use)', 'Applies to everyone: how many days without using the app before asking for the password again. For approvers it is also how long a trusted device skips the emailed code. 0 = never remember: the browser session ends when it closes and the mobile app asks for the password every time it opens (it needs signal; without signal it only lets people record hours).', `<input name="remember_days" type="number" min="0" max="365" value="${esc(r.remember_days ?? 30)}">`)}</div>
     <button class="btn pri" type="submit">Save rules</button></form>`;
 }
 
@@ -895,6 +953,8 @@ const actions = {
     await api('/services/' + s.id, { method: 'PUT', body: { active: !s.active } }); render();
   },
   lang: async el => { const to = el.dataset.to; S.lang = to; localStorage.setItem('lang', to); if (S.token) { S.me = await api('/me/locale', { method: 'PUT', body: { locale: to } }); } render(); },
+  'edit-approver': el => { S.cache.editApprover = Number(el.dataset.id); render(); }, 'new-approver': () => { S.cache.editApprover = null; render(); },
+  'edit-customer': el => { S.cache.editCustomer = Number(el.dataset.id); render(); }, 'new-customer': () => { S.cache.editCustomer = null; render(); },
   'edit-user': el => { S.cache.editUser = Number(el.dataset.id); render(); }, 'new-user': () => { S.cache.editUser = null; render(); },
   async 'toggle-approver'(el) { const a = (await api('/approvers')).find(x => x.id === Number(el.dataset.id)); await api('/approvers/' + a.id, { method: 'PUT', body: { name: a.name, email: a.email, require_code: a.require_code, can_login: !!a.can_login, active: !a.active } }); render(); },
   async 'toggle-login'(el) {
@@ -986,6 +1046,8 @@ const forms = {
   async project(f) {
     const o = formObj(f); const id = o.id; delete o.id; o.meta = parseMeta(o.meta); o.user_ids = o.user_ids || [];
     for (const k of ['customer_id', 'approver_id']) if (o[k] != null) o[k] = Number(o[k]);
+    o.billable = !!o.billable;
+    if (o.billable && !o.customer_id) throw new Error('Pick a client: a billable project needs one.');
     if (id) await api('/projects/' + id, { method: 'PUT', body: o }); else await api('/projects', { method: 'POST', body: o });
     S.cache.editProject = null; flash('Project saved.'); render();
   },
@@ -1006,8 +1068,16 @@ const forms = {
     const r = await api('/client-timesheet/email', { method: 'POST', body: { ...body, email_to: o.email_to, message: o.message || undefined } });
     flash('Timesheet sent to ' + r.sent_to + ' (' + hrs(r.total_hours) + ' h).'); render();
   },
-  async approver(f) { const o = formObj(f); o.can_login = !!o.can_login; await api('/approvers', { method: 'POST', body: o }); flash(o.can_login ? 'Approver added. An invitation was sent to ' + o.email : 'Approver added.'); render(); },
-  async customer(f) { await api('/customers', { method: 'POST', body: formObj(f) }); flash('Client added.'); render(); },
+  async approver(f) {
+    const o = formObj(f); const id = o.id; delete o.id; o.can_login = !!o.can_login; o.require_code = !!o.require_code;
+    if (id) { o.active = !!o.active; await api('/approvers/' + id, { method: 'PUT', body: o }); S.cache.editApprover = null; flash('Approver saved.'); return render(); }
+    await api('/approvers', { method: 'POST', body: o }); flash(o.can_login ? 'Approver added. An invitation was sent to ' + o.email : 'Approver added.'); render();
+  },
+  async customer(f) {
+    const o = formObj(f); const id = o.id; delete o.id;
+    if (id) { const c = S.cache.cl?.find(x => x.id === Number(id)); o.active = !!o.active; if (c) o.accountisi_id = c.accountisi_id ?? null; await api('/customers/' + id, { method: 'PUT', body: o }); S.cache.editCustomer = null; flash('Client saved.'); return render(); }
+    await api('/customers', { method: 'POST', body: o }); flash('Client added.'); render();
+  },
   async brand(f) {
     const fd = new FormData(); const o = formObj(f);
     for (const [k, v] of Object.entries(o)) { if (v === null || v === undefined) continue; fd.append(k, v === true ? '1' : v === false ? '0' : v); }
@@ -1016,7 +1086,7 @@ const forms = {
   async rules(f) {
     const o = formObj(f); const { name, invoice_prefix, flag_late, locale, domain } = o; delete o.name; delete o.invoice_prefix; delete o.locale; delete o.domain;
     const rules = {}; for (const [k, v] of Object.entries(o)) rules[k] = v;
-    rules.flag_late = !!flag_late; rules.increment = Number(rules.increment); rules.remember_days = Number(rules.remember_days || 0);
+    rules.flag_late = !!flag_late; rules.increment = Number(rules.increment); rules.remember_days = Number(rules.remember_days ?? 30);
     await api('/company', { method: 'PUT', body: { name, invoice_prefix, locale, domain: domain ? String(domain).trim().toLowerCase() : null, rules } }); S.me = null; flash('Rules saved.'); render();
   },
   async accountisi(f) {
@@ -1033,6 +1103,11 @@ const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { if (e.
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="entry-project"],[data-act-change="entry-service"]'); if (el) syncEntryForm(el.closest('form')); });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="clock-project"]'); if (el) syncClockForm(el.closest('form')); });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="cs-customer"]'); if (el) { const f = el.closest('form'); S.cache.cs = { customer_id: Number(el.value), from: f.elements.from.value, to: f.elements.to.value }; S.cache.csPreview = null; render(); } });
+document.addEventListener('change', e => {
+  const el = e.target.closest('[data-act-change="proj-billable"]'); if (!el) return;
+  const f = el.closest('form'); const sel = f.elements.customer_id; sel.required = el.checked;
+  const lb = sel.parentElement.querySelector('label'); lb.textContent = T('Client') + (el.checked ? ' *' : '');
+});
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="lang-pick"]'); if (el) guard(actions.lang)({ dataset: { to: el.value } }); });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="wk-pick"]'); if (el) { S.weekDate = el.value; render(); } });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="exp-refresh"]'); if (el) { const f = el.closest('form'); const o = formObj(f); S.cache.exp = { ...o, picked: ['customer_id', 'from', 'to', 'user_id'].includes(el.name) ? null : (o.project_ids || null) }; render(); } });

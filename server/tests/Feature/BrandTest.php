@@ -65,6 +65,18 @@ class BrandTest extends TestCase
         $this->postJson('/api/brand', ['color_accent' => '#123456'])->assertOk();
     }
 
+    public function test_a_stored_color_with_low_contrast_does_not_block_saving_other_changes(): void
+    {
+        $this->world();
+        $this->company->update(['color_accent' => '#2e8b57']);   // el verde de antes: contraste 4.25, bajo el mínimo
+        Sanctum::actingAs($this->owner);
+        // Se guarda el formulario completo con el mismo color de siempre: no debe bloquearse.
+        $this->postJson('/api/brand', ['brand_name' => 'Cerevelo', 'color_primary' => $this->company->refresh()->color_primary, 'color_accent' => '#2E8B57'])->assertOk();
+        $this->postJson('/api/brand', ['brand_name' => 'Cerevelo', 'color_primary' => null, 'color_accent' => null])->assertOk();   // vacío = no cambiar
+        // Pero un color nuevo con poco contraste sigue rechazándose.
+        $this->postJson('/api/brand', ['color_accent' => '#33aa66'])->assertStatus(422)->assertJsonValidationErrors('color_accent');
+    }
+
     public function test_only_owner_changes_brand_and_history_can_be_reverted(): void
     {
         $this->world();

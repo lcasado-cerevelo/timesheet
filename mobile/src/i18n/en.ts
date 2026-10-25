@@ -120,6 +120,16 @@ export const en: Record<keyof typeof es, string> = {
   'day.clock_running': 'Clock running',
   'day.since': 'since {time}',
   'day.empty': 'No entries',
+
+  // project search and limited mode
+  'search.label': 'Search project',
+  'search.placeholder': 'Search by code, name or customer',
+  'search.clear': 'Clear search',
+  'search.empty': 'No results',
+  'search.recent': 'Recent',
+  'limited.banner': 'No signal: you can only log hours. When the signal is back we will ask for your password and everything will be sent.',
+  'login.continue_limited': 'Continue without signal (log hours only)',
+  'login.reconnected': 'The signal is back. Enter your password to send what you logged.',
   'day.col_in': 'In',
   'day.col_out': 'Out',
   'day.col_total': 'Total',
