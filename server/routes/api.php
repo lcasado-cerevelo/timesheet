@@ -49,6 +49,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/brand', [BrandController::class, 'show']);
 
     Route::get('/export-templates', [ExportController::class, 'templates']);
+    Route::get('/export/patients', [ExportController::class, 'patients']);
     Route::match(['get', 'post'], '/export', [ExportController::class, 'export']);
 
     Route::get('/contractor-invoices', [ContractorInvoiceController::class, 'index']);

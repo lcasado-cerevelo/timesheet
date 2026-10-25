@@ -242,14 +242,27 @@ async function invoicesView() {
 async function exportView() {
   const tpls = await api('/export-templates');
   const owner = S.me.role === 'owner';
-  const people = owner ? await api('/users') : [];
+  const [people, customers] = owner ? await Promise.all([api('/users'), api('/customers')]) : [[], []];
   S.cache.tpls = tpls;
+  const x = S.cache.exp = { template_id: tpls[0]?.id, from: addDays(today(), -30), to: today(), user_id: '', customer_id: '', ...(S.cache.exp || {}) };
+  // Pacientes (proyectos) de la oficina escogida con horas aprobadas en el período; el dueño marca cuáles pasar.
+  let patients = null;
+  if (x.customer_id) {
+    const q = new URLSearchParams({ customer_id: x.customer_id, from: x.from, to: x.to, ...(x.user_id ? { user_id: x.user_id } : {}) });
+    patients = await api('/export/patients?' + q);
+  }
+  const ch = 'data-act-change="exp-refresh"';
   return `<div class="card"><h1>Exportar</h1><form data-form="export" class="grid">
-    <div><label>Plantilla</label><select name="template_id">${tpls.map(t => `<option value="${t.id}">${esc(t.name)} (${t.format})</option>`).join('')}</select></div>
-    <div><label>Desde</label><input type="date" name="from" value="${addDays(today(), -30)}"></div><div><label>Hasta</label><input type="date" name="to" value="${today()}"></div>
-    ${owner ? `<div><label>Persona</label><select name="user_id"><option value="">Todas</option>${people.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>` : ''}
+    <div><label>Plantilla</label><select name="template_id" ${ch}>${tpls.map(t => `<option value="${t.id}" ${t.id === Number(x.template_id) ? 'selected' : ''}>${esc(t.name)} (${t.format})</option>`).join('')}</select></div>
+    <div><label>Desde</label><input type="date" name="from" value="${esc(x.from)}" ${ch}></div><div><label>Hasta</label><input type="date" name="to" value="${esc(x.to)}" ${ch}></div>
+    ${owner ? `<div><label>Oficina (cliente)</label><select name="customer_id" ${ch}><option value="">Todas</option>${customers.map(c => `<option value="${c.id}" ${c.id === Number(x.customer_id) ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>` : ''}
+    ${owner ? `<div><label>Persona</label><select name="user_id" ${ch}><option value="">Todas</option>${people.map(p => `<option value="${p.id}" ${p.id === Number(x.user_id) ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>` : ''}
+    ${patients ? `<div style="grid-column:1/-1"><label>Pacientes de esta oficina con horas aprobadas</label>
+      ${patients.length ? `<p><button class="btn ghost sm" type="button" data-act="exp-all" data-on="1">Marcar todos</button> <button class="btn ghost sm" type="button" data-act="exp-all" data-on="0">Quitar todos</button></p>
+      <table><tr><th></th><th>Paciente</th><th>Plan médico</th><th>Contrato</th><th class="r">Días</th><th class="r">Horas</th><th class="r">Importe</th></tr>${patients.map(p => `<tr><td><input type="checkbox" name="project_ids" data-multi="1" value="${p.id}" ${(x.picked ? x.picked.includes(p.id) : true) ? 'checked' : ''}></td><td>${esc(p.name)}</td><td>${p.plan ? esc(p.plan) : '<span class="muted">sin plan</span>'}</td><td>${esc(p.contract || '')}</td><td class="r">${p.days}</td><td class="r">${p.hours}</td><td class="r">${p.amount}</td></tr>`).join('')}</table>`
+      : '<p class="muted">Esta oficina no tiene horas aprobadas y facturables en ese período.</p>'}</div>` : ''}
     <div style="align-self:end"><button class="btn pri" type="submit">Descargar</button></div></form>
-    <p class="muted">Solo salen horas de hojas aprobadas. La plantilla “Consultorio 1500” produce las hojas “Atendidos &lt;año&gt;” que ese programa importa; cada paciente es un proyecto.</p></div>
+    <p class="muted">Solo salen horas de hojas aprobadas. La plantilla “Consultorio 1500” produce las hojas “Atendidos &lt;año&gt;” que ese programa importa: una oficina por archivo y cada paciente es un proyecto de esa oficina, nombrado “Paciente - Plan médico - Contrato” (lo que va antes del primer guión es el paciente, luego el plan y luego el número de contrato). Un paciente sin plan médico pasa a la columna “Facturada sin plan”.</p></div>
     ${owner ? `<div class="card"><h2>Mis plantillas</h2>${tpls.map(t => `<p><b>${esc(t.name)}</b> ${t.is_system ? '<span class="badge">sistema</span>' : `<button class="btn danger sm" data-act="del-tpl" data-id="${t.id}">Borrar</button>`}
     <span class="muted">${t.config.columns.map(c => esc(c.header)).join(' · ')}</span></p>`).join('')}
     <details><summary>Crear plantilla</summary><form data-form="tpl"><div class="grid">
@@ -268,7 +281,7 @@ async function projectsView() {
   const shown = list.filter(x => matchQ(F.q, [x.code, x.name, x.customer?.name]) && sameFlag(F.active, x.active) && sameFlag(F.billable, x.billable) && (!F.customer_id || x.customer_id === Number(F.customer_id)));
   const edit = S.cache.editProject; const p = edit ? list.find(x => x.id === edit) : null;
   const metaTxt = p?.meta ? Object.entries(p.meta).map(([k, v]) => k + '=' + v).join('\n') : '';
-  return `<div class="card"><h1>Proyectos</h1>${exportBar('projects', activeF('projects'))}${filterBar('projects', [{ k: 'q', label: 'Buscar', ph: 'código, nombre o cliente' }, { k: 'customer_id', label: 'Cliente', type: 'select', opts: [['', 'Todos'], ...customers.map(c => [c.id, c.name])] }, { k: 'active', label: 'Estado', type: 'select', opts: YN('Activos', 'Inactivos') }, { k: 'billable', label: 'Facturable', type: 'select', opts: YN('Facturables', 'No facturables') }])}<p class="muted">Solo el dueño de la compañía administra los proyectos. Para Consultorio 1500, cada paciente es un proyecto (plan_medico y numero_contrato en “Campos”).</p>
+  return `<div class="card"><h1>Proyectos</h1>${exportBar('projects', activeF('projects'))}${filterBar('projects', [{ k: 'q', label: 'Buscar', ph: 'código, nombre o cliente' }, { k: 'customer_id', label: 'Cliente', type: 'select', opts: [['', 'Todos'], ...customers.map(c => [c.id, c.name])] }, { k: 'active', label: 'Estado', type: 'select', opts: YN('Activos', 'Inactivos') }, { k: 'billable', label: 'Facturable', type: 'select', opts: YN('Facturables', 'No facturables') }])}<p class="muted">Solo el dueño de la compañía administra los proyectos. Para Consultorio 1500, cada paciente es un proyecto nombrado “Paciente - Plan médico - Contrato” (si el nombre no trae plan o contrato, se usan plan_medico y numero_contrato de “Campos”).</p>
     <table><tr><th>Código</th><th>Nombre</th><th>Cliente</th><th>Detalle de factura</th><th class="r">Tarifa</th><th></th></tr>
     ${shown.map(x => `<tr><td>${esc(x.code)} ${x.active ? '' : '<span class="badge">inactivo</span>'}</td><td>${esc(x.name)}</td><td>${esc(x.customer?.name || '—')}</td>
     <td>${{ hours_total: 'Total', by_day: 'Por día', with_times: 'Con desde/hasta' }[x.invoice_detail]}</td><td class="r">${x.bill_rate ? money(x.bill_rate) : '—'}</td>
@@ -476,6 +489,7 @@ const actions = {
   async return(el) { const c = prompt('¿Qué hay que corregir? (obligatorio)'); if (!c) return; await api(`/sheets/${el.dataset.id}/return`, { method: 'POST', body: { comment: c, version: Number(el.dataset.v) } }); flash('Hoja devuelta.'); render(); },
   pdf: el => download(`/contractor-invoices/${el.dataset.id}/pdf`, {}, 'factura.pdf'),
   async 'push-bill'(el) { const r = await api(`/contractor-invoices/${el.dataset.id}/push-accountisi`, { method: 'POST' }); flash(r.accountisi_status === 'draft' ? 'Creada en Accountisi como borrador.' : 'Estado en Accountisi: ' + r.accountisi_status, r.accountisi_status === 'draft' ? 'ok' : 'warn'); render(); },
+  'exp-all'(el) { document.querySelectorAll('input[name="project_ids"]').forEach(c => { c.checked = el.dataset.on === '1'; }); },
   async 'del-tpl'(el) { if (!confirm('¿Borrar la plantilla?')) return; await api('/export-templates/' + el.dataset.id, { method: 'DELETE' }); render(); },
   'edit-project': el => { S.cache.editProject = Number(el.dataset.id); render(); }, 'new-project': () => { S.cache.editProject = null; render(); },
   'edit-user': el => { S.cache.editUser = Number(el.dataset.id); render(); }, 'new-user': () => { S.cache.editUser = null; render(); },
@@ -510,7 +524,9 @@ const forms = {
   report(f) { S.cache.rep = formObj(f); render(); },
   async cinv(f) { const o = formObj(f); if (!o.user_id) delete o.user_id; const r = await api('/contractor-invoices', { method: 'POST', body: o }); flash('Factura ' + r.number + ' generada y enviada por email.'); render(); },
   async export(f) {
-    const o = formObj(f); const tpl = S.cache.tpls.find(t => t.id === Number(o.template_id)); if (!o.user_id) delete o.user_id;
+    const o = formObj(f); const tpl = S.cache.tpls.find(t => t.id === Number(o.template_id)); if (!o.user_id) delete o.user_id; if (!o.customer_id) delete o.customer_id;
+    if (f.querySelector('input[name="project_ids"]') && !(o.project_ids || []).length) throw new Error('Escoge al menos un paciente.');
+    if (!o.project_ids) delete o.project_ids; else o.customer_id = Number(o.customer_id);
     const r = await download('/export', { method: 'POST', body: o }, 'exportacion.' + tpl.format); flash('Archivo generado (' + r.rows + ' filas).'); render();
   },
   async tpl(f) {
@@ -567,6 +583,7 @@ const forms = {
 };
 const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { if (e.message !== 'Sesión vencida') { flash(e.message, 'err'); render(); } } };
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="cs-customer"]'); if (el) { const f = el.closest('form'); S.cache.cs = { customer_id: Number(el.value), from: f.elements.from.value, to: f.elements.to.value }; S.cache.csPreview = null; render(); } });
+document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="exp-refresh"]'); if (el) { const f = el.closest('form'); const o = formObj(f); const prev = S.cache.exp || {}; S.cache.exp = { ...o, picked: el.name === 'customer_id' || el.name === 'from' || el.name === 'to' || el.name === 'user_id' ? null : (o.project_ids || null) }; render(); } });
 document.addEventListener('change', e => { const el = e.target.closest('[data-filter]'); if (el) { FL(el.dataset.filter)[el.name] = el.value; render(); } });
 document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (el && actions[el.dataset.act]) { e.preventDefault(); guard(actions[el.dataset.act])(el); } });
 document.addEventListener('submit', e => { const f = e.target.closest('form[data-form]'); if (f && forms[f.dataset.form]) { e.preventDefault(); guard(forms[f.dataset.form])(f); } });

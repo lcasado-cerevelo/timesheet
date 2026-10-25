@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Company;
+use App\Models\Customer;
 use App\Models\Project;
 use App\Models\Timesheet;
 use App\Models\User;
@@ -149,5 +151,83 @@ class ExportTest extends TestCase
         $res = $this->postJson('/api/export', ['template_id' => $tpl['id'], 'from' => '2026-10-19', 'to' => '2026-10-25'])->assertOk();
         $this->assertSame('0', $res->headers->get('X-Export-Rows'));
         $this->postJson('/api/export-templates', ['name' => 'n', 'format' => 'csv', 'config' => ['columns' => []]])->assertForbidden();
+    }
+
+    public function test_consultorio_1500_exports_one_office_and_the_chosen_patients(): void
+    {
+        $this->approvedWeek();
+        $a = Customer::create(['company_id' => $this->company->id, 'name' => 'Oficina A']);
+        $b = Customer::create(['company_id' => $this->company->id, 'name' => 'Oficina B']);
+        $maria = Project::where('name', 'Maria Lopez')->first();
+        $juan = Project::where('name', 'Juan Perez')->first();
+        $maria->update(['customer_id' => $a->id]);
+        $juan->update(['customer_id' => $b->id]);
+        Sanctum::actingAs($this->owner);
+        $tpl = collect($this->getJson('/api/export-templates')->json())->firstWhere('slug', 'consultorio-1500');
+        $range = ['from' => '2026-10-19', 'to' => '2026-10-25'];
+
+        // Pacientes disponibles de cada oficina, con lo aprobado en el período.
+        $pa = $this->getJson('/api/export/patients?'.http_build_query($range + ['customer_id' => $a->id]))->assertOk()->json();
+        $this->assertSame(['Maria Lopez'], array_column($pa, 'name'));
+        $this->assertEquals(2.5, $pa[0]['hours']);
+        $this->assertSame(1, $pa[0]['days']);
+
+        // Una oficina por archivo.
+        $res = $this->postJson('/api/export', $range + ['template_id' => $tpl['id'], 'customer_id' => $a->id])->assertOk();
+        $this->assertSame('1', $res->headers->get('X-Export-Rows'));
+        $this->assertStringContainsString('oficina-a', (string) $res->headers->get('content-disposition'));
+
+        // Escoger pacientes: de una oficina sin pacientes escogidos no sale nada de otra.
+        $res = $this->postJson('/api/export', $range + ['template_id' => $tpl['id'], 'customer_id' => $a->id, 'project_ids' => [$juan->id]])->assertOk();
+        $this->assertSame('0', $res->headers->get('X-Export-Rows'));
+        $res = $this->postJson('/api/export', $range + ['template_id' => $tpl['id'], 'project_ids' => [$maria->id, $juan->id]])->assertOk();
+        $this->assertSame('2', $res->headers->get('X-Export-Rows'));
+
+        // Una oficina de otra compañía no existe para nosotros.
+        $other = Customer::create(['company_id' => Company::create(['name' => 'Otra', 'slug' => 'otra'])->id, 'name' => 'Ajena']);
+        $this->postJson('/api/export', $range + ['template_id' => $tpl['id'], 'customer_id' => $other->id])->assertNotFound();
+        $this->getJson('/api/export/patients?'.http_build_query($range + ['customer_id' => $other->id]))->assertNotFound();
+    }
+
+    public function test_patient_without_a_medical_plan_goes_to_the_without_plan_column(): void
+    {
+        $this->approvedWeek();
+        Project::where('name', 'Maria Lopez')->update(['meta' => json_encode(['plan_medico' => '', 'numero_contrato' => ''])]);
+        Sanctum::actingAs($this->owner);
+        $tpl = collect($this->getJson('/api/export-templates')->json())->firstWhere('slug', 'consultorio-1500');
+        $res = $this->postJson('/api/export', ['template_id' => $tpl['id'], 'from' => '2026-10-19', 'to' => '2026-10-25'])->assertOk();
+        $copy = tempnam(sys_get_temp_dir(), 'xl').'.xlsx';
+        copy($res->baseResponse->getFile()->getPathname(), $copy);
+        $sheet = IOFactory::load($copy)->getActiveSheet();
+        for ($r = 2; $r <= $sheet->getHighestRow(); $r++) {
+            if ($sheet->getCell('A'.$r)->getValue() === 'Maria Lopez') {
+                $this->assertNull($sheet->getCell('D'.$r)->getValue());   // con plan
+                $this->assertEquals(250, $sheet->getCell('E'.$r)->getValue()); // sin plan
+            }
+        }
+        unlink($copy);
+    }
+
+    public function test_project_name_dashes_split_patient_plan_and_contract(): void
+    {
+        $this->approvedWeek();
+        Project::where('name', 'Maria Lopez')->update(['name' => 'Ana Ruiz - Triple S - 998-77', 'meta' => json_encode([])]);
+        Project::where('name', 'Juan Perez')->update(['name' => 'Luis Gil-Platino', 'meta' => json_encode(['numero_contrato' => 'K-5'])]);
+        Sanctum::actingAs($this->owner);
+        $tpl = collect($this->getJson('/api/export-templates')->json())->firstWhere('slug', 'consultorio-1500');
+        $res = $this->postJson('/api/export', ['template_id' => $tpl['id'], 'from' => '2026-10-19', 'to' => '2026-10-25'])->assertOk();
+        $copy = tempnam(sys_get_temp_dir(), 'xl').'.xlsx';
+        copy($res->baseResponse->getFile()->getPathname(), $copy);
+        $sheet = IOFactory::load($copy)->getActiveSheet();
+        $rows = [];
+        for ($r = 2; $r <= $sheet->getHighestRow(); $r++) {
+            $rows[$sheet->getCell('A'.$r)->getValue()] = [$sheet->getCell('B'.$r)->getValue(), $sheet->getCell('C'.$r)->getValue(), $sheet->getCell('D'.$r)->getValue(), $sheet->getCell('E'.$r)->getValue()];
+        }
+        // Después del segundo guión todo es el contrato; lo demás sale del nombre.
+        $this->assertSame(['998-77', 'Triple S'], [$rows['Ana Ruiz'][0], $rows['Ana Ruiz'][1]]);
+        $this->assertEquals(250, $rows['Ana Ruiz'][2]);   // con plan
+        // Plan "Platino" del nombre, contrato del campo del proyecto.
+        $this->assertSame(['K-5', 'Platino'], [$rows['Luis Gil'][0], $rows['Luis Gil'][1]]);
+        unlink($copy);
     }
 }

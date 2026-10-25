@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Company;
+use App\Models\Customer;
+use App\Models\Project;
 use App\Models\ExportLog;
 use App\Models\ExportTemplate;
 use App\Models\TimeEntry;
@@ -26,7 +28,7 @@ class ExportService
 {
     /** Orígenes de datos que puede usar una columna. */
     public const SOURCES = [
-        'date', 'week_ending', 'worker', 'project.code', 'project.name', 'customer', 'hours', 'amount', 'rate',
+        'date', 'week_ending', 'worker', 'project.code', 'project.name', 'project.patient', 'project.plan', 'project.contract', 'customer', 'hours', 'amount', 'rate',
         'start', 'end', 'notes', 'billable', 'literal',
     ];
     public const GROUPS = ['project', 'date', 'worker', 'week', 'customer'];
@@ -34,7 +36,8 @@ class ExportService
     public function ensureSystemTemplates(Company $company): void
     {
         foreach ($this->systemTemplates() as $slug => $def) {
-            ExportTemplate::firstOrCreate(
+            // Las del sistema son de solo lectura, así que se mantienen al día con la versión actual del programa.
+            ExportTemplate::updateOrCreate(
                 ['company_id' => $company->id, 'slug' => $slug],
                 ['name' => $def['name'], 'format' => $def['format'], 'config' => $def['config'], 'is_system' => true]
             );
@@ -51,13 +54,13 @@ class ExportService
                     'group_by' => ['project', 'date'], // una visita por paciente y día (evita duplicados al importar)
                     'filters' => ['status' => 'approved', 'billable_only' => true],
                     'columns' => [
-                        ['header' => 'Nombre del asegurado', 'source' => 'project.name'],
-                        ['header' => 'Contrato', 'source' => 'project.meta.numero_contrato'],
-                        ['header' => 'Plan medico', 'source' => 'project.meta.plan_medico'],
+                        ['header' => 'Nombre del asegurado', 'source' => 'project.patient'],
+                        ['header' => 'Contrato', 'source' => 'project.contract'],
+                        ['header' => 'Plan medico', 'source' => 'project.plan'],
                         ['header' => 'Facturada con plan', 'source' => 'amount',
-                            'when' => ['source' => 'project.meta.plan_medico', 'op' => 'not_contains', 'value' => 'privado']],
+                            'when' => ['source' => 'project.plan', 'op' => 'filled_not_contains', 'value' => 'privado']],
                         ['header' => 'Facturada sin plan', 'source' => 'amount',
-                            'when' => ['source' => 'project.meta.plan_medico', 'op' => 'contains', 'value' => 'privado']],
+                            'when' => ['source' => 'project.plan', 'op' => 'empty_or_contains', 'value' => 'privado']],
                         ['header' => 'Fecha', 'source' => 'date', 'format' => 'date'],
                         ['header' => 'Descripcion', 'source' => 'notes'],
                     ],
@@ -95,6 +98,23 @@ class ExportService
         ];
     }
 
+    /**
+     * Un proyecto de Consultorio 1500 se nombra "Paciente - Plan médico - Número de contrato".
+     * Lo que va antes del primer guión es el paciente, entre el primero y el segundo el plan, y después del segundo el contrato.
+     * Si el nombre no trae plan o contrato, se usan los campos plan_medico y numero_contrato del proyecto.
+     * @return array{patient:string,plan:string,contract:string}
+     */
+    public static function parseProject(Project $p): array
+    {
+        $parts = preg_split('/\s*-\s*/u', (string) $p->name, 3);
+        $trim = fn ($s) => trim((string) $s);
+        return [
+            'patient' => $trim($parts[0] ?? ''),
+            'plan' => $trim($parts[1] ?? '') !== '' ? $trim($parts[1]) : $trim(data_get($p->meta, 'plan_medico', '')),
+            'contract' => $trim($parts[2] ?? '') !== '' ? $trim($parts[2]) : $trim(data_get($p->meta, 'numero_contrato', '')),
+        ];
+    }
+
     /** Valida la definición de una plantilla creada por el usuario. Devuelve lista de errores. */
     public function validateConfig(array $c): array
     {
@@ -129,7 +149,8 @@ class ExportService
         $config = $tpl->config;
         $dir = storage_path('app/exports');
         @mkdir($dir, 0775, true);
-        $base = Str::slug($tpl->name).'-'.$from.'_'.$to;
+        $office = ! empty($opts['customer_id']) ? Customer::where('company_id', $actor->company_id)->find($opts['customer_id']) : null;
+        $base = Str::slug($tpl->name).($office ? '-'.Str::slug($office->name) : '').'-'.$from.'_'.$to;
         $path = $dir.'/'.Str::random(10).'-'.$base.'.'.$tpl->format;
 
         if ($tpl->format === 'csv') {
@@ -184,6 +205,34 @@ class ExportService
         return ['path' => $path, 'filename' => $base.'.'.$tpl->format, 'mime' => $mime, 'rows' => count($rows), 'hash' => $hash];
     }
 
+    /**
+     * Pacientes (proyectos) de una oficina con horas aprobadas y facturables en el período, para escoger cuáles exportar.
+     * @return array<int, array{id:int,name:string,plan:string,hours:float,amount:float,days:int}>
+     */
+    public function patients(User $actor, int $customerId, string $from, string $to, ?int $userId = null): array
+    {
+        $q = TimeEntry::with('project')
+            ->where('company_id', $actor->company_id)->where('running', false)->where('billable', true)
+            ->whereBetween('work_date', [$from, $to])
+            ->whereHas('timesheet', fn ($t) => $t->where('status', Timesheet::APPROVED))
+            ->whereHas('project', fn ($p) => $p->where('customer_id', $customerId));
+        if (! $actor->isOwner()) {
+            $q->where('user_id', $actor->id);
+        } elseif ($userId) {
+            $q->where('user_id', $userId);
+        }
+        return $q->get()->groupBy('project_id')->map(function ($g) {
+            $p = $g->first()->project;
+            $hours = round($g->sum(fn ($e) => (float) $e->hours), 2);
+            $parsed = self::parseProject($p);
+            return [
+                'id' => $p->id, 'name' => $parsed['patient'], 'project' => $p->name, 'plan' => $parsed['plan'], 'contract' => $parsed['contract'],
+                'hours' => $hours, 'amount' => round($hours * (float) ($p->bill_rate ?? 0), 2),
+                'days' => $g->pluck('work_date')->map(fn ($d) => $d->toDateString())->unique()->count(),
+            ];
+        })->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values()->all();
+    }
+
     /** Filas ya agrupadas, con todos los orígenes disponibles. */
     public function collect(ExportTemplate $tpl, User $actor, string $from, string $to, array $opts = []): array
     {
@@ -197,6 +246,10 @@ class ExportService
             $q->where('user_id', $actor->id);
         } elseif (! empty($opts['user_id'])) {
             $q->where('user_id', $opts['user_id']);
+        }
+        if (! empty($opts['customer_id'])) {
+            // En Consultorio 1500 el cliente es la oficina: solo salen los pacientes (proyectos) de esa oficina.
+            $q->whereHas('project', fn ($p) => $p->where('customer_id', $opts['customer_id']));
         }
         if (! empty($opts['project_ids'])) {
             $q->whereIn('project_id', $opts['project_ids']);
@@ -278,6 +331,7 @@ class ExportService
         return match ($source) {
             'project.code' => $row['project']->code,
             'project.name' => $row['project']->name,
+            'project.patient', 'project.plan', 'project.contract' => self::parseProject($row['project'])[substr($source, 8)],
             default => $row[$source] ?? '',
         };
     }
@@ -289,6 +343,9 @@ class ExportService
         return match ($when['op'] ?? 'eq') {
             'contains' => str_contains($v, $needle),
             'not_contains' => ! str_contains($v, $needle),
+            // Sin plan médico (campo vacío) cuenta igual que "privado": va a la columna "Facturada sin plan".
+            'empty_or_contains' => trim($v) === '' || str_contains($v, $needle),
+            'filled_not_contains' => trim($v) !== '' && ! str_contains($v, $needle),
             'neq' => $v !== $needle,
             default => $v === $needle,
         };

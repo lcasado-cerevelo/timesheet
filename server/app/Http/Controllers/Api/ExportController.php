@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Customer;
 use App\Models\ExportTemplate;
 use App\Services\ExportService;
 use Illuminate\Http\Request;
@@ -58,6 +59,19 @@ class ExportController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /** Pacientes de una oficina con horas aprobadas en el período (para escoger cuáles exportar). */
+    public function patients(Request $request)
+    {
+        $v = $request->validate([
+            'customer_id' => 'required|integer',
+            'from' => 'required|date_format:Y-m-d',
+            'to' => 'required|date_format:Y-m-d|after_or_equal:from',
+            'user_id' => 'nullable|integer',
+        ]);
+        Customer::where('company_id', $request->user()->company_id)->findOrFail($v['customer_id']);
+        return response()->json($this->exports->patients($request->user(), $v['customer_id'], $v['from'], $v['to'], $v['user_id'] ?? null));
+    }
+
     /** Genera y descarga el archivo. Una persona sin rol de dueño solo exporta sus propias horas. */
     public function export(Request $request)
     {
@@ -66,8 +80,13 @@ class ExportController extends Controller
             'from' => 'required|date_format:Y-m-d',
             'to' => 'required|date_format:Y-m-d|after_or_equal:from',
             'user_id' => 'nullable|integer',
+            'customer_id' => 'nullable|integer',
             'project_ids' => 'nullable|array',
+            'project_ids.*' => 'integer',
         ]);
+        if (! empty($v['customer_id'])) {
+            Customer::where('company_id', $request->user()->company_id)->findOrFail($v['customer_id']);
+        }
         $tpl = ExportTemplate::where('company_id', $request->user()->company_id)->findOrFail($v['template_id']);
         $file = $this->exports->generate($tpl, $request->user(), $v['from'], $v['to'], $v);
         return response()->download($file['path'], $file['filename'], [
