@@ -53,3 +53,24 @@ Lista viva de lo que Luis pidió y aún no está terminado. Se tacha cuando qued
 ## Estado al 2026-10-25 (noche)
 Hecho y probado (112 pruebas del servidor, 49 del móvil, tsc en verde), SIN commit: servicios, modo por servicio, tarifas guardadas en la entrada, dos idiomas en servidor/web/móvil, web con el diseño del mockup (letra IBM Plex, pastillas, ancho completo, Todas las semanas, aprobaciones en dos paneles, reglas agrupadas), móvil con pantalla Día nueva y margen inferior.
 Falta: probar el móvil en teléfono/emulador; revisar la web contra el mockup pantalla por pantalla con Luis; decisiones del móvil (entrada vieja sin servicio, horas de Entrar/Salir ahora, Cambiar proyecto con reloj corriendo, aviso de llegada con varios servicios, reportes por servicio); "Repetir" a fondo; carpeta branding/ (de Luis) sin subir; Laravel Boost (lo pide server/CLAUDE.md) sin instalar.
+
+## Por construir cuando Luis diga "empieza y construye" (2026-10-25)
+- **Cuenta opcional del aprobador**: casilla "Puede entrar al sistema" en Aprobadores. Invitación por correo; el correo es el que ya tiene el aprobador (se muestra, no se escribe) y solo crea su contraseña nueva. Al entrar: correo + contraseña + código de 6 dígitos por correo + "recordar este equipo 30 días". Dentro solo ve Aprobaciones (Pendientes, Aprobadas, Devueltas, Todas). Los enlaces de los correos siguen igual. El código solo se pide a aprobadores, no a consultores ni empleados.
+- **Ver contraseña** (ojo): ocultar el botón nativo de Edge (::-ms-reveal) para que no salga doble, y usar autocomplete correcto.
+- **Login web más fuerte y mejor presentado**, como el mockup (ver propuestas en la conversación): marca de la compañía, recuperar contraseña por correo, aviso de mayúsculas, errores claros.
+- **Móvil**: el campo "Servidor" no debe verse en el login. Paso de conexión solo la primera vez (o servidor fijado al compilar), luego oculto; "Cambiar servidor" escondido en Ajustes.
+
+## Decisiones de Luis sobre cuentas y contraseñas (2026-10-25, para construir cuando diga "empieza y construye")
+- Móvil: el servidor se **fija al compilar** (una compilación por compañía). El login nunca muestra el servidor.
+- Web: **cada compañía tiene su propio dominio o subdominio**; el login toma la marca de la compañía según el dominio. Los enlaces de los correos usan el dominio de la compañía.
+- "Recordar este equipo" es **configurable** en Reglas (días; 0 = apagado).
+- **El dueño o administrador nunca ve ni escribe contraseñas.** Al crear a una persona no se escribe contraseña: recibe una invitación para crearla. Si el dueño resetea la contraseña, la persona **debe crear una nueva** al entrar (siempre). Se anula la anterior y se cierran sus sesiones.
+- Cada persona puede **cambiar su contraseña** (web y móvil) y para eso **debe escribir la actual**. Si no la sabe, llama al dueño para que se la resetee.
+- Sin recuperación por correo hecha por la persona misma (por decisión de Luis): solo el reseteo del dueño.
+- Código por correo: pregunta abierta si se pide también al aprobar (casilla "Pedir siempre código" del aprobador ya existe).
+- Confirmado por Luis: el código al aprobar solo cuando se marque la casilla del aprobador. Sin recuperación de contraseña por cuenta propia (llamar al dueño). **Ojito para ver la contraseña en todos los campos de contraseña** (web y móvil), como un solo componente compartido; en la web se oculta el botón nativo de Edge para que no salga doble. El ojito solo muestra lo que la persona escribió, nunca una clave guardada en el servidor.
+
+## Estado al 2026-10-26: construido y probado, SIN commit
+Cuentas de aprobador (invitación, código por correo, recordar equipo configurable, vista Aprobaciones), contraseñas sin que nadie las maneje (invitación, reseteo del dueño, cambio con la actual, comando para el dueño), ojito en todos los campos, login web con marca por dominio, dominio por compañía, móvil con servidor fijo al compilar, ícono del reloj de arena. 144 pruebas del servidor, 62 del móvil, tsc en verde.
+Por probar en la vida real: móvil en teléfono/emulador (ojito, servidor fijo, ícono), Caddy con varios dominios, Turnstile con el aprobador, correos reales con Brevo.
+Prueba en desarrollo: se creó la cuenta de aprobador de Jorge Ramos (jorge@cliente.test, clave de prueba) y se aprobó la hoja de Ana de la semana 25 oct.

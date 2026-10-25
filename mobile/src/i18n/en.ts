@@ -26,8 +26,8 @@ export const en: Record<keyof typeof es, string> = {
 
   // API errors
   'api.network': 'Cannot reach the server.',
-  'api.unexpected': 'The server answered something unexpected. Check the server address.',
-  'api.expired': 'Your session expired. Sign in again.',
+  'api.unexpected': 'The server answered something unexpected. Try again or contact your administrator.',
+  'api.expired': 'Your session was closed. Sign in again.',
   'api.error': 'Error {n}',
 
   // login
@@ -37,6 +37,29 @@ export const en: Record<keyof typeof es, string> = {
   'login.email': 'Email',
   'login.password': 'Password',
   'login.failed': 'Could not sign in.',
+  'login.bad_credentials': 'Wrong email or password.',
+  'login.too_many': 'Too many attempts. Wait a moment and try again.',
+  'login.approver_web_only': 'Approver accounts sign in on the web.',
+  'login.no_server': 'This app is not configured. Contact your administrator.',
+  'login.help': 'If you forgot your password, contact your administrator to have it reset. If you were invited or your password was reset, first create your password from the link emailed to you (it opens on the web), then sign in here.',
+  'login.developer': 'Developer',
+  'login.developer_hint': 'For development only. Company builds come with the server fixed.',
+
+  // password
+  'password.show': 'Show password',
+  'password.hide': 'Hide password',
+  'password.title': 'Change password',
+  'password.current': 'Current password',
+  'password.new': 'New password',
+  'password.new_hint': 'At least {n} characters.',
+  'password.current_required': 'Enter your current password.',
+  'password.too_short': 'The new password must be at least {n} characters.',
+  'password.same': 'The new password must be different from the current one.',
+  'password.forgot': 'If you do not remember the current one, call your administrator to have it reset.',
+  'password.save': 'Change password',
+  'password.saving': 'Saving…',
+  'password.done': 'Done: your password was changed. Your other open sessions were signed out.',
+  'password.failed': 'Could not change the password.',
 
   // local rules (same as the server)
   'rules.pick_project': 'Choose a project.',

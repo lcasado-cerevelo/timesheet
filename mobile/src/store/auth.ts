@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { api, configureApi } from '../lib/api';
-import { normalizeLocale } from '../i18n';
+import { normalizeLocale, t } from '../i18n';
 import type { Locale } from '../i18n';
 import { loadLocale, pendingLocale, saveLocale } from '../i18n/persist';
 import { kv, secure } from '../lib/storage';
+import { devDefaultServerUrl, fixedServerUrl, normalizeServerUrl, resolveServer } from '../lib/server';
 import type { Brand, Me } from '../lib/types';
 
 const NEUTRAL: Brand = { name: 'Tiempo', logo_url: null, logo_dark_url: null, color_primary: '#1f4e79', color_accent: '#2e8b57', email_footer: null };
@@ -11,11 +12,20 @@ const NEUTRAL: Brand = { name: 'Tiempo', logo_url: null, logo_dark_url: null, co
 interface AuthState {
   ready: boolean;
   baseUrl: string;
+  /** El servidor viene fijado al compilar: no se muestra ni se pide en ninguna pantalla. */
+  serverFixed: boolean;
+  /** Compilación sin servidor válido (producción sin EXPO_PUBLIC_SERVER_URL / extra.serverUrl). */
+  misconfigured: boolean;
+  /** El servidor cerró la sesión (401): el login lo avisa. Las entradas guardadas sin conexión se conservan. */
+  sessionClosed: boolean;
   token: string | null;
   me: Me | null;
   brand: Brand;
   init: () => Promise<void>;
-  login: (baseUrl: string, email: string, password: string) => Promise<void>;
+  /** devUrl solo se usa en desarrollo y sin servidor fijo. */
+  login: (email: string, password: string, devUrl?: string) => Promise<void>;
+  /** Cierre forzado por el servidor (401): solo limpia la sesión local, sin llamar al servidor. */
+  sessionExpired: () => Promise<void>;
   refreshMe: () => Promise<void>;
   logout: () => Promise<void>;
   /** Cambia el idioma de la persona: se aplica y se guarda en el teléfono al instante; el servidor se avisa en cuanto haya conexión. */
@@ -24,7 +34,10 @@ interface AuthState {
 
 export const useAuth = create<AuthState>((set, get) => ({
   ready: false,
-  baseUrl: process.env.EXPO_PUBLIC_API_URL ?? '',
+  baseUrl: '',
+  serverFixed: false,
+  misconfigured: false,
+  sessionClosed: false,
   token: null,
   me: null,
   brand: NEUTRAL,
@@ -32,22 +45,25 @@ export const useAuth = create<AuthState>((set, get) => ({
   async init() {
     await loadLocale();
     const [token, baseUrl, me] = await Promise.all([secure.get('token'), kv.get<string>('baseUrl', ''), kv.get<Me | null>('me', null)]);
-    const url = baseUrl || get().baseUrl;
-    configureApi({ baseUrl: url, token, onUnauthorized: () => void get().logout() });
-    set({ ready: true, token, baseUrl: url, me, brand: me?.brand ?? NEUTRAL });
+    const srv = resolveServer({ fixed: fixedServerUrl(), stored: baseUrl, devDefault: devDefaultServerUrl(), dev: __DEV__ });
+    configureApi({ baseUrl: srv.url, token, onUnauthorized: () => void get().sessionExpired() });
+    set({ ready: true, token, baseUrl: srv.url, serverFixed: srv.fixed, misconfigured: srv.misconfigured, me, brand: me?.brand ?? NEUTRAL });
     if (token) void get().refreshMe().catch(() => undefined); // la marca se actualiza sola si hay conexión
   },
 
-  async login(baseUrl, email, password) {
-    const url = baseUrl.trim().replace(/\/+$/, '');
+  async login(email, password, devUrl) {
+    const { serverFixed, baseUrl: current } = get();
+    // Con servidor fijo se usa siempre ese; si no, solo en desarrollo se acepta el escrito a mano.
+    const url = serverFixed ? current : __DEV__ ? normalizeServerUrl(devUrl ?? current, true) ?? '' : '';
+    if (!url) throw new Error(t('login.no_server'));
     configureApi({ baseUrl: url, token: null });
     const r = await api<{ token: string; user: Me }>('/login', { method: 'POST', body: { email, password, device: 'movil' } });
-    await Promise.all([secure.set('token', r.token), kv.set('baseUrl', url), kv.set('me', r.user)]);
+    await Promise.all([secure.set('token', r.token), serverFixed ? Promise.resolve() : kv.set('baseUrl', url), kv.set('me', r.user)]);
     configureApi({ baseUrl: url, token: r.token });
     const l = normalizeLocale(r.user.locale);
     if (l) await saveLocale(l);
     await pendingLocale.clear();
-    set({ token: r.token, baseUrl: url, me: r.user, brand: r.user.brand });
+    set({ token: r.token, baseUrl: url, sessionClosed: false, me: r.user, brand: r.user.brand });
   },
 
   async refreshMe() {
@@ -82,6 +98,13 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
   },
 
+  async sessionExpired() {
+    if (!get().token) return;
+    await Promise.all([secure.del('token'), kv.del('me')]);
+    configureApi({ token: null });
+    set({ token: null, me: null, brand: NEUTRAL, sessionClosed: true });
+  },
+
   async logout() {
     try {
       if (get().token) await api('/logout', { method: 'POST' });
@@ -90,6 +113,6 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
     await Promise.all([secure.del('token'), kv.del('me')]);
     configureApi({ token: null });
-    set({ token: null, me: null, brand: NEUTRAL });
+    set({ token: null, me: null, brand: NEUTRAL, sessionClosed: false });
   },
 }));

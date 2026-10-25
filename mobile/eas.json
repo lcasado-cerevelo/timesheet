@@ -1,0 +1,14 @@
+{
+  "cli": { "version": ">= 12.0.0" },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "compania-ejemplo": {
+      "distribution": "store",
+      "env": { "EXPO_PUBLIC_SERVER_URL": "https://tiempo.ejemplo.com" }
+    }
+  },
+  "submit": {}
+}

@@ -10,7 +10,7 @@ describe('respuestas del servidor', () => {
   test('una página HTML con código 200 no se toma como respuesta válida', async () => {
     globalThis.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '<!doctype html><html></html>' }) as any;
     await expect(api('/export-templates')).rejects.toBeInstanceOf(ApiError);
-    await expect(api('/export-templates')).rejects.toThrow(/dirección del servidor/);
+    await expect(api('/export-templates')).rejects.toThrow(/inesperado/);
   });
 
   test('un JSON normal pasa y un error de validación trae su primer mensaje', async () => {

@@ -109,6 +109,52 @@ export function Field(props: { label: string; value: string; onChangeText: (t: s
   );
 }
 
+/** Propiedades del campo según el ojito (lógica pura, probada aparte). */
+export function passwordFieldProps(visible: boolean, kind: 'current' | 'new' = 'current') {
+  return {
+    secureTextEntry: !visible,
+    autoComplete: (kind === 'new' ? 'new-password' : 'current-password') as 'new-password' | 'current-password',
+    textContentType: (kind === 'new' ? 'newPassword' : 'password') as 'newPassword' | 'password',
+  };
+}
+
+/** Campo de contraseña con ojito para ver u ocultar lo que la persona escribió. UN solo componente para toda la app. */
+export function PasswordInput(props: { label: string; value: string; onChangeText: (t: string) => void; testID?: string; kind?: 'current' | 'new'; error?: string; hint?: string }) {
+  const { t } = useT();
+  const [visible, setVisible] = React.useState(false);
+  const f = passwordFieldProps(visible, props.kind);
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Text style={s.label}>{props.label}</Text>
+      <View style={{ justifyContent: 'center' }}>
+        <TextInput
+          testID={props.testID}
+          style={[s.input, { paddingRight: 46 }, props.error ? { borderColor: C.danger } : null]}
+          value={props.value}
+          onChangeText={props.onChangeText}
+          secureTextEntry={f.secureTextEntry}
+          autoComplete={f.autoComplete}
+          textContentType={f.textContentType}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Pressable
+          testID={props.testID ? props.testID + '-eye' : undefined}
+          accessibilityRole="button"
+          accessibilityLabel={visible ? t('password.hide') : t('password.show')}
+          accessibilityState={{ selected: visible }}
+          hitSlop={8}
+          onPress={() => setVisible((v) => !v)}
+          style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 44, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Text style={{ fontSize: 18, opacity: visible ? 1 : 0.6 }}>{visible ? '🙈' : '👁'}</Text>
+        </Pressable>
+      </View>
+      {props.error ? <Text style={{ color: C.danger, fontSize: 12, marginTop: 3 }}>{props.error}</Text> : props.hint ? <Text style={{ color: C.muted, fontSize: 12, marginTop: 3 }}>{props.hint}</Text> : null}
+    </View>
+  );
+}
+
 /** Hora con reloj: en el teléfono abre el reloj del sistema; en la web, un campo de hora. */
 export function TimeField(props: { label: string; value: string | null; onChange: (t: string) => void; testID?: string }) {
   const { t } = useT();

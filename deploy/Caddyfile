@@ -5,6 +5,28 @@
 	email {$ACME_EMAIL}
 }
 
+# Un dominio o subdominio por compañía (companies.domain): Caddy puede pedir el certificado al primer acceso, pero solo para dominios
+# que la aplicación reconozca. Para activarlo, agrega arriba en el bloque global (y vuelve a cargar Caddy):
+#
+#   {
+#   	email {$ACME_EMAIL}
+#   	on_demand_tls {
+#   		ask http://app:80/api/domain-check
+#   	}
+#   }
+#
+# y un bloque adicional que atienda cualquier dominio autorizado (el DNS de cada compañía debe apuntar a este servidor):
+#
+#   https:// {
+#   	tls {
+#   		on_demand
+#   	}
+#   	encode zstd gzip
+#   	reverse_proxy app:80
+#   }
+#
+# Caddy llama a GET /api/domain-check?domain=<host>: responde 200 si alguna compañía tiene ese dominio y 404 si no.
+
 {$DOMAIN} {
 	encode zstd gzip
 

@@ -20,6 +20,10 @@ class InstallCompany extends Command
             $this->error(__('Ya existe un usuario con ese correo.'));
             return self::FAILURE;
         }
+        if ($this->option('clave') && mb_strlen($this->option('clave')) < 10) {
+            $this->error(__('La contraseña debe tener al menos 10 caracteres.'));
+            return self::FAILURE;
+        }
         $slug = Str::slug($this->argument('compania'));
         $n = 1;
         while (Company::where('slug', $slug)->exists()) {

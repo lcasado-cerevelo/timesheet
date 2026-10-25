@@ -24,8 +24,8 @@ export const es = {
 
   // errores de la API
   'api.network': 'Sin conexión con el servidor.',
-  'api.unexpected': 'El servidor respondió algo inesperado. Revisa la dirección del servidor.',
-  'api.expired': 'La sesión venció. Entra de nuevo.',
+  'api.unexpected': 'El servidor respondió algo inesperado. Inténtalo de nuevo o avisa a tu administrador.',
+  'api.expired': 'Tu sesión se cerró. Entra de nuevo.',
   'api.error': 'Error {n}',
 
   // entrar
@@ -35,6 +35,29 @@ export const es = {
   'login.email': 'Correo',
   'login.password': 'Contraseña',
   'login.failed': 'No se pudo entrar.',
+  'login.bad_credentials': 'Correo o contraseña incorrectos.',
+  'login.too_many': 'Demasiados intentos. Espera un momento e inténtalo de nuevo.',
+  'login.approver_web_only': 'Las cuentas de aprobador entran por la web.',
+  'login.no_server': 'Esta aplicación no está configurada. Avisa a tu administrador.',
+  'login.help': 'Si olvidaste tu contraseña, comunícate con tu administrador para que te la restablezca. Si te invitaron o te la restablecieron, primero crea tu contraseña desde el enlace que te llegó por correo (se abre en la web) y luego entra aquí.',
+  'login.developer': 'Developer',
+  'login.developer_hint': 'Solo para desarrollo. Las compilaciones de la compañía traen el servidor fijo.',
+
+  // contraseña
+  'password.show': 'Mostrar contraseña',
+  'password.hide': 'Ocultar contraseña',
+  'password.title': 'Cambiar contraseña',
+  'password.current': 'Contraseña actual',
+  'password.new': 'Contraseña nueva',
+  'password.new_hint': 'Mínimo {n} caracteres.',
+  'password.current_required': 'Escribe tu contraseña actual.',
+  'password.too_short': 'La contraseña nueva debe tener al menos {n} caracteres.',
+  'password.same': 'La contraseña nueva debe ser distinta de la actual.',
+  'password.forgot': 'Si no recuerdas la actual, llama a tu administrador para que te la restablezca.',
+  'password.save': 'Cambiar contraseña',
+  'password.saving': 'Guardando…',
+  'password.done': 'Listo: tu contraseña cambió. Las demás sesiones abiertas se cerraron.',
+  'password.failed': 'No se pudo cambiar la contraseña.',
 
   // reglas locales (las mismas del servidor)
   'rules.pick_project': 'Elige un proyecto.',

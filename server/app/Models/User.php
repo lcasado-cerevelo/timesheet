@@ -25,6 +25,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'active' => 'boolean',
+            'must_set_password' => 'boolean',
             'weekly_hours' => 'decimal:2',
         ];
     }
@@ -37,6 +38,12 @@ class User extends Authenticatable
     public function approver(): BelongsTo
     {
         return $this->belongsTo(Approver::class);
+    }
+
+    /** Aprobador al que representa esta cuenta (solo cuentas con role 'approver'). */
+    public function approverProfile(): BelongsTo
+    {
+        return $this->belongsTo(Approver::class, 'approver_profile_id');
     }
 
     public function projects(): BelongsToMany
@@ -63,6 +70,17 @@ class User extends Authenticatable
     public function isOwner(): bool
     {
         return $this->role === 'owner';
+    }
+
+    public function isApprover(): bool
+    {
+        return $this->role === 'approver';
+    }
+
+    /** 'pending' hasta que la persona crea su contraseña; luego 'active'. */
+    public function invitationStatus(): string
+    {
+        return $this->must_set_password ? 'pending' : 'active';
     }
 
     public function isEmployee(): bool

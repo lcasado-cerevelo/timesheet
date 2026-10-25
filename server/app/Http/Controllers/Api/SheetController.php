@@ -78,7 +78,7 @@ class SheetController extends Controller
         abort_unless($sheet->user_id === $u->id || ($u->isOwner() && $sheet->company_id === $u->company_id), 403);
     }
 
-    private function payload(Timesheet $s, bool $withEntries = false): array
+    public function payload(Timesheet $s, bool $withEntries = false): array
     {
         $s->loadMissing('user');
         $out = [

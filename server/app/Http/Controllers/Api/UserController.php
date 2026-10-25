@@ -6,38 +6,73 @@ use App\Http\Controllers\Controller;
 use App\Models\Approver;
 use App\Models\ContractorTerms;
 use App\Models\User;
+use App\Services\AccountService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /** Personas de la compañía. Solo el dueño las crea y fija su modo de captura. */
 class UserController extends Controller
 {
+    public function __construct(private AccountService $accounts)
+    {
+    }
+
     public function index(Request $request)
     {
         return response()->json(
-            User::with('terms')->where('company_id', $request->user()->company_id)->orderBy('name')->get()->map(fn ($u) => $this->payload($u))
+            User::with('terms')->where('company_id', $request->user()->company_id)->where('role', '!=', 'approver')->orderBy('name')->get()->map(fn ($u) => $this->payload($u))
         );
     }
 
     public function store(Request $request)
     {
         $data = $this->rules($request, null);
+        // El dueño nunca escribe contraseñas: la cuenta nace con una inservible y la persona crea la suya con la invitación.
         $user = User::create($data['user'] + [
             'company_id' => $request->user()->company_id,
-            'password' => $request->validate(['password' => 'required|string|min:10'])['password'],
+            'password' => Str::random(64),
+            'must_set_password' => true,
         ]);
         $this->saveRelations($user, $data);
+        $this->accounts->invite($user->load('company'), $request->user());
         return response()->json($this->payload($user->fresh('terms')), 201);
     }
 
     public function update(Request $request, User $user)
     {
-        abort_unless($user->company_id === $request->user()->company_id, 404);
+        $this->mine($request, $user);
         $data = $this->rules($request, $user);
-        $extra = $request->filled('password') ? ['password' => $request->validate(['password' => 'string|min:10'])['password']] : [];
-        $user->update($data['user'] + $extra);
+        if ($user->isApprover()) {
+            // Las cuentas de aprobador se manejan desde Aprobadores: nombre y correo vienen del aprobador.
+            $data['user'] = array_intersect_key($data['user'], ['active' => 1]);
+            $data['projects'] = $data['terms'] = null;
+        }
+        $user->update($data['user']);
         $this->saveRelations($user, $data);
         return response()->json($this->payload($user->fresh('terms')));
+    }
+
+    /** Reseteo hecho por el dueño: la persona recibe un enlace para crear una contraseña nueva. */
+    public function resetPassword(Request $request, User $user)
+    {
+        $this->mine($request, $user);
+        abort_if($user->id === $request->user()->id, 422, __('Para cambiar tu propia contraseña usa Cambiar contraseña.'));
+        $this->accounts->reset($user->load('company'), $request->user());
+        return response()->json(['ok' => true, 'emailed_to' => $user->email]);
+    }
+
+    public function resendInvitation(Request $request, User $user)
+    {
+        $this->mine($request, $user);
+        abort_unless($user->must_set_password && $user->active, 422, __('Esta persona ya creó su contraseña.'));
+        $this->accounts->invite($user->load('company'), $request->user());
+        return response()->json(['ok' => true, 'emailed_to' => $user->email]);
+    }
+
+    private function mine(Request $request, User $user): void
+    {
+        abort_unless($user->company_id === $request->user()->company_id, 404);
     }
 
     public function destroy(Request $request, User $user)
@@ -45,7 +80,7 @@ class UserController extends Controller
         abort_unless($user->company_id === $request->user()->company_id, 404);
         abort_if($user->id === $request->user()->id, 422, __('No puedes desactivarte a ti mismo.'));
         $user->update(['active' => false]);
-        $user->tokens()->delete();
+        $this->accounts->revokeAccess($user);
         return response()->json(['ok' => true]);
     }
 
@@ -104,7 +139,7 @@ class UserController extends Controller
             'worker_type' => $u->worker_type, 'capture_mode' => $u->capture_mode,
             'weekly_hours' => $u->weekly_hours, 'approver_id' => $u->approver_id, 'active' => $u->active,
             'project_ids' => $u->projects()->pluck('projects.id'),
-            'terms' => $u->terms,
+            'terms' => $u->terms, 'invitation_status' => $u->invitationStatus(),
         ];
     }
 }

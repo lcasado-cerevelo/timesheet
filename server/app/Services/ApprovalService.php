@@ -96,7 +96,7 @@ class ApprovalService
                     'kind' => $kind,
                     'summary' => $this->sheetSummary($sheet),
                     'changes' => $kind === 'changed' ? array_filter(explode("\n", (string) $sheet->change_summary)) : [],
-                    'url' => url('/a/'.$plain),
+                    'url' => $company->baseUrl().'/a/'.$plain,
                     'days' => (int) $company->rules()->get('token_days'),
                 ]
             ));
@@ -112,7 +112,7 @@ class ApprovalService
                 $approver->company,
                 $count === 1 ? __('Tienes 1 hoja pendiente de aprobar') : __('Tienes :count hojas pendientes de aprobar', ['count' => $count]),
                 'mail.pending-digest',
-                ['count' => $count, 'url' => url('/b/'.$plain), 'name' => $approver->name]
+                ['count' => $count, 'url' => $approver->company->baseUrl().'/b/'.$plain, 'name' => $approver->name]
             ));
         });
     }

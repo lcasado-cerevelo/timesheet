@@ -1,7 +1,7 @@
 /* Tiempo web interface. No build step: runs on any PHP hosting. Talks to /api. */
 (() => {
 const $app = document.getElementById('app');
-const S = { token: localStorage.getItem('tt'), me: null, flash: null, weekDate: today(), cache: {},
+const S = { token: localStorage.getItem('tt'), me: null, login: null, flash: null, weekDate: today(), cache: {},
   lang: localStorage.getItem('lang') || ((navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en') };
 const LANG = () => (S.me && S.me.locale) || S.lang;
 /* Translation: the screens are written in English; i18n-es.js holds the Spanish. T() translates one text; localizeHtml() the text nodes and
@@ -42,21 +42,22 @@ const longDay = s => parse(s).toLocaleDateString(LOC(), { weekday: 'long', month
 const STATUS = { draft: 'Draft', submitted: 'Submitted', approved: 'Approved', returned: 'Returned' };
 /* Status pills in tables, like the mockup: gray, amber, green, red, blue. */
 const pill = (text, color = 'gray') => `<span class="bd ${color}">${esc(text)}</span>`;
+const accountPill = s => ({ pending: pill('Invited', 'amber'), active: pill('Active', 'green'), disabled: pill('Disabled', 'red') }[s] || pill('None'));
 const activePill = on => (on ? pill('Active', 'green') : pill('Inactive'));
 
 async function api(path, o = {}) {
   const headers = { Accept: 'application/json', 'X-Locale': LANG() };
-  if (S.token) headers.Authorization = 'Bearer ' + S.token;
+  if (S.token && !o.anon) headers.Authorization = 'Bearer ' + S.token;
   let body;
   if (o.body instanceof FormData) body = o.body;
   else if (o.body !== undefined) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(o.body); }
   const r = await fetch('/api' + path, { method: o.method || 'GET', headers, body });
   if (o.blob) { if (!r.ok) throw new Error('The file could not be downloaded'); return r; }
   const data = await r.json().catch(() => ({}));
-  if (r.status === 401 && S.token) { logout(); throw new Error('Session expired'); }
+  if (r.status === 401 && S.token && !o.anon) { logout(); throw new Error('Session expired'); }
   if (!r.ok) {
     const first = data.errors ? Object.values(data.errors).flat()[0] : null;
-    const e = new Error(first || data.message || 'Error ' + r.status); e.status = r.status; e.errors = data.errors; throw e;
+    const e = new Error(first || data.message || 'Error ' + r.status); e.status = r.status; e.errors = data.errors; e.code = data.code; e.data = data; e.needs_code = !!data.needs_code; throw e;
   }
   return data;
 }
@@ -85,9 +86,11 @@ function exportBar(ds, q = {}) {
 function flash(text, kind = 'ok') { S.flash = { text, kind }; }
 function logout() { S.token = null; S.me = null; localStorage.removeItem('tt'); location.hash = ''; render(); }
 function applyBrand(b) {
+  if (!b) return;
   const r = document.documentElement.style;
-  r.setProperty('--primary', b.color_primary); r.setProperty('--accent', b.color_accent);
-  document.title = b.name;
+  if (b.color_primary) r.setProperty('--primary', b.color_primary);
+  if (b.color_accent) r.setProperty('--accent', b.color_accent);
+  if (b.name) document.title = b.name;
 }
 function formObj(form) {
   const o = {};
@@ -114,7 +117,7 @@ async function download(path, opts, fallbackName) {
 const ROUTES = {
   week: { t: 'Timesheet', f: weekView },
   weeks: { t: 'All weeks', f: weeksView },
-  approvals: { t: 'Approvals', owner: true, f: approvalsView },
+  approvals: { t: 'Approvals', owner: true, f: () => (isAp() ? approverView() : approvalsView()) },
   invoices: { t: 'Invoices', f: invoicesView },
   reports: { t: 'Hours report', f: reportsView },
   clientsheet: { t: 'Client timesheet', owner: true, f: clientSheetView },
@@ -126,6 +129,7 @@ const ROUTES = {
   rules: { t: 'Rules', owner: true, f: rulesView },
   brand: { t: 'Branding', owner: true, f: brandView },
   integrations: { t: 'Integration', owner: true, f: integrationsView },
+  account: { t: 'My account', f: accountView },
 };
 /* Top tabs: related screens share one tab and show a second row of pills inside the page. */
 const GROUPS = [
@@ -134,17 +138,20 @@ const GROUPS = [
   { t: 'Invoices', r: ['invoices'] },
   { t: 'Reports', r: ['reports', 'clientsheet', 'export'] },
   { t: 'People & projects', r: ['people', 'approvers', 'customers', 'projects'] },
-  { t: 'Settings', r: ['rules', 'brand', 'integrations'] },
+  { t: 'Settings', r: ['rules', 'brand', 'integrations', 'account'] },
 ];
 const route = () => (location.hash.replace('#/', '') || 'week').split('?')[0];
-const canSee = k => ROUTES[k] && (!ROUTES[k].owner || S.me.role === 'owner');
-const roleLabel = u => (u.role === 'owner' ? 'Owner' : u.worker_type === 'employee' ? 'Employee' : 'Consultant');
+const isAp = () => S.me?.role === 'approver';
+/* The approver (an outside person with an account) only has Approvals, plus My account to change the password. */
+const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' : !ROUTES[k].owner || S.me.role === 'owner');
+const home = () => (isAp() ? 'approvals' : 'week');
+const roleLabel = u => (u.role === 'approver' ? 'Approver' : u.role === 'owner' ? 'Owner' : u.worker_type === 'employee' ? 'Employee' : 'Consultant');
 const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
 let RID = 0, LAST = null;
 
 function shell(name, body, withFlash) {
-  const b = S.me.brand;
-  const groups = GROUPS.map(g => ({ ...g, vis: g.r.filter(canSee) })).filter(g => g.vis.length);
+  const b = S.me.brand || { name: 'Tiempo' };
+  const groups = GROUPS.map(g => ({ ...g, vis: g.r.filter(canSee) })).filter(g => g.vis.length).map(g => (g.vis.length === 1 && g.vis[0] === 'account' ? { ...g, t: 'My account' } : g));
   const cur = groups.find(g => g.vis.includes(name));
   const fl = withFlash && S.flash ? `<div class="msg ${S.flash.kind}">${esc(T(S.flash.text))}</div>` : '';
   if (withFlash) S.flash = null;
@@ -160,13 +167,16 @@ function shell(name, body, withFlash) {
 const setApp = html => { $app.innerHTML = localizeHtml(html); afterRender(); };
 
 async function render() {
+  const sp = location.hash.match(/^#\/set-password\/([^?\/]+)/);
+  if (sp) { RID++; LAST = null; return setPasswordView(decodeURIComponent(sp[1])); }
   if (!S.token) return loginView();
   const rid = ++RID;
+  if (!$app.firstChild) $app.innerHTML = '<div class="loading">' + T('Loading…') + '</div>';   // never a blank page while the first data arrives
   try {
     if (!S.me) { S.me = await api('/me'); S.lang = S.me.locale; localStorage.setItem('lang', S.lang); }
     if (rid !== RID) return;
     applyBrand(S.me.brand);
-    const name = canSee(route()) ? route() : 'week';
+    const name = canSee(route()) ? route() : home();
     // The page frame appears right away; the data fills in when it arrives.
     if (name !== LAST || !$app.querySelector('main')) setApp(shell(name, '<div class="loading">Loading…</div>', false));
     LAST = name;
@@ -178,21 +188,175 @@ async function render() {
   }
 }
 
-/* Sign in. If the server has Cloudflare Turnstile keys, the anti-bot challenge is shown before signing in. */
-async function loginView(err) {
+/* ---------- password field: ONE component for every password input (eye button, Caps Lock notice, strength bar) ----------
+   The eye only shows what the person typed in this field; a saved password never reaches the browser. */
+const EYE = '<svg class="on" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>'
+  + '<svg class="off" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7c1.7 0 3.2-.4 4.5-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+function pwField(name, label, o = {}) {
+  const id = 'pw-' + name;
+  return `<div class="pwf"><label for="${id}">${label}</label><div class="pw"><input id="${id}" name="${name}" type="password" ${o.optional ? '' : 'required'} ${o.min ? `minlength="${o.min}"` : ''} autocomplete="${o.auto || 'current-password'}" ${o.ph ? `placeholder="${o.ph}"` : ''} ${o.strength ? 'data-strength="1"' : ''} spellcheck="false" autocapitalize="none" autocorrect="off">
+    <button class="eye" type="button" data-act="pw-eye" aria-label="Show password" title="Show password" aria-pressed="false">${EYE}</button></div>
+    <small class="caps" role="status" hidden>Caps Lock is on</small>${o.strength ? '<div class="strength" data-level="0"><span class="bar"><i></i></span><small>Minimum 10 characters</small></div>' : ''}</div>`;
+}
+function pwStrength(v) {
+  if (!v) return [0, 'Minimum 10 characters'];
+  if (v.length < 10) return [1, 'Too short'];
+  const k = (/[a-z]/.test(v) && /[A-Z]/.test(v) ? 1 : 0) + (/\d/.test(v) ? 1 : 0) + (/[^A-Za-z0-9]/.test(v) ? 1 : 0) + (v.length >= 14 ? 1 : 0);
+  return k >= 3 ? [4, 'Strong'] : k >= 2 ? [3, 'Good'] : [2, 'Fair'];
+}
+
+/* ---------- sign in ---------- */
+const authBand = b => (b ? `<div class="loginband">${b.logo_url ? `<span class="logo"><img src="${esc(b.logo_url)}" alt="${esc(b.name)}"></span>` : `<b>${esc(b.name)}</b>`}<small>Timesheets &amp; invoices</small></div>` : '<div class="stripe"></div>');
+const langBtn = () => `<p style="text-align:center;margin:14px 0 0"><button class="btn ghost sm" type="button" data-act="lang" data-to="${LANG() === 'es' ? 'en' : 'es'}">${LANG() === 'es' ? 'English' : 'Español'}</button></p>`;
+const resendLeft = () => Math.max(0, Math.ceil(((S.login?.resendAt || 0) - Date.now()) / 1000));
+async function loadPub() {
+  if (S.cache.pub === undefined) {
+    try { const r = await fetch('/api/public-config'); if (!r.ok) return {}; S.cache.pub = await r.json(); } catch { return {}; }
+    if (S.cache.pub.locale && !localStorage.getItem('lang')) S.lang = S.cache.pub.locale;
+  }
+  return S.cache.pub;
+}
+function loginError(e) {
+  const m = String(e.message || '');
+  if (e.status === 429 || e.code === 'locked') return 'Too many failed attempts. This account is locked for a while. Try again later or call your administrator.';
+  if (e.code === 'turnstile' || e.errors?.turnstile_token || /turnstile|captcha|security check/i.test(m)) return 'The security check was not completed. Complete it and try again.';
+  if (e.status === 401 || e.code === 'invalid_credentials') return 'The email or password is not correct.';
+  return m || 'Could not sign in. Try again.';
+}
+/* Sign in. If the server has Cloudflare Turnstile keys, the anti-bot challenge is shown first. An approver then types a 6-digit code sent by email. */
+async function loginView(err, info) {
   LAST = null;
-  if (S.cache.pub === undefined) { try { S.cache.pub = await (await fetch('/api/public-config')).json(); } catch { S.cache.pub = {}; } }
-  const key = S.cache.pub.turnstile_site_key;
-  setApp(`<div class="login-wrap"><div class="stripe"></div><div class="card login">
-    <div class="eyebrow">Tiempo · Timesheets &amp; invoices</div><h1>Sign in</h1>
-    <p class="sub">Use the email address your invitation was sent to.</p>${err ? `<div class="msg err">${esc(err)}</div>` : ''}
-    <form data-form="login"><p><label>Email</label><input name="email" type="email" required autocomplete="username" placeholder="name@company.com"></p>
-    <p><label>Password</label><input name="password" type="password" required autocomplete="current-password" placeholder="Your password"></p>
-    ${key ? '<div id="ts-box" style="margin:8px 0"></div>' : ''}
-    <button class="btn pri" type="submit">Continue</button></form>
-    <p class="muted" style="margin:14px 0 0">Access is by invitation only. Forgot your password? Ask your administrator to send a reset link.</p>
-    <p style="text-align:center;margin:14px 0 0"><button class="btn ghost sm" type="button" data-act="lang" data-to="${LANG() === 'es' ? 'en' : 'es'}">${LANG() === 'es' ? 'English' : 'Español'}</button></p></div></div>`);
-  if (key) mountTurnstile(key);
+  const pub = await loadPub(); const brand = pub.brand || null;
+  applyBrand(brand);
+  const key = pub.turnstile_site_key; const L = S.login;
+  const msg = (err ? `<div class="msg err" role="alert">${esc(err)}</div>` : '') + (info ? `<div class="msg ok" role="status">${esc(info)}</div>` : '');
+  const eyebrow = brand ? '' : '<div class="eyebrow">Tiempo · Timesheets &amp; invoices</div>';
+  let inner;
+  if (L && L.step === 'code') {
+    const n = Number(L.remember_days || 0);
+    inner = `<h1>Check your email</h1><p class="sub">Type the 6-digit code we sent to ${esc(L.email_hint)}</p>${msg}
+      <form data-form="login-code"><p><label for="login-code">6-digit code</label><input id="login-code" name="code" required inputmode="numeric" pattern="[0-9]{6}" title="6 digits" maxlength="6" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" style="font-size:22px;letter-spacing:.3em;text-align:center"></p>
+      ${n > 0 ? `<p><label class="chk"><input type="checkbox" name="remember"> ${n === 1 ? 'Remember this device for 1 day' : `Remember this device for ${n} days`}</label></p>` : ''}
+      <button class="btn pri" type="submit">Verify and sign in</button></form>
+      <p class="row" style="justify-content:center;margin:14px 0 0"><button class="btn ghost sm" type="button" id="resend" data-act="code-resend" disabled>Resend code</button><button class="btn ghost sm" type="button" data-act="login-back">Use a different account</button></p>
+      <p class="muted" style="margin:14px 0 0">The code is valid for a few minutes. If it does not arrive, check your spam folder.</p>`;
+  } else {
+    inner = `${eyebrow}<h1>Sign in</h1><p class="sub">Use the email address your invitation was sent to.</p>${msg}
+      <form data-form="login"><p><label for="login-email">Email</label><input id="login-email" name="email" type="email" required autocomplete="username" placeholder="name@company.com" value="${esc(S.cache.loginEmail || '')}"></p>
+      <div style="margin:0 0 14px">${pwField('password', 'Password', { auto: 'current-password', ph: 'Your password' })}</div>
+      ${key ? '<div id="ts-box" style="margin:8px 0"></div>' : ''}
+      <button class="btn pri" type="submit">Continue</button></form>
+      <p class="muted" style="margin:14px 0 0">Access is by invitation only. If you forgot your password, call or write to your administrator and they will reset it for you.</p>`;
+  }
+  setApp(`<div class="login-wrap">${authBand(brand)}<div class="card login">${inner}${langBtn()}</div></div>`);
+  if (L && L.step === 'code') {
+    document.getElementById('login-code')?.focus();
+    clearInterval(S.cache.rt);
+    const tick = () => {
+      const b = document.getElementById('resend'); if (!b) return clearInterval(S.cache.rt);
+      const left = resendLeft(); b.disabled = left > 0; b.textContent = T(left > 0 ? `Resend code (${left} s)` : 'Resend code');
+    };
+    S.cache.rt = setInterval(tick, 1000); tick();
+  } else {
+    if (key) mountTurnstile(key);
+    document.getElementById(S.cache.loginEmail ? 'pw-password' : 'login-email')?.focus();
+  }
+}
+function finishLogin(r) {
+  S.token = r.token; localStorage.setItem('tt', r.token);
+  if (r.device_token) localStorage.setItem('dt', r.device_token);
+  S.login = null; S.me = null; clearInterval(S.cache.rt);
+  location.hash = '#/' + (r.user?.role === 'approver' ? 'approvals' : 'week'); render();
+}
+
+/* Create a password: opened without a session from the link in an invitation or reset email. */
+async function setPasswordView(token, err) {
+  let sp = S.cache.sp;
+  if (!sp || sp.token !== token) {
+    S.cache.sp = sp = { token };
+    sp.load = api('/password/setup?token=' + encodeURIComponent(token), { anon: true }).then(i => { sp.info = i; }, e => { sp.bad = e.status >= 400 && e.status < 500 ? 'expired' : 'network'; });
+  }
+  await sp.load;
+  if (S.cache.sp !== sp) return;
+  const pub = sp.info ? null : await loadPub();
+  const brand = sp.info?.brand || pub?.brand || null; applyBrand(brand);
+  const toLogin = '<button class="btn pri" type="button" data-act="sp-login">Go to sign in</button>';
+  let inner;
+  if (sp.done) inner = `<h1>Password saved</h1><div class="msg ok" role="status">Your password is ready. You can sign in now.</div>${toLogin}`;
+  else if (sp.bad) inner = `<h1>This link no longer works</h1><div class="msg err" role="alert">${sp.bad === 'network' ? 'We could not reach the server. Try again in a moment.' : 'This link has expired or was already used. Ask your administrator for a new one.'}</div>${toLogin}`;
+  else {
+    const i = sp.info;
+    inner = `<h1>${i.purpose === 'reset' ? 'Create a new password' : 'Create your password'}</h1><p class="sub">${i.name ? `Welcome, ${esc(i.name)}` : 'Welcome'}</p>
+      ${err ? `<div class="msg err" role="alert">${esc(err)}</div>` : ''}
+      <form data-form="set-password"><p><label for="sp-email">Email</label><input id="sp-email" type="email" value="${esc(i.email)}" readonly autocomplete="username" aria-readonly="true"></p>
+      <div style="margin:0 0 14px">${pwField('password', 'New password', { auto: 'new-password', min: 10, strength: true })}</div>
+      <p class="muted" style="margin:-4px 0 14px">A short phrase that only you know works well.</p>
+      <button class="btn pri" type="submit">Save password</button></form>`;
+  }
+  setApp(`<div class="login-wrap">${authBand(brand)}<div class="card login">${inner}${langBtn()}</div></div>`);
+  document.getElementById('pw-password')?.focus();
+}
+
+/* --- My account: change the password (the current one is required) and the language --- */
+async function accountView() {
+  const m = S.me;
+  return `<h1>My account</h1><p class="sub">Your sign-in details, language and password.</p>
+    <div class="card"><div class="facts"><div><label>Name</label><b>${esc(m.name)}</b></div>${m.email ? `<div><label>Email</label><b>${esc(m.email)}</b></div>` : ''}<div><label>Role</label><b>${roleLabel(m)}</b></div>
+      <div style="min-width:180px"><label for="lang-pick">Language</label><select id="lang-pick" data-act-change="lang-pick"><option value="en" ${LANG() === 'en' ? 'selected' : ''}>English</option><option value="es" ${LANG() === 'es' ? 'selected' : ''}>Español</option></select></div></div></div>
+    <div class="card" style="max-width:560px"><h2>Change password</h2>
+      <p class="muted" style="margin-top:0">Type your current password and then the new one. If you do not remember the current one, call your administrator and they will reset it. After the change, your other sessions are signed out; this one stays open.</p>
+      <form data-form="change-pw">
+      <div style="margin:0 0 14px">${pwField('current_password', 'Current password', { auto: 'current-password' })}</div>
+      <div style="margin:0 0 14px">${pwField('password', 'New password', { auto: 'new-password', min: 10, strength: true })}</div>
+      <button class="btn pri" type="submit">Change password</button></form></div>`;
+}
+
+/* --- Approvals for an approver with an account: Pending / Approved / Returned / All; the list on the left, the timesheet on the right --- */
+const APR_VIEWS = [['pending', 'Pending'], ['approved', 'Approved'], ['returned', 'Returned'], ['all', 'All']];
+const saveDraft = id => { S.cache.apDraft = { id, comment: document.getElementById('ap-comment')?.value || '', code: document.getElementById('ap-code')?.value || '' }; };
+async function approverView() {
+  const st = S.cache.apStatus || 'pending';
+  const all = await api('/approver/sheets?status=' + st);
+  const F = FL('apr');
+  const rows = all.filter(s => matchQ(F.q, [s.user?.name]));
+  let sel = rows.find(s => s.id === S.cache.apSel) || rows[0];
+  let detail = '';
+  if (sel) {
+    const d = await api('/approver/sheets/' + sel.id);
+    const start = sel.week_starting || d.week_starting;
+    const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
+    const svcs = new Map(); for (const e of d.entries || []) { if (!svcs.has(e.project_id)) svcs.set(e.project_id, new Set()); svcs.get(e.project_id).add(e.service_id); }
+    const lines = new Map();
+    for (const e of d.entries || []) { const multi = (svcs.get(e.project_id)?.size || 0) > 1; const k = e.project_id + '|' + (multi ? e.service_id : ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi ? e.service : null, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
+    const dr = S.cache.apDraft && S.cache.apDraft.id === sel.id ? S.cache.apDraft : { comment: '', code: '' };
+    const open = sel.status === 'submitted';
+    const needs = open && (d.needs_code || sel.needs_code || (S.cache.apCode || {})[sel.id]);
+    const color = { submitted: 'amber', approved: 'green', returned: 'red' }[sel.status] || 'gray';
+    const label = sel.status === 'submitted' ? 'Pending' : STATUS[sel.status] || sel.status;
+    const ret = sel.status === 'returned' && (d.return_comment || sel.return_comment) ? `<div class="msg err" style="margin-top:10px"><b>Returned for correction:</b> ${esc(d.return_comment || sel.return_comment)}</div>` : '';
+    const acts = open ? `<label for="ap-comment">Comment (required when returning)</label><textarea id="ap-comment" rows="3" placeholder="Example: Thursday should be OT, please fix and resubmit.">${esc(dr.comment)}</textarea>
+      ${needs ? `<div class="msg warn" style="margin-top:12px">This decision needs a 6-digit code. We send it to your email.</div>
+        <div class="row" style="align-items:end"><button class="btn ghost" type="button" data-act="apr-code" data-id="${sel.id}">Send me a code</button>
+        <div style="max-width:200px"><label for="ap-code">6-digit code</label><input id="ap-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="${esc(dr.code)}" style="letter-spacing:.2em"></div></div>` : ''}
+      <p class="row" style="margin-bottom:0"><button class="btn" data-act="apr-approve" data-id="${sel.id}" data-v="${sel.version}">Approve</button>
+      <button class="btn danger" data-act="apr-return" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></p>`
+      : `<p class="muted" style="margin:10px 0 0">${sel.decided_at ? `Decided on ${esc(String(sel.decided_at).slice(0, 10))}.` : ''}</p>`;
+    detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}</span></div><span class="spacer"></span>${pill(label, color)}${sel.late ? ' ' + pill('Late', 'red') : ''}</div>
+      ${(sel.warnings || []).map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${ret}
+      <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
+      ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
+      <p class="row" style="margin:10px 0"><b>Total hours</b><span class="spacer"></span><b>${h1(sel.total_hours)}</b></p>
+      ${(d.entries || []).some(e => e.note) ? `<p class="muted" style="white-space:pre-wrap">${esc(d.entries.filter(e => e.note).map(e => dayLabel(e.work_date) + ': ' + e.note).join('\n'))}</p>` : ''}${acts}</div>`;
+  }
+  const pills = APR_VIEWS.map(([k, l]) => `<button type="button" class="${k === st ? 'on' : ''}" data-act="apr-status" data-s="${k}">${l}${k === st ? ` (${all.length})` : ''}</button>`).join('');
+  const dateOf = s => esc(String((s.status === 'submitted' ? s.submitted_at : s.decided_at || s.submitted_at) || '').slice(0, 10));
+  return `<h1>Approvals</h1><p class="sub">Approving replaces the manager signature. Timesheets submitted after the deadline are flagged as late.</p>
+    <div class="twocol"><div class="card"><div class="pills" style="margin-bottom:12px">${pills}</div>
+    ${filterBar('apr', [{ k: 'q', label: 'Search person', ph: 'Name' }])}
+    ${rows.length ? `<table><tr><th>Person</th><th>Week ending</th><th class="r">Hours</th><th>${st === 'pending' ? 'Submitted' : 'Date'}</th>${st === 'all' ? '<th>Status</th>' : ''}</tr>
+    ${rows.map(s => `<tr class="pick ${sel && s.id === sel.id ? 'sel' : ''}" data-act="apr-pick" data-id="${s.id}"><td><b>${esc(s.user?.name)}</b> ${s.late ? '<span class="badge returned">Late</span>' : ''}</td>
+    <td>${nice(s.week_ending)}</td><td class="r">${hrs(s.total_hours)}</td><td>${dateOf(s)}</td>${st === 'all' ? `<td>${pill(s.status === 'submitted' ? 'Pending' : STATUS[s.status] || s.status, { submitted: 'amber', approved: 'green', returned: 'red' }[s.status] || 'gray')}</td>` : ''}</tr>`).join('')}</table>`
+    : `<p class="muted">${all.length ? 'No timesheet matches the filter.' : st === 'pending' ? 'Nothing is waiting for approval.' : 'There are no timesheets here yet.'}</p>`}</div>${detail}</div>`;
 }
 function mountTurnstile(key) {
   const draw = () => { const box = document.getElementById('ts-box'); if (box && window.turnstile) { box.innerHTML = ''; S.cache.tsWidget = window.turnstile.render(box, { sitekey: key }); } };
@@ -473,14 +637,14 @@ async function peopleView() {
   const shown = list.filter(x => matchQ(F.q, [x.name, x.email]) && sameFlag(F.active, x.active) && (!F.worker_type || x.worker_type === F.worker_type) && (!F.capture_mode || x.capture_mode === F.capture_mode));
   return `<h1>People</h1><p class="sub">Add people, set their role and entry preference, and configure each consultant's billing terms.</p>
     <div class="card">${exportBar('people', activeF('people'))}${filterBar('people', [{ k: 'q', label: 'Search by name or email', ph: 'Start typing' }, { k: 'worker_type', label: 'Worker type', type: 'select', opts: [['', 'All types'], ['consultant', 'Consultants'], ['employee', 'Employees']] }, { k: 'capture_mode', label: 'Entry preference', type: 'select', opts: [['', 'All'], ['from_to', 'From / to'], ['full_day', 'Total hours per day']] }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }])}
-    <table><tr><th>Name</th><th>Worker type</th><th>Entry preference</th><th>Approver</th><th>Status</th><th></th></tr>
+    <table><tr><th>Name</th><th>Worker type</th><th>Entry preference</th><th>Approver</th><th>Status</th><th>Sign-in</th><th></th></tr>
     ${shown.map(x => `<tr><td><b>${esc(x.name)}</b><div class="muted">${esc(x.email)}</div></td>
     <td>${x.worker_type === 'employee' ? 'Employee (' + (x.weekly_hours || 40) + ' h/week)' : 'Consultant'}${x.role === 'owner' ? ' · owner' : ''}</td>
     <td>${x.capture_mode === 'full_day' ? 'Total hours per day' : 'From / to'}</td><td>${esc(approvers.find(a => a.id === x.approver_id)?.name || '—')}</td>
-    <td>${activePill(x.active)}</td><td class="r"><button class="btn ghost sm" data-act="edit-user" data-id="${x.id}">Edit</button></td></tr>`).join('')}</table></div>
-    <div class="card"><h2>${u ? 'Edit ' + esc(u.name) : 'New person'}</h2><form data-form="user"><input type="hidden" name="id" value="${u?.id || ''}">
+    <td>${activePill(x.active)}</td><td>${x.invitation_status === 'pending' ? pill('Invited', 'amber') : pill('Active', 'green')}</td>
+    <td class="r"><button class="btn ghost sm" data-act="edit-user" data-id="${x.id}">Edit</button>${x.id === S.me.id ? '' : ` <button class="btn ghost sm" data-act="reset-user" data-id="${x.id}" data-name="${esc(x.name)}">Reset password</button>`}${x.invitation_status === 'pending' ? ` <button class="btn ghost sm" data-act="resend-invite" data-id="${x.id}" data-email="${esc(x.email)}">Resend invitation</button>` : ''}</td></tr>`).join('')}</table></div>
+    <div class="card"><h2>${u ? 'Edit ' + esc(u.name) : 'New person'}</h2>${u ? '' : '<p class="muted" style="margin-top:-4px">You never type a password. When you save, the person receives an invitation by email to create their own.</p>'}<form data-form="user"><input type="hidden" name="id" value="${u?.id || ''}">
     <div class="grid"><div><label>Name</label><input name="name" required value="${esc(u?.name)}"></div><div><label>Email</label><input name="email" type="email" required value="${esc(u?.email)}"></div>
-    <div><label>${u ? 'New password (optional)' : 'Password (10+ characters)'}</label><input name="password" type="password" minlength="10" ${u ? '' : 'required'} autocomplete="new-password"></div>
     <div><label>Worker type</label><select name="worker_type"><option value="consultant" ${u?.worker_type !== 'employee' ? 'selected' : ''}>Consultant (invoices)</option><option value="employee" ${u?.worker_type === 'employee' ? 'selected' : ''}>Employee (no invoices)</option></select></div>
     <div><label>Entry preference (used when a service allows both)</label><select name="capture_mode"><option value="from_to" ${u?.capture_mode !== 'full_day' ? 'selected' : ''}>From / to (detail)</option><option value="full_day" ${u?.capture_mode === 'full_day' ? 'selected' : ''}>Total hours per day</option></select></div>
     <div><label>Hours per week (employee)</label><input name="weekly_hours" type="number" step="0.5" value="${esc(u?.weekly_hours || '')}" placeholder="40"></div>
@@ -501,12 +665,14 @@ async function approversView() {
   const list = await api('/approvers');
   const F = FL('approvers');
   const shown = list.filter(a => matchQ(F.q, [a.name, a.email]) && sameFlag(F.active, a.active));
-  return `<h1>Approvers</h1><p class="sub">They can be external and need no account: they receive an email with a secure link.</p>
+  return `<h1>Approvers</h1><p class="sub">They can be external and need no account: they receive an email with a secure link. Optionally they can also sign in to the system to see their approvals.</p>
     <div class="card">${exportBar('approvers', activeF('approvers'))}${filterBar('approvers', [{ k: 'q', label: 'Search', ph: 'Name or email' }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }])}
-    <table><tr><th>Name</th><th>Email</th><th>Extra code</th><th>Status</th><th></th></tr>${shown.map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.email)}</td><td>${a.require_code ? pill('Yes', 'blue') : pill('No')}</td><td>${activePill(a.active)}</td>
-    <td class="r"><button class="btn ghost sm" data-act="toggle-approver" data-id="${a.id}">${a.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table></div>
+    <table><tr><th>Name</th><th>Email</th><th>Extra code</th><th>Can sign in</th><th>Account</th><th>Status</th><th></th></tr>${shown.map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.email)}</td><td>${a.require_code ? pill('Yes', 'blue') : pill('No')}</td><td>${a.can_login ? pill('Yes', 'blue') : pill('No')}</td><td>${accountPill(a.account_status)}</td><td>${activePill(a.active)}</td>
+    <td class="r"><button class="btn ghost sm" data-act="toggle-login" data-id="${a.id}">${a.can_login ? 'Remove sign-in' : 'Allow sign-in'}</button> <button class="btn ghost sm" data-act="toggle-approver" data-id="${a.id}">${a.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table></div>
     <div class="card"><h2>New approver</h2><form data-form="approver" class="grid"><div><label>Name</label><input name="name" required></div><div><label>Email</label><input name="email" type="email" required></div>
-    <div><label class="chk"><input type="checkbox" name="require_code"> Always ask for a 6-digit code</label></div><div style="align-self:end"><button class="btn pri" type="submit">Add</button></div></form></div>`;
+    <div><label class="chk"><input type="checkbox" name="require_code"> Always ask for a 6-digit code</label></div>
+    <div style="grid-column:1/-1"><label class="chk"><input type="checkbox" name="can_login"> Can sign in to the system</label><div class="muted">The person receives an invitation at the same email, creates a password and signs in with a code sent by email.</div></div>
+    <div style="align-self:end"><button class="btn pri" type="submit">Add</button></div></form></div>`;
 }
 
 async function customersView() {
@@ -548,6 +714,7 @@ async function rulesView() {
     <div class="card"><h2>Company</h2><p class="muted" style="margin-top:-6px">Name and invoice numbering.</p>
     ${row('Company name', 'Shown in the header, emails and invoices.', `<input name="name" value="${esc(c.name)}">`)}
     ${row('Invoice prefix', 'Consultant invoices are numbered with it.', `<input name="invoice_prefix" value="${esc(c.invoice_prefix)}">`)}
+    ${row('Domain', 'The web address of this company, for example tiempo.cerevelo.com. The sign-in page and the email links use it.', `<input name="domain" value="${esc(c.domain)}" placeholder="tiempo.cerevelo.com" autocapitalize="none" spellcheck="false">`)}
     ${row('Default language', 'Used for people who have not chosen one, and for emails to external people.', `<select name="locale"><option value="en" ${c.locale === 'en' ? 'selected' : ''}>English</option><option value="es" ${c.locale === 'es' ? 'selected' : ''}>Español</option></select>`)}</div>
     <div class="card"><h2>Timesheets</h2><p class="muted" style="margin-top:-6px">How and when people enter hours.</p>
     ${row('Weeks back a worker may fill in', 'Older weeks are closed.', `<input name="weeks_back" type="number" min="0" max="52" value="${r.weeks_back}">`)}
@@ -561,7 +728,8 @@ async function rulesView() {
     ${row('Repeat the reminder every (days)', 'Until a decision is made.', `<input name="remind_every_days" type="number" min="1" value="${r.remind_every_days}">`)}
     ${row('Approval link validity (days)', 'After that the link stops working.', `<input name="token_days" type="number" min="1" value="${r.token_days}">`)}
     ${row('Wait before notifying a change (minutes)', 'When a submitted timesheet is edited.', `<input name="change_notice_minutes" type="number" min="0" value="${r.change_notice_minutes}">`)}
-    ${row('Timesheets above these hours need individual approval with a code', 'Leave empty for no limit.', `<input name="second_approval_hours" type="number" step="0.5" value="${esc(r.second_approval_hours)}" placeholder="no limit">`)}</div>
+    ${row('Timesheets above these hours need individual approval with a code', 'Leave empty for no limit.', `<input name="second_approval_hours" type="number" step="0.5" value="${esc(r.second_approval_hours)}" placeholder="no limit">`)}
+    ${row('Remember this device (days)', 'Applies to approvers who sign in with an emailed code. 0 = never remember.', `<input name="remember_days" type="number" min="0" max="365" value="${esc(r.remember_days ?? 0)}">`)}</div>
     <button class="btn pri" type="submit">Save rules</button></form>`;
 }
 
@@ -576,8 +744,8 @@ async function integrationsView() {
     <div><label>API URL (localhost today, the server tomorrow)</label><input name="base_url" value="${esc(i.base_url || 'http://localhost:5099')}" required></div>
     <div><label>Access</label><select name="auth_mode"><option value="login" ${i.auth_mode !== 'api_key' ? 'selected' : ''}>Service user</option><option value="api_key" ${i.auth_mode === 'api_key' ? 'selected' : ''}>Service credential (API key)</option></select></div>
     <div><label>Username (login)</label><input name="login" value="${esc(i.login)}"></div>
-    <div><label>Password ${i.has_password ? '(saved)' : ''}</label><input name="password" type="password" autocomplete="new-password" placeholder="${i.has_password ? 'unchanged' : ''}"></div>
-    <div><label>API key ${i.has_api_key ? '(saved)' : ''}</label><input name="api_key" type="password" autocomplete="new-password"></div>
+    <div>${pwField('password', 'Password' + (i.has_password ? ' (saved)' : ''), { auto: 'new-password', optional: true, ph: i.has_password ? 'unchanged' : '' })}</div>
+    <div>${pwField('api_key', 'API key' + (i.has_api_key ? ' (saved)' : ''), { auto: 'new-password', optional: true })}</div>
     <div><label>Company id in Accountisi</label><input name="company_id" type="number" value="${esc(i.company_id)}"></div>
     <div><label>Service item (sales invoices)</label><input name="default_item_id" type="number" value="${esc(i.default_item_id)}"></div>
     <div><label>Income account (if no item)</label><input name="default_income_account_id" type="number" value="${esc(i.default_income_account_id)}"></div>
@@ -670,7 +838,32 @@ function afterRender() {
 /* ---------- actions ---------- */
 function parseMeta(txt) { const o = {}; (txt || '').split('\n').forEach(l => { const i = l.indexOf('='); if (i > 0) o[l.slice(0, i).trim()] = l.slice(i + 1).trim(); }); return o; }
 const actions = {
-  logout, wk: el => { S.weekDate = addDays(S.weekDate, Number(el.dataset.n)); render(); },
+  logout, 'pw-eye'(el) {
+    const inp = el.closest('.pw').querySelector('input'); const show = inp.type === 'password'; inp.type = show ? 'text' : 'password';
+    const t = T(show ? 'Hide password' : 'Show password'); el.setAttribute('aria-pressed', String(show)); el.setAttribute('aria-label', t); el.title = t;
+  },
+  async 'code-resend'() {
+    if (!S.login || resendLeft() > 0) return;
+    try { await api('/login/code/resend', { method: 'POST', anon: true, body: { challenge: S.login.challenge } }); S.login.resendAt = Date.now() + 60000; loginView(null, 'A new code was sent to ' + S.login.email_hint); }
+    catch (e) { loginView(loginError(e)); }
+  },
+  'login-back'() { S.login = null; clearInterval(S.cache.rt); loginView(); },
+  'sp-login'() { S.cache.sp = null; logout(); },
+  async 'reset-user'(el) {
+    if (!confirm(T(el.dataset.name + ' will receive an email to create a new password and will be signed out everywhere.'))) return;
+    const r = await api(`/users/${el.dataset.id}/reset-password`, { method: 'POST' }); flash('Reset email sent to ' + r.emailed_to); render();
+  },
+  async 'resend-invite'(el) { await api(`/users/${el.dataset.id}/resend-invitation`, { method: 'POST' }); flash('Invitation sent to ' + el.dataset.email); render(); },
+  'apr-status'(el) { S.cache.apStatus = el.dataset.s; S.cache.apSel = null; render(); },
+  'apr-pick'(el) { S.cache.apSel = Number(el.dataset.id); render(); },
+  async 'apr-code'(el) {
+    const id = Number(el.dataset.id); saveDraft(id);
+    const r = await api(`/approver/sheets/${id}/code`, { method: 'POST' }); (S.cache.apCode ??= {})[id] = true;
+    flash('Code sent to your email. It is valid for ' + Math.max(1, Math.round((r.expires_in || 600) / 60)) + ' minutes.'); render();
+  },
+  async 'apr-approve'(el) { await aprDecide(el, 'approve'); },
+  async 'apr-return'(el) { await aprDecide(el, 'return'); },
+  wk: el => { S.weekDate = addDays(S.weekDate, Number(el.dataset.n)); render(); },
   'wk-now': () => { S.weekDate = today(); render(); },
   'open-week': el => { S.weekDate = el.dataset.end; location.hash = '#/week'; },
   'ap-pick': el => { S.cache.apSel = Number(el.dataset.id); render(); },
@@ -703,7 +896,13 @@ const actions = {
   },
   lang: async el => { const to = el.dataset.to; S.lang = to; localStorage.setItem('lang', to); if (S.token) { S.me = await api('/me/locale', { method: 'PUT', body: { locale: to } }); } render(); },
   'edit-user': el => { S.cache.editUser = Number(el.dataset.id); render(); }, 'new-user': () => { S.cache.editUser = null; render(); },
-  async 'toggle-approver'(el) { const a = (await api('/approvers')).find(x => x.id === Number(el.dataset.id)); await api('/approvers/' + a.id, { method: 'PUT', body: { name: a.name, email: a.email, require_code: a.require_code, active: !a.active } }); render(); },
+  async 'toggle-approver'(el) { const a = (await api('/approvers')).find(x => x.id === Number(el.dataset.id)); await api('/approvers/' + a.id, { method: 'PUT', body: { name: a.name, email: a.email, require_code: a.require_code, can_login: !!a.can_login, active: !a.active } }); render(); },
+  async 'toggle-login'(el) {
+    const a = (await api('/approvers')).find(x => x.id === Number(el.dataset.id)); const on = !a.can_login;
+    if (!on && !confirm(T('This approver will no longer be able to sign in. Their sessions will be closed.'))) return;
+    await api('/approvers/' + a.id, { method: 'PUT', body: { name: a.name, email: a.email, require_code: a.require_code, can_login: on, active: a.active } });
+    flash(on ? 'Invitation sent to ' + a.email : 'Sign-in removed.'); render();
+  },
   async 'revert-brand'(el) { await api(`/brand/history/${el.dataset.id}/revert`, { method: 'POST' }); S.me = null; flash('Branding restored.'); render(); },
   async 'acc-test'() { try { await api('/integrations/accountisi/test', { method: 'POST' }); flash('Connection to Accountisi works.'); } catch (e) { flash(e.message, 'err'); } render(); },
   async 'acc-sync'() { const r = await api('/integrations/accountisi/sync-customers', { method: 'POST' }); flash(`Clients linked: ${r.linked}, created: ${r.created}.`); render(); },
@@ -718,12 +917,45 @@ const actions = {
   async 'cs-xlsx'() { const b = csBody(document.querySelector('form[data-form=cs]')); await download('/client-timesheet/download', { method: 'POST', body: { ...b, format: 'xlsx' } }, 'timesheet.xlsx'); flash('Excel file created.'); render(); },
   async 'sales-preview'() { const f = document.querySelector('form[data-form=sales]'); const o = formObj(f); try { S.cache.salesPreview = await api('/integrations/accountisi/sales-preview', { method: 'POST', body: o }); } catch (e) { flash(e.message, 'err'); } render(); },
 };
+async function aprDecide(el, kind) {
+  const id = Number(el.dataset.id); saveDraft(id);
+  const { comment, code } = S.cache.apDraft;
+  if (kind === 'return' && !comment.trim()) throw new Error('Write a comment saying what needs to be corrected.');
+  const body = { version: Number(el.dataset.v), ...(comment.trim() ? { comment: comment.trim() } : {}), ...(code.trim() ? { code: code.trim() } : {}) };
+  try { await api(`/approver/sheets/${id}/${kind}`, { method: 'POST', body }); }
+  catch (e) { if (e.needs_code || e.errors?.code) { (S.cache.apCode ??= {})[id] = true; } throw e; }
+  S.cache.apDraft = null; flash(kind === 'approve' ? 'Timesheet approved.' : 'Timesheet returned for correction.'); render();
+}
 const forms = {
   async login(f) {
-    const o = formObj(f);
+    const o = formObj(f); S.cache.loginEmail = o.email;
     const ts = f.querySelector('[name="cf-turnstile-response"]');
-    try { const r = await api('/login/web', { method: 'POST', body: { ...o, device: 'web', ...(ts ? { turnstile_token: ts.value } : {}) } }); S.token = r.token; localStorage.setItem('tt', r.token); S.me = null; location.hash = '#/week'; render(); }
-    catch (e) { loginView(e.message); }
+    if (ts && !ts.value) return loginView('Complete the security check first.');
+    let dt = null; try { dt = localStorage.getItem('dt'); } catch { /* storage blocked */ }
+    try {
+      const r = await api('/login/web', { method: 'POST', anon: true, body: { email: o.email, password: o.password, device: 'web', ...(ts ? { turnstile_token: ts.value } : {}), ...(dt ? { device_token: dt } : {}) } });
+      if (r.step === 'code') { S.login = { step: 'code', challenge: r.challenge, email_hint: r.email_hint, remember_days: Number(r.remember_days || 0), expires_in: r.expires_in, resendAt: Date.now() + 60000 }; return loginView(); }
+      finishLogin(r);
+    } catch (e) { loginView(loginError(e)); }
+  },
+  async 'login-code'(f) {
+    const o = formObj(f); const L = S.login; if (!L) return loginView();
+    try { finishLogin(await api('/login/code', { method: 'POST', anon: true, body: { challenge: L.challenge, code: String(o.code || '').replace(/\D/g, ''), remember: !!o.remember } })); }
+    catch (e) {
+      if (e.status === 410 || e.code === 'expired' || e.code === 'challenge') { S.login = null; return loginView('The code expired. Sign in again to get a new one.'); }
+      loginView(e.status === 429 || e.code === 'locked' ? loginError(e) : e.message || 'The code is not correct.');
+    }
+  },
+  async 'set-password'(f) {
+    const o = formObj(f); const sp = S.cache.sp;
+    try { await api('/password/setup', { method: 'POST', anon: true, body: { token: sp.token, password: o.password } }); sp.done = true; setPasswordView(sp.token); }
+    catch (e) { if (e.status === 404 || e.status === 410) { sp.bad = 'expired'; return setPasswordView(sp.token); } setPasswordView(sp.token, e.message); }
+  },
+  async 'change-pw'(f) {
+    const o = formObj(f);
+    if (o.current_password === o.password) throw new Error('The new password must be different from the current one.');
+    await api('/password/change', { method: 'POST', body: { current_password: o.current_password, password: o.password } });
+    flash('Password changed. Your other sessions were signed out.'); render();
   },
   async entry(f) {
     const o = formObj(f); const id = o.id; delete o.id; if (!o.service_id) delete o.service_id;
@@ -762,9 +994,9 @@ const forms = {
     const terms = { rate: o.t_rate, retention_pct: o.t_retention_pct, ivu_pct: o.t_ivu_pct, terms_days: o.t_terms_days, ivu_agent: o.t_ivu_agent, accountisi_vendor_id: o.t_accountisi_vendor_id };
     for (const k of Object.keys(o)) if (k.startsWith('t_')) delete o[k];
     o.project_ids = o.project_ids || []; if (o.approver_id != null) o.approver_id = Number(o.approver_id);
-    if (o.worker_type === 'consultant') o.terms = terms; if (!o.password) delete o.password;
+    if (o.worker_type === 'consultant') o.terms = terms; delete o.password;   // nobody types passwords for others: new people get an invitation
     if (id) await api('/users/' + id, { method: 'PUT', body: o }); else await api('/users', { method: 'POST', body: o });
-    S.cache.editUser = null; flash('Person saved.'); render();
+    S.cache.editUser = null; flash(id ? 'Person saved.' : 'Invitation sent to ' + o.email); render();
   },
   async cs(f) { S.cache.csPreview = await api('/client-timesheet/preview', { method: 'POST', body: csBody(f) }); S.cache.csEmail = undefined; render(); },
   async 'cs-email'(f) {
@@ -774,7 +1006,7 @@ const forms = {
     const r = await api('/client-timesheet/email', { method: 'POST', body: { ...body, email_to: o.email_to, message: o.message || undefined } });
     flash('Timesheet sent to ' + r.sent_to + ' (' + hrs(r.total_hours) + ' h).'); render();
   },
-  async approver(f) { await api('/approvers', { method: 'POST', body: formObj(f) }); flash('Approver added.'); render(); },
+  async approver(f) { const o = formObj(f); o.can_login = !!o.can_login; await api('/approvers', { method: 'POST', body: o }); flash(o.can_login ? 'Approver added. An invitation was sent to ' + o.email : 'Approver added.'); render(); },
   async customer(f) { await api('/customers', { method: 'POST', body: formObj(f) }); flash('Client added.'); render(); },
   async brand(f) {
     const fd = new FormData(); const o = formObj(f);
@@ -782,10 +1014,10 @@ const forms = {
     await api('/brand', { method: 'POST', body: fd }); S.me = null; flash('Branding saved.'); render();
   },
   async rules(f) {
-    const o = formObj(f); const { name, invoice_prefix, flag_late, locale } = o; delete o.name; delete o.invoice_prefix; delete o.locale;
+    const o = formObj(f); const { name, invoice_prefix, flag_late, locale, domain } = o; delete o.name; delete o.invoice_prefix; delete o.locale; delete o.domain;
     const rules = {}; for (const [k, v] of Object.entries(o)) rules[k] = v;
-    rules.flag_late = !!flag_late; rules.increment = Number(rules.increment);
-    await api('/company', { method: 'PUT', body: { name, invoice_prefix, locale, rules } }); S.me = null; flash('Rules saved.'); render();
+    rules.flag_late = !!flag_late; rules.increment = Number(rules.increment); rules.remember_days = Number(rules.remember_days || 0);
+    await api('/company', { method: 'PUT', body: { name, invoice_prefix, locale, domain: domain ? String(domain).trim().toLowerCase() : null, rules } }); S.me = null; flash('Rules saved.'); render();
   },
   async accountisi(f) {
     const o = formObj(f); for (const k of Object.keys(o)) if (o[k] === null) delete o[k]; o.enabled = !!o.enabled;
@@ -801,11 +1033,21 @@ const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { if (e.
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="entry-project"],[data-act-change="entry-service"]'); if (el) syncEntryForm(el.closest('form')); });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="clock-project"]'); if (el) syncClockForm(el.closest('form')); });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="cs-customer"]'); if (el) { const f = el.closest('form'); S.cache.cs = { customer_id: Number(el.value), from: f.elements.from.value, to: f.elements.to.value }; S.cache.csPreview = null; render(); } });
+document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="lang-pick"]'); if (el) guard(actions.lang)({ dataset: { to: el.value } }); });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="wk-pick"]'); if (el) { S.weekDate = el.value; render(); } });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="exp-refresh"]'); if (el) { const f = el.closest('form'); const o = formObj(f); S.cache.exp = { ...o, picked: ['customer_id', 'from', 'to', 'user_id'].includes(el.name) ? null : (o.project_ids || null) }; render(); } });
 document.addEventListener('change', e => { const el = e.target.closest('[data-filter]'); if (el) { FL(el.dataset.filter)[el.name] = el.value; render(); } });
 document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (el && actions[el.dataset.act]) { e.preventDefault(); guard(actions[el.dataset.act])(el); } });
 document.addEventListener('submit', e => { const f = e.target.closest('form[data-form]'); if (f && forms[f.dataset.form]) { e.preventDefault(); guard(forms[f.dataset.form])(f); } });
+/* Password fields: the eye button never takes the focus away from the input; Caps Lock notice; strength bar. */
+document.addEventListener('mousedown', e => { if (e.target.closest('.eye')) e.preventDefault(); });
+const capsCheck = e => { const i = e.target.closest?.('.pw input'); if (!i || !e.getModifierState) return; const c = i.closest('.pwf').querySelector('.caps'); c.hidden = !(e.getModifierState('CapsLock') && e.type !== 'focusout'); };
+['keydown', 'keyup', 'focusout'].forEach(t => document.addEventListener(t, capsCheck));
+document.addEventListener('input', e => {
+  const i = e.target.closest?.('[data-strength]'); if (!i) return;
+  const box = i.closest('.pwf').querySelector('.strength'); const [lv, txt] = pwStrength(i.value);
+  box.dataset.level = lv; box.querySelector('small').textContent = T(txt);
+});
 window.addEventListener('hashchange', render);
 render();
 })();

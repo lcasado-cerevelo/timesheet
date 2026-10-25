@@ -6,6 +6,8 @@
     "orientation": "portrait",
     "scheme": "tiempo",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "splash": { "image": "./assets/icon.png", "resizeMode": "contain", "backgroundColor": "#12355A" },
     "newArchEnabled": false,
     "ios": {
       "supportsTablet": false,
@@ -18,6 +20,7 @@
     },
     "android": {
       "package": "com.cerevelo.tiempo",
+      "adaptiveIcon": { "foregroundImage": "./assets/adaptive-icon.png", "backgroundColor": "#12355A" },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
@@ -27,7 +30,7 @@
         "VIBRATE"
       ]
     },
-    "web": { "bundler": "metro", "output": "single" },
+    "web": { "bundler": "metro", "output": "single", "favicon": "./assets/favicon.png" },
     "plugins": [
       "expo-router",
       "expo-secure-store",
@@ -40,6 +43,7 @@
       ],
       ["expo-notifications", { "color": "#1f4e79" }]
     ],
+    "extra": { "serverUrl": "" },
     "experiments": { "typedRoutes": false }
   }
 }

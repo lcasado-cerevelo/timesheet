@@ -32,6 +32,26 @@ class Company extends Model
         return in_array($this->locale, ['es', 'en'], true) ? $this->locale : (string) config('app.locale');
     }
 
+    /** Dirección base de los enlaces de los correos: el dominio de la compañía o, si no tiene, el de la instalación. */
+    public function baseUrl(): string
+    {
+        return $this->domain ? 'https://'.$this->domain : rtrim((string) config('app.url'), '/');
+    }
+
+    /** Compañía cuyo dominio es exactamente este Host (sin puerto, en minúsculas). */
+    public static function forHost(?string $host): ?self
+    {
+        $host = strtolower(trim((string) $host));
+        return $host === '' ? null : static::where('domain', $host)->first();
+    }
+
+    /** Marca que puede verse sin iniciar sesión (pantalla de entrada y de crear contraseña). */
+    public function publicBrand(): array
+    {
+        return ['name' => $this->displayName(), 'logo_url' => $this->logoUrl(),
+            'color_primary' => $this->color_primary, 'color_accent' => $this->color_accent];
+    }
+
     public function displayName(): string
     {
         return $this->brand_name ?: $this->name;

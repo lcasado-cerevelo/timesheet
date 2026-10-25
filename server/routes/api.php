@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\EntryController;
 use App\Http\Controllers\Api\ContractorInvoiceController;
 use App\Http\Controllers\Api\ExportController;
 use App\Http\Controllers\Api\IntegrationController;
+use App\Http\Controllers\Api\ApproverSheetController;
+use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ServiceController;
@@ -22,9 +24,25 @@ Route::post('/cron/run', [\App\Http\Controllers\Api\CronController::class, 'run'
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');                 // app móvil
 Route::post('/login/web', [AuthController::class, 'loginWeb'])->middleware('throttle:10,1');           // web (con Turnstile si está configurado)
+Route::post('/login/code', [AuthController::class, 'loginCode'])->middleware('throttle:10,1');
+Route::post('/login/code/resend', [AuthController::class, 'loginCodeResend'])->middleware('throttle:10,1');
+Route::get('/password/setup', [PasswordController::class, 'showSetup'])->middleware('throttle:30,1');
+Route::post('/password/setup', [PasswordController::class, 'setup'])->middleware('throttle:10,1');
+Route::get('/domain-check', [PasswordController::class, 'domainCheck'])->middleware('throttle:300,1');   // Caddy: on_demand_tls ask
 Route::get('/public-config', [AuthController::class, 'publicConfig'])->middleware('throttle:60,1');
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
+    Route::post('/password/change', [PasswordController::class, 'change'])->middleware('throttle:10,1');
+
+    // Cuentas de aprobador: solo sus hojas
+    Route::middleware('approver')->prefix('approver')->group(function () {
+        Route::get('/sheets', [ApproverSheetController::class, 'index']);
+        Route::get('/sheets/{sheet}', [ApproverSheetController::class, 'show']);
+        Route::post('/sheets/{sheet}/code', [ApproverSheetController::class, 'code'])->middleware('throttle:5,1');
+        Route::post('/sheets/{sheet}/approve', [ApproverSheetController::class, 'approve']);
+        Route::post('/sheets/{sheet}/return', [ApproverSheetController::class, 'return']);
+    });
+
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
@@ -67,6 +85,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/users', [UserController::class, 'index']);
         Route::post('/users', [UserController::class, 'store']);
         Route::put('/users/{user}', [UserController::class, 'update']);
+        Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword']);
+        Route::post('/users/{user}/resend-invitation', [UserController::class, 'resendInvitation']);
         Route::delete('/users/{user}', [UserController::class, 'destroy']);
 
         Route::get('/approvers', [SimpleCrudController::class, 'approvers']);

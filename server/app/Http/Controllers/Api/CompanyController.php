@@ -12,14 +12,20 @@ class CompanyController extends Controller
     public function show(Request $request)
     {
         $c = $request->user()->company;
-        return response()->json(['name' => $c->name, 'timezone' => $c->timezone, 'invoice_prefix' => $c->invoice_prefix, 'locale' => $c->locale,
+        return response()->json(['name' => $c->name, 'timezone' => $c->timezone, 'invoice_prefix' => $c->invoice_prefix, 'locale' => $c->locale, 'domain' => $c->domain,
             'rules' => $c->rules()->all()]);
     }
 
     public function update(Request $request)
     {
         $c = $request->user()->company;
+        if ($request->has('domain')) {
+            $d = strtolower(trim((string) $request->input('domain')));
+            $request->merge(['domain' => $d === '' ? null : $d]);
+        }
         $v = $request->validate([
+            'domain' => ['sometimes', 'nullable', 'string', 'max:190', 'regex:/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/',
+                \Illuminate\Validation\Rule::unique('companies', 'domain')->ignore($c->id)],
             'name' => 'sometimes|string|max:190',
             'timezone' => 'sometimes|timezone',
             'locale' => 'sometimes|in:es,en',
@@ -36,6 +42,7 @@ class CompanyController extends Controller
             'rules.token_days' => 'integer|between:1,60',
             'rules.change_notice_minutes' => 'integer|between:0,1440',
             'rules.code_minutes' => 'integer|between:5,60',
+            'rules.remember_days' => 'integer|between:0,365',
             'rules.second_approval_hours' => 'nullable|numeric|min:1',
         ]);
         if (isset($v['rules'])) {

@@ -1,7 +1,7 @@
 import { getLocale, t } from '../i18n';
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public errors?: Record<string, string[]>) {
+  constructor(message: string, public status: number, public errors?: Record<string, string[]>, public code?: string) {
     super(message);
   }
 }
@@ -58,7 +58,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   }
   if (!res.ok) {
     const first = data?.errors ? (Object.values(data.errors).flat() as string[])[0] : undefined;
-    throw new ApiError(first ?? data?.message ?? t('api.error', { n: res.status }), res.status, data?.errors);
+    throw new ApiError(first ?? data?.message ?? t('api.error', { n: res.status }), res.status, data?.errors, data?.code);
   }
   return data as T;
 }

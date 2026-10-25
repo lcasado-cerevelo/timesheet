@@ -25,6 +25,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->appendToGroup('web', \App\Http\Middleware\SetLocale::class);
 
         $middleware->alias([
+            'approver.scope' => \App\Http\Middleware\ApproverScope::class,
+            'approver' => \App\Http\Middleware\ApproverOnly::class,
             'owner' => \App\Http\Middleware\OwnerOnly::class,
             'public.page' => \App\Http\Middleware\PublicPageHeaders::class,
         ]);

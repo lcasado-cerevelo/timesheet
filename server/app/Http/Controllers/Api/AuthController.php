@@ -3,9 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\SetLocale;
+use App\Models\Company;
 use App\Models\User;
+use App\Services\AccountService;
+use App\Services\TwoStepService;
 use App\Support\Turnstile;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
@@ -16,28 +22,88 @@ class AuthController extends Controller
     private const MAX_FAILURES = 5;
     private const LOCK_MINUTES = 15;
 
-    /** Login de la app móvil (y de cualquier cliente que no sea la web). Protegido por límite por IP y bloqueo por intentos fallidos. */
-    public function login(Request $request)
+    public function __construct(private TwoStepService $twoStep, private AccountService $accounts)
     {
-        return $this->attempt($request);
     }
 
-    /** Login de la web: además exige el desafío de Cloudflare Turnstile cuando está configurado. */
+    /** Login de la app móvil (sin Turnstile ni segundo paso). Las cuentas de aprobador solo entran por la web. */
+    public function login(Request $request)
+    {
+        $user = $this->credentials($request);
+        if ($user->isApprover()) {
+            return response()->json(['message' => __('Las cuentas de aprobador solo entran por la web.'), 'code' => 'approver_web_only'], 403);
+        }
+        return $this->issue($user, $request->input('device'));
+    }
+
+    /** Login de la web: Turnstile si está configurado; el dominio de la compañía; y código por correo para aprobadores. */
     public function loginWeb(Request $request)
     {
         if (Turnstile::enabled() && ! Turnstile::verify($request->input('turnstile_token'), $request->ip())) {
             throw ValidationException::withMessages(['turnstile' => __('No pudimos comprobar que eres una persona. Vuelve a intentarlo.')]);
         }
-        return $this->attempt($request);
+        $user = $this->credentials($request, true);
+        if ($user->isApprover() && ! $this->twoStep->deviceIsValid($user, $request->input('device_token'))) {
+            return response()->json(['step' => 'code'] + $this->twoStep->start($user), 202);
+        }
+        return $this->issue($user, $request->input('device'));
+    }
+
+    /** Segundo paso: código de 6 dígitos enviado por correo. */
+    public function loginCode(Request $request)
+    {
+        $v = $request->validate(['challenge' => 'required|string', 'code' => 'required|string|max:12', 'remember' => 'sometimes|boolean']);
+        $ch = $this->twoStep->find($v['challenge']);
+        if (! $ch) {
+            throw ValidationException::withMessages(['code' => __('El código venció. Inicia sesión de nuevo.')]);
+        }
+        $user = $this->twoStep->verify($ch, $v['code']);
+        if (! $user->active || $user->must_set_password) {
+            throw ValidationException::withMessages(['code' => __('El código no es correcto.')]);
+        }
+        $device = ! empty($v['remember']) ? $this->twoStep->issueDevice($user) : null;
+        $res = $this->issue($user, 'web')->getData(true);
+        return response()->json($res + ($device ? ['device_token' => $device] : []));
+    }
+
+    public function loginCodeResend(Request $request)
+    {
+        $v = $request->validate(['challenge' => 'required|string']);
+        $ch = $this->twoStep->find($v['challenge']);
+        if (! $ch) {
+            throw ValidationException::withMessages(['challenge' => __('El código venció. Inicia sesión de nuevo.')]);
+        }
+        $wait = $this->twoStep->resend($ch);
+        if ($wait !== null) {
+            return response()->json(['message' => __('Espera :seconds segundos para pedir otro código.', ['seconds' => $wait]), 'retry_after' => $wait], 429);
+        }
+        return response()->json(['ok' => true]);
     }
 
     /** Datos que la pantalla de login necesita antes de entrar (sin sesión). */
-    public function publicConfig()
+    public function publicConfig(Request $request)
     {
-        return response()->json(['turnstile_site_key' => Turnstile::enabled() ? config('services.turnstile.site_key') : null]);
+        $company = Company::forHost($request->getHost());
+        if (! $company && Company::count() === 1) {
+            $company = Company::first();
+        }
+        $explicit = in_array(strtolower(substr((string) $request->header('X-Locale'), 0, 2)), SetLocale::SUPPORTED, true);
+        $locale = $company && ! $explicit ? $company->lang() : App::getLocale();
+        return response()->json([
+            'turnstile_site_key' => Turnstile::enabled() ? config('services.turnstile.site_key') : null,
+            'locale' => $locale,
+            'brand' => $company?->publicBrand(),
+        ]);
     }
 
-    private function attempt(Request $request)
+    private function issue(User $user, ?string $device)
+    {
+        $token = $user->createToken($device ?: 'app')->plainTextToken;
+        return response()->json(['token' => $token, 'user' => $this->userPayload($user)]);
+    }
+
+    /** Valida correo y contraseña con bloqueo por intentos fallidos. Devuelve la persona o lanza el mismo error genérico. */
+    private function credentials(Request $request, bool $web = false): User
     {
         $data = $request->validate([
             'email' => 'required|email',
@@ -49,20 +115,21 @@ class AuthController extends Controller
         $key = 'login:'.mb_strtolower($data['email']).'|'.$request->ip();
         if (RateLimiter::tooManyAttempts($key, self::MAX_FAILURES)) {
             $min = (int) ceil(RateLimiter::availableIn($key) / 60);
-            return response()->json(['message' => __('Demasiados intentos fallidos. Espera :min minuto(s) y vuelve a intentarlo.', ['min' => $min]), 'code' => 'locked'], 429);
+            throw new HttpResponseException(response()->json(['message' => __('Demasiados intentos fallidos. Espera :min minuto(s) y vuelve a intentarlo.', ['min' => $min]), 'code' => 'locked'], 429));
         }
 
-        $user = User::where('email', $data['email'])->first();
+        $user = User::with('company')->where('email', $data['email'])->first();
         // Se compara la clave aunque el usuario no exista para que el tiempo de respuesta no delate qué correos existen.
         $ok = Hash::check($data['password'], $user?->password ?? Hash::make(\Illuminate\Support\Str::random(24)));
-        if (! $user || ! $user->active || ! $ok) {
+        // Quien pertenece a una compañía con dominio solo entra por ese dominio.
+        $wrongHost = $web && $user && $user->company->domain && $user->company->domain !== strtolower($request->getHost());
+        if (! $user || ! $user->active || ! $ok || $wrongHost) {
             RateLimiter::hit($key, self::LOCK_MINUTES * 60);
             throw ValidationException::withMessages(['email' => __('Correo o contraseña incorrectos.')]);
         }
 
         RateLimiter::clear($key);
-        $token = $user->createToken($data['device'] ?? 'app')->plainTextToken;
-        return response()->json(['token' => $token, 'user' => $this->userPayload($user)]);
+        return $user;
     }
 
     public function me(Request $request)
@@ -87,7 +154,8 @@ class AuthController extends Controller
     public static function userPayload(User $user): array
     {
         $company = $user->company;
-        return [
+        $extra = $user->isApprover() ? ['approver_id' => $user->approver_profile_id, 'two_step' => true] : [];
+        return $extra + [
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,

@@ -89,7 +89,7 @@ input[type=checkbox]{width:22px;height:22px;min-height:0;accent-color:var(--prim
 /* Entrada */
 .login-wrap{min-height:100vh;display:flex;flex-direction:column}
 .login-wrap .stripe{margin-top:0}
-.login{width:100%;max-width:420px;margin:10vh auto;padding:28px}
+.login{width:100%;max-width:420px;margin:8vh auto;padding:28px}
 .login .eyebrow{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
 .login h1{font-size:22px;margin:0 0 4px}
 .login label{text-transform:none;letter-spacing:0;font-size:14px;font-weight:500;color:var(--text)}
@@ -97,3 +97,23 @@ input[type=checkbox]{width:22px;height:22px;min-height:0;accent-color:var(--prim
 
 @media(max-width:700px){.hdr{padding:10px 14px}.hdr .who div{display:none}main{padding:16px 14px 48px}.tabs{padding:0 8px}th,td{padding:7px 5px;font-size:13px}}
 @media print{.xbar,.btn,.tabs,.hdr,.stripe,.subtabs{display:none!important}body{background:#fff}.card{border-color:#ccc}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+
+/* Password field: one component, own eye button; the browser's native one (Edge/IE) is hidden so it does not show twice */
+input::-ms-reveal,input::-ms-clear{display:none}
+.pwf label{margin-bottom:4px}
+.pw{position:relative}.pw input{padding-right:48px}
+.eye{position:absolute;top:2px;right:2px;width:40px;height:40px;border:0;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;display:grid;place-items:center;padding:0}
+.eye:hover{color:var(--text);background:var(--hover)}.eye:focus-visible{outline:2px solid var(--primary);outline-offset:0}
+.eye .off{display:none}.eye[aria-pressed=true] .on{display:none}.eye[aria-pressed=true] .off{display:block}
+.caps{display:block;margin-top:4px;color:var(--warn);font-size:12px;font-weight:600}.caps[hidden]{display:none}
+.strength{margin-top:6px}.strength .bar{display:block;height:5px;border-radius:3px;background:var(--line);overflow:hidden}
+.strength .bar i{display:block;height:100%;width:0;background:var(--field);transition:width .15s}
+.strength small{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+.strength[data-level="1"] .bar i{width:25%;background:var(--danger)}.strength[data-level="2"] .bar i{width:50%;background:#C98A00}
+.strength[data-level="3"] .bar i{width:75%;background:#3D8B5F}.strength[data-level="4"] .bar i{width:100%;background:var(--accent)}
+/* Sign-in band with the company brand */
+.loginband{background:var(--primary);color:#fff;padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.loginband b{font-size:20px;font-weight:600}.loginband small{opacity:.85;font-size:13px;margin-left:auto}
+.loginband .logo{background:#fff;border-radius:8px;padding:6px 12px;display:inline-flex}.loginband .logo img{max-height:40px;max-width:200px;display:block}
+.login input[readonly]{background:#EEEFF0;color:var(--muted)}
+.login .row .btn{width:auto}

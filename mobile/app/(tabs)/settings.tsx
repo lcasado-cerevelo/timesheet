@@ -3,10 +3,12 @@ import { ScrollView, Switch, Text, View } from 'react-native';
 import { ensureNotificationPermission, setWeeklyReminder } from '../../src/lib/notify';
 import { startWatching, stopWatching } from '../../src/lib/geofence';
 import { useT } from '../../src/i18n';
+import { api } from '../../src/lib/api';
+import { MIN_PASSWORD, passwordServerErrors, validatePasswordChange } from '../../src/lib/authErrors';
 import { useAuth } from '../../src/store/auth';
 import { useEntries } from '../../src/store/entries';
 import { useSettings } from '../../src/store/settings';
-import { Btn, C, Card, Chip, Msg, useBottomPad, useTheme } from '../../src/ui';
+import { Btn, C, Card, Chip, Msg, PasswordInput, useBottomPad, useTheme } from '../../src/ui';
 
 function Row(props: { label: string; hint?: string; value: boolean; onChange: (v: boolean) => void; testID?: string }) {
   const th = useTheme();
@@ -21,12 +23,58 @@ function Row(props: { label: string; hint?: string; value: boolean; onChange: (v
   );
 }
 
+function ChangePassword() {
+  const { t } = useT();
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [errs, setErrs] = useState<{ current?: string; next?: string; general?: string }>({});
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setDone(false);
+    const local = validatePasswordChange({ current, next });
+    setErrs(local);
+    if (local.current || local.next) return;
+    setBusy(true);
+    try {
+      await api('/password/change', { method: 'POST', body: { current_password: current, password: next } });
+      setCurrent('');
+      setNext('');
+      setOpen(false);
+      setDone(true);
+    } catch (e) {
+      setErrs(passwordServerErrors(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <Text style={{ fontWeight: '700', marginBottom: 4 }}>{t('password.title')}</Text>
+      {done ? <Msg kind="ok" text={t('password.done')} /> : null}
+      {!open ? (
+        <Btn testID="pw-open" kind="ghost" title={t('password.title')} onPress={() => { setOpen(true); setDone(false); }} />
+      ) : (
+        <View>
+          {errs.general ? <Msg kind="err" text={errs.general} /> : null}
+          <PasswordInput testID="pw-current" label={t('password.current')} value={current} onChangeText={setCurrent} error={errs.current} />
+          <PasswordInput testID="pw-new" kind="new" label={t('password.new')} value={next} onChangeText={setNext} error={errs.next} hint={t('password.new_hint', { n: MIN_PASSWORD })} />
+          <Text style={{ color: C.muted, fontSize: 12, marginBottom: 10 }}>{t('password.forgot')}</Text>
+          <Btn testID="pw-save" kind="pri" title={busy ? t('password.saving') : t('password.save')} disabled={busy || !current || !next} onPress={submit} />
+        </View>
+      )}
+    </Card>
+  );
+}
+
 export default function Settings() {
   const me = useAuth((s) => s.me)!;
   const { t, locale } = useT();
   const bottom = useBottomPad(12);
   const setLanguage = useAuth((s) => s.setLanguage);
-  const baseUrl = useAuth((s) => s.baseUrl);
   const logout = useAuth((s) => s.logout);
   const { decimal, arriveAlerts, weeklyReminder, set } = useSettings();
   const { entries, projects, sync, syncing, lastSync, lastError } = useEntries();
@@ -84,11 +132,13 @@ export default function Settings() {
         <Text style={{ fontWeight: '700', marginBottom: 4 }}>{t('settings.sync')}</Text>
         <Text testID="pending">{pending === 0 ? t('settings.all_synced') : t('settings.pending', { n: pending })}{rejected ? ' ' + t('settings.rejected', { n: rejected }) : ''}</Text>
         <Text style={{ color: C.muted, fontSize: 12, marginVertical: 4 }}>
-          {lastSync ? t('settings.last_sync', { when: new Date(lastSync).toLocaleString(locale) }) : t('settings.never_synced')} · {baseUrl}
+          {lastSync ? t('settings.last_sync', { when: new Date(lastSync).toLocaleString(locale) }) : t('settings.never_synced')}
         </Text>
         {lastError && !syncing ? <Msg kind="warn" text={lastError} /> : null}
         <Btn testID="sync" kind="ghost" title={syncing ? t('settings.syncing') : t('settings.sync_now')} disabled={syncing} onPress={() => void sync()} />
       </Card>
+
+      <ChangePassword />
 
       <Btn testID="logout" kind="danger" title={t('settings.logout')} onPress={() => void logout()} />
     </ScrollView>

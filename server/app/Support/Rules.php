@@ -21,6 +21,7 @@ class Rules
         'token_days' => 7,              // vigencia del enlace de aprobación
         'change_notice_minutes' => 10,  // espera antes de avisar un cambio
         'code_minutes' => 15,           // vigencia del código de 6 dígitos
+        'remember_days' => 30,          // días que se recuerda un equipo de aprobador (0 = nunca)
         'second_approval_hours' => null,// hojas sobre estas horas: individual y con código
     ];
 
