@@ -122,6 +122,7 @@ class EntryController extends Controller
             'hours' => 'nullable|numeric',
             'note' => 'nullable|string|max:1000',
             'billable' => 'nullable|boolean',
+            'hour_type' => 'nullable|in:'.implode(',', TimeEntry::HOUR_TYPES),
             'client_uuid' => 'nullable|uuid',
         ]);
         return $this->normalize($request->all());
@@ -129,7 +130,7 @@ class EntryController extends Controller
 
     private function normalize(array $in): array
     {
-        $keys = ['project_id', 'service_id', 'work_date', 'start_time', 'end_time', 'hours', 'note', 'billable', 'running'];
+        $keys = ['project_id', 'service_id', 'work_date', 'start_time', 'end_time', 'hours', 'note', 'billable', 'hour_type', 'running'];
         return array_intersect_key($in, array_flip($keys));
     }
 
@@ -155,6 +156,7 @@ class EntryController extends Controller
             'hours' => (float) $e->hours,
             'note' => $e->note,
             'billable' => $e->billable,
+            'hour_type' => $e->hour_type ?: 'reg',
         ];
     }
 }

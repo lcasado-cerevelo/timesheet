@@ -13,6 +13,10 @@ class Timesheet extends Model
     public const APPROVED = 'approved';
     public const RETURNED = 'returned';
 
+    /** Etapa mientras status = submitted. */
+    public const STAGE_INTERNAL = 'internal';
+    public const STAGE_EXTERNAL = 'external';
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -25,7 +29,14 @@ class Timesheet extends Model
             'decided_at' => 'datetime',
             'change_notice_due_at' => 'datetime',
             'last_reminded_at' => 'datetime',
+            'internal_reminded_at' => 'datetime',
         ];
+    }
+
+    /** Hojas que el aprobador externo ya puede ver: las que no están (todavía) en la etapa interna. */
+    public function scopeReleasedToExternal($q)
+    {
+        return $q->where(fn ($x) => $x->whereNull('stage')->orWhere('stage', '!=', self::STAGE_INTERNAL));
     }
 
     public function user(): BelongsTo
@@ -63,6 +74,11 @@ class Timesheet extends Model
         return $this->hasMany(TimeEntry::class)->orderBy('work_date')->orderBy('start_time')->orderBy('id');
     }
 
+    public function internalApprovals(): HasMany
+    {
+        return $this->hasMany(TimesheetInternalApproval::class, 'timesheet_id')->orderBy('id');
+    }
+
     public function events(): HasMany
     {
         return $this->hasMany(TimesheetEvent::class)->orderBy('id');
@@ -83,6 +99,15 @@ class Timesheet extends Model
     {
         $this->total_hours = (float) $this->entries()->sum('hours');
         $this->save();
+    }
+
+    /** Horas facturables y no facturables (a partir de las entradas, si ya se cargaron). */
+    public function hoursSplit(?\Illuminate\Support\Collection $entries = null): array
+    {
+        $entries ??= $this->entries()->get(['hours', 'billable']);
+        $billable = round((float) $entries->where('billable', true)->sum('hours'), 2);
+        $non = round((float) $entries->where('billable', false)->sum('hours'), 2);
+        return ['billable_hours' => $billable, 'non_billable_hours' => $non, 'total_hours' => round($billable + $non, 2)];
     }
 
     /** Advertencias que no bloquean (empleados: pasa de sus horas por semana). */

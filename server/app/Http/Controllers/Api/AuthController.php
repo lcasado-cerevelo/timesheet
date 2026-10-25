@@ -156,15 +156,18 @@ class AuthController extends Controller
         $company = $user->company;
         $extra = $user->isApprover() ? ['approver_id' => $user->approver_profile_id, 'two_step' => true] : [];
         return $extra + [
+            'internal_approver' => ! $user->isApprover() && $user->isInternalApprover(),
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
             'role' => $user->role,
             'worker_type' => $user->worker_type,
             'capture_mode' => $user->capture_mode,
+            'member_since' => $user->created_at?->toDateString(),   // desde cuándo existe la cuenta: no se reclaman semanas anteriores
             'locale' => $user->locale ?: $company->locale,   // idioma en uso (es o en)
             'company_locale' => $company->locale,
             'weekly_hours' => $user->weekly_hours,
+            'employee_number' => $user->employee_number,
             'company' => ['id' => $company->id, 'name' => $company->name, 'timezone' => $company->timezone],
             // La app móvil lee la marca aquí: cambiarla en el servidor no requiere publicar la app.
             'brand' => $company->brand(),

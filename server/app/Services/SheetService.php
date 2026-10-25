@@ -19,7 +19,7 @@ use Illuminate\Validation\ValidationException;
  */
 class SheetService
 {
-    public function __construct(private ApprovalService $approvals)
+    public function __construct(private ApprovalService $approvals, private InternalApprovalService $internal)
     {
     }
 
@@ -63,7 +63,33 @@ class SheetService
             // Los enlaces emitidos para la versión anterior dejan de servir.
             ApprovalToken::where('timesheet_id', $sheet->id)->whereNull('used_at')
                 ->update(['used_at' => now()]);
+
+            // R5: en la etapa interna, el cambio invalida las aprobaciones internas ya dadas (el aviso sale con la espera de siempre).
+            if ($sheet->stage === Timesheet::STAGE_INTERNAL) {
+                $r = $this->internal->restart($sheet, InternalApprovalService::INVALIDATE_ON_CHANGE);
+                if ($r['cleared']) {
+                    $this->log($sheet, 'internal_invalidated', null, null, ['stage' => 'internal', 'version' => $sheet->version]);
+                }
+                if ($r['pending'] === 0) {
+                    $this->advanceToExternal($sheet);
+                }
+            }
         }
+    }
+
+    /** La etapa interna terminó: la hoja pasa al aprobador externo con lo mismo que se le enviaba al enviar. */
+    public function advanceToExternal(Timesheet $sheet): Timesheet
+    {
+        $sheet->refresh();
+        $sheet->fill(['stage' => Timesheet::STAGE_EXTERNAL, 'change_notice_due_at' => null, 'last_notified_version' => $sheet->version])->save();
+        $this->log($sheet, 'stage_external', null, null, ['stage' => 'external', 'version' => $sheet->version]);
+        if (! $sheet->approver_id) {
+            // Dueño sin otro aprobador: autoaprobación, como al enviar.
+            return $this->approve($sheet, null, $sheet->user, 'self');
+        }
+        $last = $sheet->events()->whereIn('type', ['submitted', 'resubmitted'])->latest('id')->value('type');
+        $this->approvals->sendSheetRequest($sheet, $last === 'resubmitted' ? 'resubmitted' : 'new');
+        return $sheet->refresh();
     }
 
     /** Aprobador de la hoja: el único aprobador de los proyectos, si lo hay; si no, el de la persona. */
@@ -114,6 +140,7 @@ class SheetService
 
         $sheet->fill([
             'status' => Timesheet::SUBMITTED,
+            'stage' => null,
             'version' => $kind === 'resubmitted' ? $sheet->version + 1 : $sheet->version,
             'approver_id' => $approver?->id,
             'submitted_at' => now(),
@@ -121,12 +148,28 @@ class SheetService
             'return_comment' => null,
             'change_notice_due_at' => null,
             'change_summary' => null,
+            'internal_reminded_at' => null,
             'decided_at' => null,
             'decided_by_approver_id' => null,
             'decided_by_user_id' => null,
             'decided_via' => null,
         ])->save();
-        $this->log($sheet, $kind === 'resubmitted' ? 'resubmitted' : 'submitted', $actor->name, $channel);
+
+        // Aprobación interna (R3: al reenviar empieza de nuevo; R4: partes omitidas).
+        $r = $this->internal->restart($sheet);
+        $stage = $r['pending'] > 0 ? Timesheet::STAGE_INTERNAL : Timesheet::STAGE_EXTERNAL;
+        $sheet->forceFill(['stage' => $stage])->save();
+        $this->log($sheet, $kind === 'resubmitted' ? 'resubmitted' : 'submitted', $actor->name, $channel, ['stage' => $stage]);
+        foreach ($r['skipped'] as $project) {
+            $this->log($sheet, 'internal_skipped', $actor->name, $channel, ['stage' => 'internal', 'project' => $project->code]);
+        }
+
+        if ($stage === Timesheet::STAGE_INTERNAL) {
+            $sheet->last_notified_version = $sheet->version;
+            $sheet->save();
+            $this->internal->notify($sheet, $kind);
+            return $sheet->refresh();
+        }
 
         if ($approver === null) {
             // Dueño sin otro aprobador: autoaprobación, queda registrada como tal.
@@ -154,6 +197,7 @@ class SheetService
         if ($user && $user->id === $sheet->user_id && $via !== 'self') {
             throw ValidationException::withMessages(['status' => __('No puedes aprobar tu propia hoja.')]);
         }
+        $override = $this->guardStage($sheet, $approver, $user, $via);
 
         // Las tarifas quedan guardadas en cada entrada antes de cerrar la hoja (las entradas nuevas ya las traen al crearse).
         foreach ($sheet->entries()->with('project', 'service', 'user.terms')->get() as $e) {
@@ -164,6 +208,7 @@ class SheetService
 
         $sheet->fill([
             'status' => Timesheet::APPROVED,
+            'stage' => null,
             'decided_at' => now(),
             'decided_by_approver_id' => $approver?->id,
             'decided_by_user_id' => $user?->id,
@@ -172,7 +217,10 @@ class SheetService
         ])->save();
         ApprovalToken::where('timesheet_id', $sheet->id)->whereNull('used_at')->update(['used_at' => now()]);
         $this->log($sheet, $via === 'self' ? 'self_approved' : 'approved', $approver?->name ?? $user?->name, $via,
-            ['version' => $sheet->version]);
+            ['version' => $sheet->version, 'stage' => $override ? 'internal' : 'external']);
+        if ($override) {
+            $this->log($sheet, 'override', $user->name, $via, ['action' => 'approved', 'stage' => 'internal']);
+        }
 
         if ($via !== 'self') {
             $this->approvals->notifyWorkerDecision($sheet, 'approved');
@@ -193,9 +241,12 @@ class SheetService
         if ($expectedVersion !== null && $expectedVersion !== (int) $sheet->version) {
             throw ValidationException::withMessages(['version' => __('La hoja cambió después de enviarse; revisa la versión nueva.')]);
         }
+        $override = $this->guardStage($sheet, $approver, $user, $via);
+        $stage = $sheet->stage ?: Timesheet::STAGE_EXTERNAL;
 
         $sheet->fill([
             'status' => Timesheet::RETURNED,
+            'stage' => null,
             'decided_at' => now(),
             'decided_by_approver_id' => $approver?->id,
             'decided_by_user_id' => $user?->id,
@@ -204,9 +255,72 @@ class SheetService
             'change_notice_due_at' => null,
         ])->save();
         ApprovalToken::where('timesheet_id', $sheet->id)->whereNull('used_at')->update(['used_at' => now()]);
-        $this->log($sheet, 'returned', $approver?->name ?? $user?->name, $via, ['comment' => $comment]);
+        $this->log($sheet, 'returned', $approver?->name ?? $user?->name, $via, ['comment' => $comment, 'stage' => $stage]);
+        if ($override) {
+            $this->log($sheet, 'override', $user->name, $via, ['action' => 'returned', 'stage' => 'internal']);
+        }
         $this->approvals->notifyWorkerDecision($sheet, 'returned');
         return $sheet;
+    }
+
+    /**
+     * El aprobador externo no decide mientras la hoja está en la etapa interna. El dueño sí (R6, "override").
+     * @return bool true si es una anulación del dueño sobre la etapa interna
+     */
+    private function guardStage(Timesheet $sheet, ?Approver $approver, ?User $user, string $via): bool
+    {
+        if ($sheet->stage !== Timesheet::STAGE_INTERNAL || $via === 'self') {
+            return false;
+        }
+        if ($approver !== null || $user === null || ! $user->isOwner() || ! InternalApprovalService::OWNER_CAN_OVERRIDE) {
+            throw ValidationException::withMessages(['status' => __('Esta hoja espera la aprobación interna.')]);
+        }
+        return true;
+    }
+
+    /** Un supervisor interno aprueba todas sus partes pendientes de la hoja. Si con eso quedan todas, pasa al externo. */
+    public function internalApprove(Timesheet $sheet, User $user, ?int $expectedVersion): Timesheet
+    {
+        $sheet->refresh();
+        $this->guardInternal($sheet, $expectedVersion);
+        $projects = $this->internal->recordApproval($sheet, $user);
+        if ($projects->isEmpty()) {
+            throw ValidationException::withMessages(['status' => __('No tienes partes pendientes de aprobar en esta hoja.')]);
+        }
+        $this->log($sheet, 'internal_approved', $user->name, 'app', ['stage' => 'internal', 'version' => $sheet->version, 'projects' => $projects->pluck('code')->all()]);
+        if ($this->internal->pendingParts($sheet)->isEmpty()) {
+            $this->advanceToExternal($sheet);
+        }
+        return $sheet->refresh();
+    }
+
+    /** R3: la devolución interna vuelve la hoja completa a la persona. */
+    public function internalReturn(Timesheet $sheet, User $user, string $comment, ?int $expectedVersion): Timesheet
+    {
+        $comment = trim($comment);
+        if (mb_strlen($comment) < 3) {
+            throw ValidationException::withMessages(['comment' => __('Para devolver una hoja hay que escribir un comentario.')]);
+        }
+        $sheet->refresh();
+        $this->guardInternal($sheet, $expectedVersion);
+        $sheet->fill([
+            'status' => Timesheet::RETURNED, 'stage' => null, 'decided_at' => now(), 'decided_by_approver_id' => null,
+            'decided_by_user_id' => $user->id, 'decided_via' => 'internal', 'return_comment' => mb_substr($comment, 0, 1000),
+            'change_notice_due_at' => null,
+        ])->save();
+        $this->log($sheet, 'returned', $user->name, 'internal', ['comment' => $comment, 'stage' => 'internal']);
+        $this->approvals->notifyWorkerDecision($sheet, 'returned', $user->name);
+        return $sheet;
+    }
+
+    private function guardInternal(Timesheet $sheet, ?int $expectedVersion): void
+    {
+        if ($sheet->status !== Timesheet::SUBMITTED || $sheet->stage !== Timesheet::STAGE_INTERNAL) {
+            throw ValidationException::withMessages(['status' => __('Esta hoja ya no está pendiente de aprobación interna.')]);
+        }
+        if ($expectedVersion !== null && $expectedVersion !== (int) $sheet->version) {
+            throw ValidationException::withMessages(['version' => __('La hoja cambió después de enviarse; revisa la versión nueva.')]);
+        }
     }
 
     /** Envía los avisos de "la hoja cambió" cuya espera ya venció. Corre cada minuto por cron. */
@@ -216,7 +330,11 @@ class SheetService
         Timesheet::where('status', Timesheet::SUBMITTED)
             ->whereNotNull('change_notice_due_at')->where('change_notice_due_at', '<=', now())
             ->each(function (Timesheet $sheet) use (&$n) {
-                $this->approvals->sendSheetRequest($sheet, 'changed');
+                if ($sheet->stage === Timesheet::STAGE_INTERNAL) {
+                    $this->internal->notify($sheet, 'changed');
+                } else {
+                    $this->approvals->sendSheetRequest($sheet, 'changed');
+                }
                 $sheet->forceFill(['change_notice_due_at' => null, 'last_notified_version' => $sheet->version])->save();
                 $n++;
             });

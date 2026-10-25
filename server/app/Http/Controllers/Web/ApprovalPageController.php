@@ -109,7 +109,7 @@ class ApprovalPageController extends Controller
             return $this->codeView($token, $plain, 'b', $approver->company);
         }
         $sheets = Timesheet::with('user', 'entries.project')->where('approver_id', $approver->id)
-            ->where('status', Timesheet::SUBMITTED)->orderBy('submitted_at')->get();
+            ->where('status', Timesheet::SUBMITTED)->releasedToExternal()->orderBy('submitted_at')->get();
         $limit = $approver->company->rules()->get('second_approval_hours');
         return view('approval.batch', [
             'brand' => $approver->company->brand(), 'plain' => $plain, 'approver' => $approver,

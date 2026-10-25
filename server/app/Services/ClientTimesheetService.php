@@ -50,11 +50,14 @@ class ClientTimesheetService
             $p = $rows->first()->project;
             $lines = $rows->map(function (TimeEntry $e) use ($p, $showAmounts) {
                 $approved = $e->timesheet->status === Timesheet::APPROVED;
+                $times = $e->enteredAs() === 'times';
                 return [
                     'date' => $e->work_date->toDateString(),
                     'worker' => $e->user->name,
-                    'start' => $e->start_time ? substr($e->start_time, 0, 5) : null,
-                    'end' => $e->end_time ? substr($e->end_time, 0, 5) : null,
+                    // El detalle sigue cómo se entró: hora por hora (desde-hasta) o el total de horas del día.
+                    'entered_as' => $e->enteredAs(),
+                    'start' => $times ? substr($e->start_time, 0, 5) : null,
+                    'end' => $times ? substr((string) $e->end_time, 0, 5) : null,
                     'hours' => (float) $e->hours,
                     'description' => ($p->services->count() > 1 && $e->service ? $e->service->name.($e->note ? ' — ' : '') : '').(string) $e->note,
                     'approved' => $approved,
@@ -64,6 +67,7 @@ class ClientTimesheetService
             $byWorker = collect($lines)->groupBy('worker')->map(fn ($g, $w) => ['worker' => $w, 'hours' => round($g->sum('hours'), 2)])->values()->all();
             $projects[] = [
                 'code' => $p->code, 'name' => $p->name, 'lines' => $lines, 'by_worker' => $byWorker,
+                'has_times' => in_array('times', array_column($lines, 'entered_as'), true),
                 'hours' => round(array_sum(array_column($lines, 'hours')), 2),
                 'amount' => $showAmounts ? round(array_sum(array_column($lines, 'amount')), 2) : null,
             ];
@@ -76,6 +80,8 @@ class ClientTimesheetService
             'from' => $from, 'to' => $to,
             'generated_on' => now($company->timezone)->toDateString(),
             'projects' => $projects,
+            // Solo hay columnas Desde/Hasta si alguna línea se entró hora por hora.
+            'has_times' => in_array(true, array_column($projects, 'has_times'), true),
             'total_hours' => round(array_sum(array_column($projects, 'hours')), 2),
             'total_amount' => $showAmounts ? round(array_sum(array_column($projects, 'amount')), 2) : null,
             'show_amounts' => $showAmounts,
@@ -85,19 +91,33 @@ class ClientTimesheetService
         ];
     }
 
-    /** La misma hoja como tabla plana (para CSV). */
+    /** La misma hoja como tabla plana (para CSV). Desde/Hasta solo si alguna línea se entró hora por hora. */
     public function asTable(array $data): array
     {
+        $times = $data['has_times'];
         $rows = [];
         foreach ($data['projects'] as $p) {
             foreach ($p['lines'] as $l) {
-                $rows[] = [$l['date'], $l['worker'], $p['code'].' · '.$p['name'], $l['start'] ?? '', $l['end'] ?? '', $l['hours'],
-                    $l['description'].($l['approved'] ? '' : ' ('.__('sin aprobar').')')] + ($data['show_amounts'] ? [7 => $l['amount']] : []);
+                $row = [$l['date'], $l['worker'], $p['code'].' · '.$p['name']];
+                if ($times) {
+                    array_push($row, $l['start'] ?? '', $l['end'] ?? '');
+                }
+                $row[] = $l['hours'];
+                $row[] = $l['description'].($l['approved'] ? '' : ' ('.__('sin aprobar').')');
+                if ($data['show_amounts']) {
+                    $row[] = $l['amount'];
+                }
+                $rows[] = $row;
             }
         }
-        $cols = [['h' => __('Fecha'), 't' => 'date'], ['h' => __('Persona'), 't' => 'text'], ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Desde'), 't' => 'text'],
-            ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Descripción'), 't' => 'text']];
-        $total = [__('TOTAL'), '', '', '', '', $data['total_hours'], ''];
+        $cols = [['h' => __('Fecha'), 't' => 'date'], ['h' => __('Persona'), 't' => 'text'], ['h' => __('Proyecto'), 't' => 'text']];
+        $total = [__('TOTAL'), '', ''];
+        if ($times) {
+            array_push($cols, ['h' => __('Desde'), 't' => 'text'], ['h' => __('Hasta'), 't' => 'text']);
+            array_push($total, '', '');
+        }
+        array_push($cols, ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Descripción'), 't' => 'text']);
+        array_push($total, $data['total_hours'], '');
         if ($data['show_amounts']) {
             $cols[] = ['h' => __('Importe'), 't' => 'money'];
             $total[] = $data['total_amount'];
@@ -140,11 +160,26 @@ class ClientTimesheetService
         $s->setCellValue('A3', __('Período: :from a :to', ['from' => $data['from'], 'to' => $data['to']]));
         $s->setCellValue('A4', __('Emitida: :date', ['date' => $data['generated_on']]));
         $row = 6;
-        $heads = [__('Fecha'), __('Persona'), __('Proyecto'), __('Desde'), __('Hasta'), __('Horas'), __('Descripción')] + ($data['show_amounts'] ? [7 => __('Importe')] : []);
-        foreach ($heads as $i => $h) {
-            $s->setCellValue([$i + 1, $row], $h);
+        // Columnas: A fecha, B persona, C proyecto, [D desde, E hasta], horas, descripción, [importe].
+        $times = $data['has_times'];
+        $cHours = $times ? 6 : 4;
+        $cDesc = $cHours + 1;
+        $cAmount = $cDesc + 1;
+        $last = $data['show_amounts'] ? $cAmount : $cDesc;
+        $heads = [1 => __('Fecha'), 2 => __('Persona'), 3 => __('Proyecto')];
+        if ($times) {
+            $heads[4] = __('Desde');
+            $heads[5] = __('Hasta');
         }
-        $s->getStyle('A'.$row.':'.($data['show_amounts'] ? 'H' : 'G').$row)->getFont()->setBold(true);
+        $heads[$cHours] = __('Horas');
+        $heads[$cDesc] = __('Descripción');
+        if ($data['show_amounts']) {
+            $heads[$cAmount] = __('Importe');
+        }
+        foreach ($heads as $c => $h) {
+            $s->setCellValue([$c, $row], $h);
+        }
+        $s->getStyle([1, $row, $last, $row])->getFont()->setBold(true);
         $row++;
         foreach ($data['projects'] as $p) {
             foreach ($p['lines'] as $l) {
@@ -152,32 +187,42 @@ class ClientTimesheetService
                 $s->getStyle([1, $row])->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_DATE_YYYYMMDD);
                 $s->setCellValue([2, $row], $l['worker']);
                 $s->setCellValue([3, $row], $p['code'].' · '.$p['name']);
-                $s->setCellValue([4, $row], $l['start'] ?? '');
-                $s->setCellValue([5, $row], $l['end'] ?? '');
-                $s->setCellValue([6, $row], $l['hours']);
-                $s->setCellValue([7, $row], $l['description'].($l['approved'] ? '' : ' ('.__('sin aprobar').')'));
-                $s->getStyle([7, $row])->getAlignment()->setWrapText(true)->setVertical(Alignment::VERTICAL_TOP);
+                if ($times) {
+                    $s->setCellValue([4, $row], $l['start'] ?? '');
+                    $s->setCellValue([5, $row], $l['end'] ?? '');
+                }
+                $s->setCellValue([$cHours, $row], $l['hours']);
+                $s->setCellValue([$cDesc, $row], $l['description'].($l['approved'] ? '' : ' ('.__('sin aprobar').')'));
+                $s->getStyle([$cDesc, $row])->getAlignment()->setWrapText(true)->setVertical(Alignment::VERTICAL_TOP);
                 if ($data['show_amounts']) {
-                    $s->setCellValue([8, $row], $l['amount']);
+                    $s->setCellValue([$cAmount, $row], $l['amount']);
                 }
                 $row++;
             }
             $s->setCellValue([3, $row], __('Subtotal :code', ['code' => $p['code']]));
-            $s->setCellValue([6, $row], $p['hours']);
+            $s->setCellValue([$cHours, $row], $p['hours']);
             if ($data['show_amounts']) {
-                $s->setCellValue([8, $row], $p['amount']);
+                $s->setCellValue([$cAmount, $row], $p['amount']);
             }
-            $s->getStyle('A'.$row.':'.($data['show_amounts'] ? 'H' : 'G').$row)->getFont()->setBold(true);
+            $s->getStyle([1, $row, $last, $row])->getFont()->setBold(true);
             $row += 2;
         }
         $s->setCellValue([3, $row], __('TOTAL'));
-        $s->setCellValue([6, $row], $data['total_hours']);
+        $s->setCellValue([$cHours, $row], $data['total_hours']);
         if ($data['show_amounts']) {
-            $s->setCellValue([8, $row], $data['total_amount']);
+            $s->setCellValue([$cAmount, $row], $data['total_amount']);
         }
-        $s->getStyle('A'.$row.':'.($data['show_amounts'] ? 'H' : 'G').$row)->getFont()->setBold(true);
-        foreach (['A' => 12, 'B' => 22, 'C' => 30, 'D' => 8, 'E' => 8, 'F' => 8, 'G' => 70, 'H' => 12] as $col => $w) {
-            $s->getColumnDimension($col)->setWidth($w);
+        $s->getStyle([1, $row, $last, $row])->getFont()->setBold(true);
+        $widths = [1 => 12, 2 => 22, 3 => 30];
+        if ($times) {
+            $widths[4] = 8;
+            $widths[5] = 8;
+        }
+        $widths[$cHours] = 8;
+        $widths[$cDesc] = 70;
+        $widths[$cAmount] = 12;
+        foreach ($widths as $c => $w) {
+            $s->getColumnDimensionByColumn($c)->setWidth($w);
         }
         $dir = storage_path('app/exports');
         @mkdir($dir, 0775, true);

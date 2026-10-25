@@ -89,3 +89,19 @@ Prueba en desarrollo: se creó la cuenta de aprobador de Jorge Ramos (jorge@clie
 
 ## Estado al 2026-10-26 (tarde): lista 1–7 construida y probada, SIN subir
 154 pruebas del servidor, 84 del móvil, tsc y revisión de la web en verde. Falta ver el móvil en un teléfono o emulador (buscador, modo limitado, ojito, ícono, servidor fijo), probar Caddy con varios dominios y el flujo del aprobador con Turnstile real, y decidir si se instala Laravel Boost (lo pide server/CLAUDE.md; no se instaló).
+
+## Rehacer pantallas como el mockup y aprobación interna (Luis, 2026-10-26, noche)
+En construcción (3 agentes): Hoja semanal (tabla editable por proyecto/servicio/tipo de hora, aviso de semanas pasadas, ID NUMBER, reloj como ícono con modal, toasts en vez de alertas pegadas), Personas (invitar por correo con Worker/Approver/Back office, tabla con 2-STEP y STATUS, términos del consultor) y Aprobaciones (conteos, filtros, columnas). Número de empleado, tipos de hora (REG, OT, HOL, Sick, VAC, NB) para registrar un día aunque no se trabajara (vacaciones, enfermedad).
+Decidido: servicios por "desde/hasta" se editan en un cuadrito al tocar la celda; el nombre va en la invitación.
+
+**Pendiente de construir (esperando respuestas de Luis): APROBACIÓN INTERNA.**
+- Aprobador interno = un empleado más (supervisor). El PROYECTO tiene la opción "requiere aprobación interna" y se escogen uno o más aprobadores internos.
+- Flujo: la persona envía la hoja → se notifica al aprobador interno → cuando la aprueba, pasa al aprobador externo, que certifica al final.
+- La tabla de Personas muestra como "Approver" a quien sea aprobador interno en algún proyecto (se deduce de los proyectos).
+- Preguntas abiertas: ¿basta uno de varios aprobadores internos de un proyecto o hacen falta todos?; hoja con proyectos distintos: ¿cada proyecto con su(s) aprobador(es) interno(s) aprueba su parte y la hoja pasa al externo cuando todas estén aprobadas?; si el interno devuelve, ¿vuelve toda la hoja a la persona?
+
+**Pendiente (instrucción de Luis): el detalle de horas del informe que acompaña la factura** (hoja para el cliente en PDF/Excel/CSV, líneas de la factura de venta y detalle del consultor) debe seguir cómo se entró: si se entró hora por hora, sale hora por hora (desde/hasta); si se entró el total de horas, sale el total. Reemplaza el ajuste por proyecto "Invoice detail" (total/por día/con horas), que desaparece.
+
+## Estado al 2026-10-26 (noche): construido y probado, SIN subir
+Pantallas del mockup, aprobación interna y detalle de horas por cómo se entró. 182 pruebas del servidor, 84 del móvil, tsc en verde. Flujo interno probado con usuarios reales (Ana envía, Marcos aprueba o devuelve, el externo recibe solo después). Reglas de aprobación interna sin confirmar por Luis (basta uno, parte por proyecto, devolución completa, etc.); están en InternalApprovalService.
+Pendiente: aprobación interna en el móvil (no pedida), ver el móvil en teléfono, revisar los PDF/Excel del detalle de horas, subir a GitHub.

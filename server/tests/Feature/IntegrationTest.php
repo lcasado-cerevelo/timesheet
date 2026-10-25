@@ -118,26 +118,39 @@ class IntegrationTest extends TestCase
             ->assertJsonPath('accountisi_invoice_id', '501');
         Http::assertSent(fn (HttpRequest $r) => $r->url() === 'http://localhost:5099/api/invoices'
             && $r['CustomerId'] === 77 && str_contains($r['Description'], 'Proyecto: P-1 Planta A') && str_contains($r['Description'], 'Octubre'));
-        Http::assertSent(fn (HttpRequest $r) => str_ends_with($r->url(), '/api/invoices/501/lines') && $r['Quantity'] == 12 && $r['UnitPrice'] == 50 && $r['ItemId'] === 5);
+        Http::assertSent(fn (HttpRequest $r) => str_ends_with($r->url(), '/api/invoices/501/lines') && $r['Quantity'] == 8 && $r['UnitPrice'] == 50 && $r['ItemId'] === 5);
+        Http::assertSent(fn (HttpRequest $r) => str_ends_with($r->url(), '/api/invoices/501/lines') && $r['Quantity'] == 4 && $r['UnitPrice'] == 50 && $r['ItemId'] === 5);
         $this->assertSame(0, TimeEntry::whereNull('sales_sync_id')->count());
 
         // No se vuelve a facturar lo ya facturado.
         $this->postJson('/api/integrations/accountisi/sales-invoice', $body)->assertStatus(422)->assertJsonValidationErrors('from');
     }
 
-    public function test_invoice_detail_level_follows_the_project_setting(): void
+    public function test_invoice_detail_follows_how_the_hours_were_entered(): void
     {
         $this->approvedHours();
-        $this->project->update(['invoice_detail' => 'by_day']);
         $this->configure();
         $body = ['customer_id' => $this->customer->id, 'from' => '2026-10-01', 'to' => '2026-10-31'];
+
+        // Entradas hora por hora: una línea por entrada, con desde–hasta. El ajuste viejo del proyecto ya no cuenta.
+        $this->project->update(['invoice_detail' => 'hours_total']);
         $lines = $this->postJson('/api/integrations/accountisi/sales-preview', $body)->json('lines');
         $this->assertCount(2, $lines);
-        $this->assertStringContainsString('2026-10-13', $lines[0]['description']);
+        $this->assertStringContainsString('2026-10-13 08:00–12:00', $lines[0]['description']);
+        $this->assertStringContainsString('2026-10-20 08:00–16:00', $lines[1]['description']);
+        $this->assertEquals([4, 8], [$lines[0]['quantity'], $lines[1]['quantity']]);
+        $this->assertEquals([50, 50], [$lines[0]['unit_price'], $lines[1]['unit_price']]);
 
-        $this->project->update(['invoice_detail' => 'with_times']);
+        // Entradas por total del día: una línea por día con el total de ese día (dos entradas del mismo día se suman).
+        $e = TimeEntry::where('work_date', '2026-10-20')->first();
+        \Illuminate\Support\Facades\DB::table('time_entries')->insert(array_merge($e->getAttributes(), ['id' => null, 'hours' => 2, 'start_time' => null, 'end_time' => null]));
+        TimeEntry::where('id', $e->id)->update(['start_time' => null, 'end_time' => null]);
         $lines = $this->postJson('/api/integrations/accountisi/sales-preview', $body)->json('lines');
-        $this->assertStringContainsString('08:00–12:00', $lines[0]['description']);
+        $this->assertCount(2, $lines);                                   // 13/10 por horario + 20/10 por total
+        $this->assertStringContainsString('2026-10-13 08:00–12:00', $lines[0]['description']);
+        $this->assertStringEndsWith('2026-10-20', $lines[1]['description']);
+        $this->assertEquals(10, $lines[1]['quantity']);                  // 8 + 2
+        $this->assertCount(2, $lines[1]['entry_ids']);
     }
 
     public function test_append_to_an_open_invoice_of_the_same_customer_only(): void

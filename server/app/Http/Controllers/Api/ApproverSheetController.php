@@ -7,6 +7,7 @@ use App\Models\ApprovalToken;
 use App\Models\Approver;
 use App\Models\Timesheet;
 use App\Services\ApprovalService;
+use App\Services\ReviewService;
 use App\Services\SheetService;
 use App\Support\Week;
 use Illuminate\Http\Request;
@@ -16,7 +17,7 @@ use Illuminate\Validation\ValidationException;
 /** Hojas del aprobador con cuenta: solo las que tienen su aprobador asignado. */
 class ApproverSheetController extends Controller
 {
-    public function __construct(private SheetService $sheets, private ApprovalService $approvals, private SheetController $sheetCtl)
+    public function __construct(private SheetService $sheets, private ApprovalService $approvals, private SheetController $sheetCtl, private ReviewService $review)
     {
     }
 
@@ -27,9 +28,18 @@ class ApproverSheetController extends Controller
         $map = ['pending' => [Timesheet::SUBMITTED], 'approved' => [Timesheet::APPROVED], 'returned' => [Timesheet::RETURNED],
             'all' => [Timesheet::SUBMITTED, Timesheet::APPROVED, Timesheet::RETURNED]];
         abort_unless(isset($map[$status]), 422, __('Estado no válido.'));
-        $rows = Timesheet::with('user')->where('approver_id', $approver->id)->whereIn('status', $map[$status])
+        $rows = Timesheet::with('user')->where('approver_id', $approver->id)->whereIn('status', $map[$status])->releasedToExternal()
             ->orderByRaw('submitted_at is null')->orderBy('submitted_at')->orderBy('id')->get();
         return response()->json($rows->map(fn ($s) => $this->summary($s, $approver))->values());
+    }
+
+    /** Lista de revisión con filtros (status, q, type, from, to) y conteos; solo las hojas de este aprobador. */
+    public function review(Request $request)
+    {
+        $approver = $this->approver($request);
+        // Mientras la hoja espera a los aprobadores internos, el externo todavía no la ve.
+        $scope = Timesheet::query()->where('approver_id', $approver->id)->releasedToExternal();
+        return response()->json($this->review->run($request, $scope, fn ($s) => $this->summary($s, $approver) + $this->review->extras($s)));
     }
 
     public function show(Request $request, Timesheet $sheet)
@@ -81,7 +91,8 @@ class ApproverSheetController extends Controller
 
     private function own(Timesheet $sheet, Approver $approver): void
     {
-        abort_unless($sheet->approver_id === $approver->id && $sheet->status !== Timesheet::DRAFT, 404);
+        abort_unless($sheet->approver_id === $approver->id && $sheet->status !== Timesheet::DRAFT
+            && ! ($sheet->status === Timesheet::SUBMITTED && $sheet->stage === Timesheet::STAGE_INTERNAL), 404);
     }
 
     private function needsCode(Timesheet $sheet, Approver $approver): bool
@@ -122,6 +133,6 @@ class ApproverSheetController extends Controller
             'warnings' => array_map(fn ($w) => ['message' => $w['message']], $s->warnings()),
             'needs_code' => $this->needsCode($s, $approver),
             'return_comment' => $s->return_comment,
-        ];
+        ] + app(\App\Services\InternalApprovalService::class)->info($s);
     }
 }

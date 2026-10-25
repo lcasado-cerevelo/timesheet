@@ -35,7 +35,7 @@ class DemoData extends Command
         ContractorTerms::create(['user_id' => $ana->id, 'rate' => 40, 'retention_pct' => 10, 'ivu_agent' => true, 'ivu_pct' => 4, 'terms_days' => 30]);
         $adv = Customer::create(['company_id' => $c->id, 'name' => 'Advance Logistics']);
         $p1 = Project::create(['company_id' => $c->id, 'customer_id' => $adv->id, 'code' => 'ADV-1', 'name' => 'Soporte presencial', 'bill_rate' => 50]);
-        $p2 = Project::create(['company_id' => $c->id, 'customer_id' => $adv->id, 'code' => 'ADV-2', 'name' => 'Desarrollo WebApp', 'bill_rate' => 75, 'invoice_detail' => 'by_day']);
+        $p2 = Project::create(['company_id' => $c->id, 'customer_id' => $adv->id, 'code' => 'ADV-2', 'name' => 'Desarrollo WebApp', 'bill_rate' => 75]);
         $pac = Project::create(['company_id' => $c->id, 'code' => 'PAC-1', 'name' => 'Maria Lopez', 'bill_rate' => 100,
             'meta' => ['plan_medico' => 'Triple S', 'numero_contrato' => 'C-123']]);
         foreach ([$ana, $marcos] as $u) {

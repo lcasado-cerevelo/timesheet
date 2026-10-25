@@ -36,6 +36,17 @@ td{padding:6px;border-bottom:1px solid #ddd}
 @if((float) $inv->ivu > 0)<tr><td>{{ __('IVU retenido (:pct%)', ['pct' => rtrim(rtrim((string) $terms->ivu_pct, '0'), '.')]) }}</td><td class="r">−${{ number_format((float) $inv->ivu, 2) }}</td></tr>@endif
 <tr class="big"><td>{{ __('Neto a pagar') }}</td><td class="r">${{ number_format((float) $inv->net, 2) }}</td></tr>
 </table>
+@if(! empty($detail))
+<h3 style="margin:22px 0 4px;color:{{ $brand['color_primary'] }}">{{ __('Detalle de horas') }}</h3>
+@foreach($detail as $d)
+<table style="margin-bottom:8px">
+<tr><th colspan="{{ $d['has_times'] ? 3 : 2 }}">{{ $d['title'] }}</th><th class="r" style="width:14%">{{ number_format($d['hours'], 2) }} h</th></tr>
+@foreach($d['lines'] as $l)
+<tr><td style="width:16%">{{ $l['date'] }}</td>@if($d['has_times'])<td style="width:20%">{{ $l['start'] ? $l['start'].'–'.$l['end'] : '' }}</td>@endif<td>{{ $l['service'] }}</td><td class="r">{{ number_format($l['hours'], 2) }}</td></tr>
+@endforeach
+</table>
+@endforeach
+@endif
 @if((float) $inv->ivu > 0)<p class="foot">{{ __('Como agente de retención del IVU, el pagador remite el IVU retenido mediante SURI.') }}</p>@endif
 <p class="foot">{{ $brand['email_footer'] }}</p>
 </body>

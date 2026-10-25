@@ -51,6 +51,19 @@ class User extends Authenticatable
         return $this->belongsToMany(Project::class);
     }
 
+    /** Proyectos donde esta persona es aprobador interno. */
+    public function internalProjects(): BelongsToMany
+    {
+        return $this->belongsToMany(Project::class, 'project_internal_approvers');
+    }
+
+    /** Es aprobador interno si lo es de al menos un proyecto activo que exige aprobación interna. */
+    public function isInternalApprover(): bool
+    {
+        return $this->internalProjects()->where('projects.active', true)->where('projects.requires_internal_approval', true)
+            ->where('projects.company_id', $this->company_id)->exists();
+    }
+
     public function terms(): HasOne
     {
         return $this->hasOne(ContractorTerms::class);

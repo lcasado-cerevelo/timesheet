@@ -14,7 +14,7 @@ use Illuminate\Validation\ValidationException;
 /**
  * Factura de venta en Accountisi a partir de horas aprobadas de un cliente en un período.
  *  - El proyecto va en el comentario (Description) de la factura.
- *  - Nivel de detalle por proyecto: total, por día o con hora desde/hasta (projects.invoice_detail).
+ *  - El detalle sigue cómo se entraron las horas: hora por hora (desde–hasta) o total del día (ya no hay ajuste por proyecto).
  *  - Modo "new" crea una factura; "append" añade a una factura abierta (borrador) del mismo cliente.
  *  - Las horas facturadas quedan marcadas y no se vuelven a facturar.
  */
@@ -52,21 +52,20 @@ class SalesInvoiceService
             $svc = $first->service;
             $title = $p->code.' '.$p->name.($p->services->count() > 1 && $svc ? ' · '.$svc->name : '');
             $item = $svc?->accountisi_item_id ?: null;
-            if ($p->invoice_detail === 'by_day') {
-                foreach ($rows->groupBy(fn ($e) => $e->work_date->toDateString()) as $day => $g) {
-                    $lines[] = ['project_id' => $p->id, 'service_id' => $svc?->id, 'item_id' => $item, 'description' => $title.' · '.$day,
-                        'quantity' => (float) $g->sum('hours'), 'unit_price' => $rate, 'entry_ids' => $g->pluck('id')->all()];
-                }
-            } elseif ($p->invoice_detail === 'with_times') {
-                foreach ($rows as $e) {
-                    $span = $e->start_time ? substr($e->start_time, 0, 5).'–'.substr((string) $e->end_time, 0, 5) : '';
-                    $lines[] = ['project_id' => $p->id, 'service_id' => $svc?->id, 'item_id' => $item,
-                        'description' => trim($title.' · '.$e->work_date->toDateString().' '.$span),
-                        'quantity' => (float) $e->hours, 'unit_price' => $rate, 'entry_ids' => [$e->id]];
-                }
-            } else {
-                $lines[] = ['project_id' => $p->id, 'service_id' => $svc?->id, 'item_id' => $item, 'description' => $title.' '.__('(:from a :to)', ['from' => $from, 'to' => $to]),
-                    'quantity' => (float) $rows->sum('hours'), 'unit_price' => $rate, 'entry_ids' => $rows->pluck('id')->all()];
+            // El detalle sigue cómo se entró: hora por hora = una línea por entrada (fecha desde–hasta);
+            // total de horas = una línea por día con el total de ese día. Cantidad, precio y artículo no cambian.
+            $perLine = [];
+            foreach ($rows->filter(fn ($e) => $e->enteredAs() === 'times') as $e) {
+                $perLine[] = [$e->work_date->toDateString().' '.substr($e->start_time, 0, 5).'–'.substr((string) $e->end_time, 0, 5),
+                    $e->work_date->toDateString(), 0, (float) $e->hours, [$e->id]];
+            }
+            foreach ($rows->filter(fn ($e) => $e->enteredAs() === 'total')->groupBy(fn ($e) => $e->work_date->toDateString()) as $day => $g) {
+                $perLine[] = [$day, $day, 1, (float) $g->sum('hours'), $g->pluck('id')->all()];
+            }
+            usort($perLine, fn ($a, $b) => [$a[1], $a[0], $a[2]] <=> [$b[1], $b[0], $b[2]]);
+            foreach ($perLine as [$label, , , $qty, $ids]) {
+                $lines[] = ['project_id' => $p->id, 'service_id' => $svc?->id, 'item_id' => $item, 'description' => $title.' · '.$label,
+                    'quantity' => $qty, 'unit_price' => $rate, 'entry_ids' => $ids];
             }
         }
         $missingRate = array_values(array_unique($missingRate));

@@ -34,14 +34,17 @@ class EntryRulesTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors('start_time');
     }
 
-    public function test_project_that_requires_times_is_refused_to_a_full_day_user(): void
+    public function test_old_invoice_detail_setting_is_accepted_but_ignored(): void
     {
         $this->world(['capture_mode' => 'full_day']);
         $this->project->update(['invoice_detail' => 'with_times']);
         Sanctum::actingAs($this->worker);
+        $this->postJson('/api/entries', ['project_id' => $this->project->id, 'work_date' => '2026-10-20', 'hours' => 8])->assertCreated();
 
-        $this->postJson('/api/entries', ['project_id' => $this->project->id, 'work_date' => '2026-10-20', 'hours' => 8])
-            ->assertStatus(422)->assertJsonValidationErrors('project_id');
+        Sanctum::actingAs($this->owner);
+        $r = $this->putJson('/api/projects/'.$this->project->id, ['code' => 'P-1', 'name' => 'Planta A', 'billable' => false, 'invoice_detail' => 'by_day'])->assertOk();
+        $this->assertArrayNotHasKey('invoice_detail', $r->json());
+        $this->assertSame('with_times', $this->project->fresh()->invoice_detail);   // columna conservada, sin efecto
     }
 
     public function test_user_cannot_change_their_own_capture_mode(): void

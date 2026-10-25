@@ -130,12 +130,12 @@ async function download(path, opts, fallbackName) {
 const ROUTES = {
   week: { t: 'Timesheet', f: weekView },
   weeks: { t: 'All weeks', f: weeksView },
-  approvals: { t: 'Approvals', owner: true, f: () => (isAp() ? approverView() : approvalsView()) },
+  approvals: { t: 'Approvals', owner: true, f: reviewScreen },
   invoices: { t: 'Invoices', f: invoicesView },
   reports: { t: 'Hours report', f: reportsView },
   clientsheet: { t: 'Client timesheet', owner: true, f: clientSheetView },
   export: { t: 'Export', f: exportView },
-  people: { t: 'People', owner: true, f: peopleView },
+  people: { t: 'People', owner: true, f: peopleScreen },
   approvers: { t: 'Approvers', owner: true, f: approversView },
   customers: { t: 'Clients', owner: true, f: customersView },
   projects: { t: 'Projects', owner: true, f: projectsView },
@@ -156,7 +156,8 @@ const GROUPS = [
 const route = () => (location.hash.replace('#/', '') || 'week').split('?')[0];
 const isAp = () => S.me?.role === 'approver';
 /* The approver (an outside person with an account) only has Approvals, plus My account to change the password. */
-const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' : !ROUTES[k].owner || S.me.role === 'owner');
+const isIn = () => !!S.me?.internal_approver && S.me.role !== 'owner' && !isAp();   // an employee who approves hours internally
+const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' : !ROUTES[k].owner || S.me.role === 'owner' || (k === 'approvals' && isIn()));
 const home = () => (isAp() ? 'approvals' : 'week');
 const roleLabel = u => (u.role === 'approver' ? 'Approver' : u.role === 'owner' ? 'Owner' : u.worker_type === 'employee' ? 'Employee' : 'Consultant');
 const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
@@ -166,8 +167,8 @@ function shell(name, body, withFlash) {
   const b = S.me.brand || { name: 'Tiempo' }; const solo = !!b.logo_url && b.show_name === false;
   const groups = GROUPS.map(g => ({ ...g, vis: g.r.filter(canSee) })).filter(g => g.vis.length).map(g => (g.vis.length === 1 && g.vis[0] === 'account' ? { ...g, t: 'My account' } : g));
   const cur = groups.find(g => g.vis.includes(name));
-  const fl = withFlash && S.flash ? `<div class="msg ${S.flash.kind}">${esc(T(S.flash.text))}</div>` : '';
-  if (withFlash) S.flash = null;
+  const fl = '';   // messages are floating toasts now (see toast()), they no longer push the page around
+  if (withFlash && S.flash) { const f = S.flash; S.flash = null; setTimeout(() => toast(f.text, f.kind), 0); }
   const sub = cur && cur.vis.length > 1 ? `<div class="subtabs">${cur.vis.map(k => `<a href="#/${k}" class="${k === name ? 'on' : ''}">${ROUTES[k].t}</a>`).join('')}</div>` : '';
   return `<header class="hdr"><div class="brand ${solo ? 'solo' : ''}">${b.logo_url ? `<img src="${esc(b.logo_url)}" alt="${esc(b.name)}">${solo ? '' : '<span class="sep"></span>'}` : ''}${solo ? '' : `<div><b>${esc(b.name)}</b><small>Timesheets &amp; invoices</small></div>`}</div>
     <span class="spacer"></span><div class="who"><span class="av">${esc(initials(S.me.name))}</span><div><b>${esc(S.me.name)}</b><small>${roleLabel(S.me)}</small></div></div>
@@ -381,82 +382,8 @@ function mountTurnstile(key) {
   document.head.appendChild(s);
 }
 
-/* --- Timesheet (weekly time record) --- */
-async function weekView() {
-  const end = weekEnd(S.weekDate), start = addDays(end, -6);
-  const [sheet, ents, projects, mine] = await Promise.all([
-    api('/sheets/week?date=' + S.weekDate), api(`/entries?from=${start}&to=${end}`), api('/projects'), api('/sheets').catch(() => [])]);
-  S.cache.projects = projects;
-  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  const mode = S.me.capture_mode;
-  const running = ents.entries.find(e => e.running);
-  const locked = sheet.locked;
-  const list = ents.entries.filter(e => !e.running);
-  S.cache.entries = ents.entries;
+/* --- Timesheet (weekly time record): the screen lives in the "week screen" block further down (WEB-HOJA) --- */
 
-  // Week picker: the last 12 weeks, with the state of each one
-  const cur = weekEnd(today());
-  const stateOf = Object.fromEntries(mine.map(s => [s.week_ending, STATUS[s.status] || s.status]));
-  const weeks = Array.from({ length: 12 }, (_, i) => addDays(cur, -7 * i));
-  if (!weeks.includes(end)) weeks.push(end);
-  weeks.sort().reverse();
-  const picker = weeks.map(w => `<option value="${w}" ${w === end ? 'selected' : ''}>${nice(w)} · ${stateOf[w] ? T(stateOf[w]) : T('Not started')}${w === cur ? ' · ' + T('current') : ''}</option>`).join('');
-
-  // Grid: one row per project, one column per day
-  const byProj = new Map();
-  const svcCount = id => (projects.find(p => p.id === id)?.services || []).length;
-  for (const e of list) { const k = e.project_id + '|' + (svcCount(e.project_id) > 1 ? e.service_id : ''); if (!byProj.has(k)) byProj.set(k, { p: e.project, s: svcCount(e.project_id) > 1 ? e.service : null, by: {} }); const r = byProj.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
-  const dayTot = d => list.filter(e => e.work_date === d).reduce((a, e) => a + e.hours, 0);
-  const cell = v => (v ? `<td>${h1(v)}</td>` : '<td class="zero">0</td>');
-  const gridRows = [...byProj.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}</td>${days.map(d => cell(r.by[d])).join('')}<td class="r"><b>${h1(Object.values(r.by).reduce((a, v) => a + v, 0))}</b></td></tr>`).join('')
-    || `<tr><td colspan="9" class="muted">No hours yet this week. Add an entry below.</td></tr>`;
-  const bill = list.filter(e => e.billable !== false).reduce((a, e) => a + e.hours, 0);
-  const non = list.filter(e => e.billable === false).reduce((a, e) => a + e.hours, 0);
-
-  const lines = list.map(e => `<tr><td>${dayLabel(e.work_date)}</td><td>${esc(e.project?.code)}${e.service && (projects.find(p => p.id === e.project_id)?.services || []).length > 1 ? ' · ' + esc(e.service.name) : ''}</td>
-      <td>${e.start_time ? esc(e.start_time) + '–' + esc(e.end_time) : 'Full day'}</td>
-      <td class="r">${hrs(e.hours)}</td><td>${esc(e.note)}</td>
-      <td class="r">${locked ? '' : `<button class="btn ghost sm" data-act="edit" data-id="${e.id}">Edit</button> <button class="btn danger sm" data-act="del" data-id="${e.id}">Delete</button>`}</td></tr>`).join('');
-  const warn = sheet.warnings.map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('');
-  const ret = sheet.status === 'returned' && sheet.return_comment ? `<div class="msg err"><b>Returned for correction:</b> ${esc(sheet.return_comment)}</div>` : '';
-  const opts = projects.filter(p => p.active).map(p => `<option value="${p.id}">${esc(p.code)} · ${esc(p.name)}</option>`).join('');
-  const dayOpts = days.map(d => `<option value="${d}" ${d === (days.includes(today()) ? today() : days[0]) ? 'selected' : ''}>${dayLabel(d)}</option>`).join('');
-  const form = locked ? `<div class="msg ok">This timesheet is approved and can no longer be changed.</div>` : `
-    <div class="card"><h2 id="eform-title">Add entry</h2>
-    <form data-form="entry"><input type="hidden" name="id">
-    <div class="grid">
-      <div><label>Day</label><select name="work_date">${dayOpts}</select></div>
-      <div><label>Project</label><select name="project_id" required data-act-change="entry-project">${opts}</select></div>
-      <div><label>Service</label><select name="service_id" data-act-change="entry-service"></select></div>
-      <div data-f="detail"><label>From</label><input name="start_time" type="time" required></div><div data-f="detail"><label>To</label><input name="end_time" type="time" required></div>
-      <div data-f="total"><label>Hours for the day</label><input name="hours" type="number" step="0.25" min="0.25" required></div>
-      <div style="grid-column:span 2"><label>Note</label><input name="note" maxlength="1000"></div>
-    </div>
-    <p class="row"><button class="btn" type="submit">Save entry</button><button class="btn ghost" type="reset" data-act="cancel-edit">Clear</button></p></form></div>
-    <div class="card"><h2>Clock</h2>${running
-      ? `<div class="running">Running on <b>${esc(running.project?.code)}</b>${running.service && (running.project?.services || []).length > 1 ? ' · ' + esc(running.service.name) : ''} since ${esc(running.start_time)} · <button class="btn sm" data-act="clock-stop">Stop</button></div>`
-      : `<form data-form="clock" class="row"><select name="project_id" style="max-width:320px" data-act-change="clock-project">${opts}</select><select name="service_id" style="max-width:240px"></select><button class="btn" type="submit">Start clock</button></form>`}</div>`;
-  const late = sheet.late ? ' <span class="badge returned">Late</span>' : '';
-  return `<div class="row"><div><h1>Weekly time record</h1><p class="sub" style="margin:0">Week ending ${longDay(end)}</p></div><span class="spacer"></span>
-    <span class="badge ${sheet.status}">${STATUS[sheet.status]}</span>${late}</div>
-    <div class="card" style="margin-top:16px"><div class="weeknav">
-      <button class="btn ghost" data-act="wk" data-n="-7" title="Previous week">←</button>
-      <div class="pick"><label>Week ending (Sunday)</label><select data-act-change="wk-pick">${picker}</select></div>
-      <button class="btn ghost" data-act="wk" data-n="7" ${end >= cur ? 'disabled' : ''} title="Next week">→</button>
-      <button class="btn ghost" data-act="wk-now" ${end === cur ? 'disabled' : ''}>Current week</button></div></div>
-    ${warn}${ret}
-    <div class="card"><div class="facts"><div><label>Name</label><b>${esc(S.me.name)}</b></div><div><label>Worker type</label><b>${S.me.worker_type === 'employee' ? 'Employee' : 'Consultant'}</b></div>
-      <div><label>Entry preference</label><b>${mode === 'full_day' ? 'Total hours per day' : 'From / to'}</b></div><div><label>Version</label><b>${sheet.version}</b></div></div></div>
-    <div class="card"><div class="row"><h2 style="margin:0">Hours by project</h2><span class="spacer"></span>${exportBar('week', { date: S.weekDate })}</div>
-      <div class="scroll"><table class="daygrid"><tr><th>Project</th>${days.map(d => `<th>${dow(parse(d).getDay())}<br><span class="muted">${nice(d).replace(/, \d+$/, '')}</span></th>`).join('')}<th class="r">Total</th></tr>
-      ${gridRows}<tr class="tot"><td>Daily total</td>${days.map(d => `<td>${h1(dayTot(d))}</td>`).join('')}<td class="r">${h1(sheet.total_hours)}</td></tr></table></div></div>
-    <div class="stats"><div class="stat"><span>Billable hours</span><b>${h1(bill)}</b></div><div class="stat"><span>Non-billable hours</span><b>${h1(non)}</b></div><div class="stat"><span>Total</span><b>${h1(sheet.total_hours)}</b></div></div>
-    <div class="card"><h2>Entries</h2>${lines ? `<table><tr><th>Day</th><th>Project</th><th>Time</th><th class="r">Hours</th><th>Note</th><th></th></tr>${lines}</table>` : '<p class="muted">No entries yet.</p>'}</div>
-    <div class="card"><p class="muted" style="margin-top:0">I certify these hours are accurate. Submitting counts as my electronic signature.</p><p class="row" style="margin:0">
-      ${['draft', 'returned'].includes(sheet.status) ? `<button class="btn pri" data-act="submit" data-id="${sheet.id}">${sheet.status === 'returned' ? 'Corrected: submit again' : 'Submit for approval'}</button>` : ''}
-      ${sheet.status === 'submitted' ? '<span class="muted">Waiting for a decision. If you change it, the approver gets a notice that it changed.</span>' : ''}
-      ${sheet.status === 'approved' ? '<span class="muted">Approved and locked.</span>' : ''}</p></div>${form}`;
-}
 
 /* --- All weeks: every week of the person, including the ones not filled in yet --- */
 async function weeksView() {
@@ -464,12 +391,13 @@ async function weeksView() {
   const cur = weekEnd(today());
   const back = Number(S.me.rules?.weeks_back ?? 8);
   const byEnd = Object.fromEntries(mine.map(s => [s.week_ending, s]));
-  const ends = new Set([...Array.from({ length: back + 1 }, (_, i) => addDays(cur, -7 * i)), ...mine.map(s => s.week_ending)]);
+  const first = S.me.member_since ? weekEnd(S.me.member_since) : null;
+  const ends = new Set([...Array.from({ length: back + 1 }, (_, i) => addDays(cur, -7 * i)).filter(w => !first || w >= first), ...mine.map(s => s.week_ending)]);
   const rows = [...ends].sort().reverse().map(end => {
     const s = byEnd[end];
     const st = s ? s.status : 'none';
     const color = { draft: 'gray', submitted: 'blue', approved: 'green', returned: 'red', none: 'amber' }[st];
-    const label = st === 'none' ? 'Not submitted' : STATUS[st];
+    const label = st === 'none' ? 'Not submitted' : stageLabel(s);
     const open = ['draft', 'returned'].includes(st) ? ['Continue', 'pri'] : st === 'none' ? ['Fill in', 'pri'] : ['View', 'ghost'];
     return `<tr><td><b>${nice(end)}</b></td><td class="r">${s && s.total_hours ? h1(s.total_hours) : '—'}</td><td>${pill(label, color)}${s?.late ? ' ' + pill('Late', 'red') : ''}</td>
       <td>${esc(s?.approved_by || '—')}</td><td>${esc(s?.invoice_number || '—')}</td>
@@ -600,16 +528,15 @@ async function projectsView() {
   const metaTxt = p?.meta ? Object.entries(p.meta).map(([k, v]) => k + '=' + v).join('\n') : '';
   return `<h1>Projects</h1><p class="sub">Only the company owner manages projects. For Consultorio 1500 each patient is a project named “Patient - Health plan - Contract” (if the name has no plan or contract, the plan_medico and numero_contrato fields under “Fields” are used).</p>
     <div class="card">${exportBar('projects', activeF('projects'))}${filterBar('projects', [{ k: 'q', label: 'Search', ph: 'Code, name or client' }, { k: 'customer_id', label: 'Client', type: 'select', opts: [['', 'All'], ...customers.map(c => [c.id, c.name])] }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }, { k: 'billable', label: 'Billable', type: 'select', opts: YN('Billable', 'Non-billable') }])}
-    <table><tr><th>Code</th><th>Name</th><th>Client</th><th>Invoice detail</th><th class="r">Rate</th><th>Status</th><th></th></tr>
+    <table><tr><th>Code</th><th>Name</th><th>Client</th><th class="r">Rate</th><th>Status</th><th></th></tr>
     ${shown.map(x => `<tr><td>${esc(x.code)}</td><td>${esc(x.name)}${(x.services || []).filter(s => s.active).length > 1 ? ' <span class="muted">· ' + (x.services || []).filter(s => s.active).length + ' ' + T('services') + '</span>' : ''}</td><td>${esc(x.customer?.name || '—')}</td>
-    <td>${{ hours_total: 'Total only', by_day: 'By day', with_times: 'With from/to' }[x.invoice_detail]}</td><td class="r">${x.bill_rate ? money(x.bill_rate) : '—'}</td>
-    <td>${activePill(x.active)} ${x.billable ? '' : pill('Non-billable', 'amber')}</td>
+    <td class="r">${x.bill_rate ? money(x.bill_rate) : '—'}</td>
+    <td>${activePill(x.active)} ${x.billable ? '' : pill('Non-billable', 'amber')} ${x.requires_internal_approval ? pill('Internal approval', 'blue') : ''}</td>
     <td class="r"><button class="btn ghost sm" data-act="edit-project" data-id="${x.id}">Edit</button></td></tr>`).join('')}</table></div>
     <div class="card"><h2>${p ? 'Edit ' + esc(p.code) : 'New project'}</h2><form data-form="project"><input type="hidden" name="id" value="${p?.id || ''}">
     <div class="grid"><div><label>Code</label><input name="code" required value="${esc(p?.code)}"></div><div><label>Name</label><input name="name" required value="${esc(p?.name)}"></div>
     <div><label>Client${(p ? p.billable : true) ? ' *' : ''}</label><select name="customer_id" ${(p ? p.billable : true) ? 'required' : ''}><option value="">—</option>${customers.map(c => `<option value="${c.id}" ${p?.customer_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select><small class="muted">A billable project needs a client. Non-billable (internal) projects can have none.</small></div>
     <div><label>Approver (optional)</label><select name="approver_id"><option value="">Use the person's approver</option>${approvers.map(a => `<option value="${a.id}" ${p?.approver_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>
-    <div><label>Invoice detail</label><select name="invoice_detail">${[['hours_total', 'Total hours only'], ['by_day', 'Hours by day'], ['with_times', 'With start and end time']].map(([v, t]) => `<option value="${v}" ${p?.invoice_detail === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
     <div><label>Default billing rate (services without their own)</label><input name="bill_rate" type="number" step="0.01" min="0" value="${esc(p?.bill_rate)}"></div>
     <div><label>Budgeted hours</label><input name="budget_hours" type="number" step="0.5" min="0" value="${esc(p?.budget_hours)}"></div>
     <div><label>Latitude (work site)</label><input name="geo_lat" type="number" step="0.000001" value="${esc(p?.geo_lat)}"></div>
@@ -619,8 +546,20 @@ async function projectsView() {
     <label class="chk"><input type="checkbox" name="active" ${p ? (p.active ? 'checked' : '') : 'checked'}> Active</label></p>
     <p><label>Fields (key=value, one per line)</label><textarea name="meta" rows="3">${esc(metaTxt)}</textarea></p>
     <p><label>Assigned people</label><span class="row">${users.filter(u => u.active).map(u => `<label class="chk"><input type="checkbox" data-multi="1" name="user_ids" value="${u.id}" ${p?.user_ids?.includes(u.id) ? 'checked' : ''}> ${esc(u.name)}</label>`).join('')}</span></p>
+    ${internalApprovalBlock(p, users)}
     <button class="btn pri" type="submit">Save</button> ${p ? '<button class="btn ghost" type="button" data-act="new-project">New</button>' : ''}</form></div>
     ${p ? servicesCard(p) : ''}`;
+}
+
+/* Internal approval of a project: a checkbox and, when on, the people (any active person) who approve the hours first. */
+function internalApprovalBlock(p, users) {
+  const on = !!p?.requires_internal_approval; const ids = new Set(p?.internal_approver_ids || []);
+  const people = users.filter(u => u.active || ids.has(u.id));
+  return `<div class="intap"><label class="chk"><input type="checkbox" name="requires_internal_approval" data-act-change="proj-internal" ${on ? 'checked' : ''}> Requires internal approval</label>
+    <div class="intap-body" ${on ? '' : 'hidden'}><label>Internal approvers</label>
+    <input type="search" class="intap-q" data-intap-q placeholder="Search people" aria-label="Search people">
+    <div class="intap-chips">${people.map(u => `<label class="chip" data-nm="${esc(u.name.toLowerCase())}"><input type="checkbox" data-multi="1" name="internal_approver_ids" value="${u.id}" ${ids.has(u.id) ? 'checked' : ''}><span>${esc(u.name)}</span></label>`).join('')}</div>
+    <small class="muted">The hours go to these people first. When one of them approves, they go to the external approver, who certifies at the end.</small></div></div>`;
 }
 
 /* Services of a project: each one has its own rate, billable flag and way of entering hours. They are deactivated, never deleted. */
@@ -705,41 +644,17 @@ async function customersView() {
 }
 
 /* --- Branding --- */
-const HEX = /^#?([0-9a-f]{6})$/i;
-const lum = h => { const c = [0, 2, 4].map(i => parseInt(h.slice(1 + i, 3 + i), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
-const contrastWhite = h => 1.05 / (lum(h) + 0.05);
-function contrastNote(h) {
-  const c = contrastWhite(h); const bad = c < 4.5;
-  return `<span class="${bad ? 'bad' : 'ok'}">${esc(T('Contrast with white text'))}: ${c.toFixed(1)}:1</span>${bad ? ' · ' + esc(T('White text is hard to read on this color. Use a darker one.')) : ''}`;
-}
-/* A color: picker + hexadecimal + R, G, B, all in sync. Only the picker carries the name, so the form sends #rrggbb. */
+/* A color: just the picker. The form sends #rrggbb; the preview follows it. */
 function colorField(name, label, value) {
-  const v = HEX.test(value || '') ? '#' + HEX.exec(value)[1].toLowerCase() : '#000000'; const [r, g, b] = [1, 3, 5].map(i => parseInt(v.slice(i, i + 2), 16));
-  return `<div class="colorf"><label>${label}</label><div class="crow"><input name="${name}" type="color" value="${v}" aria-label="${label}">
-    <input class="hx" data-c="hex" value="${v}" maxlength="7" placeholder="#RRGGBB" spellcheck="false" autocapitalize="none" aria-label="Hex"> ${['R', 'G', 'B'].map((k, i) => `<input class="rgb" data-c="${k}" type="number" min="0" max="255" value="${[r, g, b][i]}" aria-label="${k}" title="${k}">`).join('')}</div>
-    <small class="cnote">${contrastNote(v)}</small></div>`;
-}
-const h2 = n => Math.max(0, Math.min(255, Math.round(Number(n) || 0))).toString(16).padStart(2, '0');
-function syncColor(inp) {
-  const box = inp.closest('.colorf'); const pick = box.querySelector('input[type=color]'); const hx = box.querySelector('[data-c=hex]');
-  const rgb = ['R', 'G', 'B'].map(k => box.querySelector('[data-c=' + k + ']'));
-  let v = null;
-  if (inp === hx) { const m = HEX.exec(hx.value.trim()); hx.classList.toggle('badhex', !m); if (m) v = '#' + m[1].toLowerCase(); }
-  else if (inp === pick) v = pick.value;
-  else if (rgb.every(x => x.value !== '')) v = '#' + rgb.map(x => h2(x.value)).join('');
-  if (!v) return;
-  pick.value = v; if (inp !== hx) { hx.value = v; hx.classList.remove('badhex'); }
-  if (!rgb.includes(inp)) rgb.forEach((x, i) => { x.value = parseInt(v.slice(1 + 2 * i, 3 + 2 * i), 16); });
-  box.querySelector('.cnote').innerHTML = contrastNote(v);
-  brandPreview(box.closest('form'));
+  const v = /^#[0-9a-f]{6}$/i.test(value || '') ? value.toLowerCase() : '#000000';
+  return `<div><label>${label}</label><input name="${name}" type="color" value="${v}" aria-label="${label}"></div>`;
 }
 function brandPreview(f) {
   const pv = document.getElementById('bpreview'); if (!pv || !f) return;
   pv.querySelector('.ph').style.background = f.elements.color_primary.value; pv.querySelector('.pvbtn').style.background = f.elements.color_accent.value;
   const nm = pv.querySelector('.pvname'); if (nm) { nm.hidden = !f.elements.show_name.checked; pv.querySelector('.ph img').style.maxHeight = f.elements.show_name.checked ? '34px' : '52px'; }
 }
-document.addEventListener('input', e => { const i = e.target.closest?.('.colorf input'); if (i) syncColor(i); });
-document.addEventListener('focusout', e => { const i = e.target.closest?.('.colorf [data-c=hex]'); if (i && i.classList.contains('badhex')) syncColor(i.closest('.colorf').querySelector('input[type=color]')); });
+document.addEventListener('input', e => { if (e.target.type === 'color' && e.target.form) brandPreview(e.target.form); });
 document.addEventListener('change', e => { if (e.target.name === 'show_name') brandPreview(e.target.form); });
 async function brandView() {
   const [b, hist] = await Promise.all([api('/brand'), api('/brand/history')]);
@@ -849,14 +764,15 @@ async function clientSheetView() {
       <div style="grid-column:span 2"><label>Message (optional)</label><input name="message" maxlength="1000"></div></div>
       <p><button class="btn pri" type="submit" ${pv.entry_count ? '' : 'disabled'}>Send the timesheet by email</button></p></form></div>` : ''}`;
 }
+const csTimes = l => l.entered_as === 'times' || (!l.entered_as && !!l.start);   // hours typed as From–To vs just a total
 function csPreviewHtml(d) {
   if (!d.projects.length) return '<div class="card"><p class="muted">There are no hours for this client in the period.</p></div>';
   return `<div class="card"><h2>${esc(d.customer)} · ${esc(d.from)} to ${esc(d.to)}</h2>${d.has_pending ? '<div class="msg warn">Includes hours not yet approved.</div>' : ''}
     ${d.projects.map(p => `<h2 style="margin-top:14px">${esc(p.code)} · ${esc(p.name)}</h2>
-    <table><tr><th>Date</th><th>Person</th><th>Time</th><th class="r">Hours</th><th>Description</th>${d.show_amounts ? '<th class="r">Amount</th>' : ''}</tr>
-    ${p.lines.map(l => `<tr><td>${esc(l.date)}</td><td>${esc(l.worker)}</td><td>${l.start ? esc(l.start) + '–' + esc(l.end) : 'Full day'}</td><td class="r">${hrs(l.hours)}</td>
+    <table><tr><th>Date</th><th>Person</th>${p.lines.some(csTimes) ? '<th>From – To</th>' : ''}<th class="r">Hours</th><th>Description</th>${d.show_amounts ? '<th class="r">Amount</th>' : ''}</tr>
+    ${p.lines.map(l => `<tr><td>${esc(l.date)}</td><td>${esc(l.worker)}</td>${p.lines.some(csTimes) ? `<td>${csTimes(l) ? esc(l.start) + '–' + esc(l.end) : ''}</td>` : ''}<td class="r">${hrs(l.hours)}</td>
       <td style="white-space:pre-wrap">${esc(l.description)}${l.approved ? '' : ' <span class="badge submitted">not approved</span>'}</td>${d.show_amounts ? `<td class="r">${money(l.amount)}</td>` : ''}</tr>`).join('')}
-    <tr><th colspan="3">Subtotal ${esc(p.code)}</th><th class="r">${hrs(p.hours)}</th><th></th>${d.show_amounts ? `<th class="r">${money(p.amount)}</th>` : ''}</tr></table>`).join('')}
+    <tr><th colspan="${p.lines.some(csTimes) ? 3 : 2}">Subtotal ${esc(p.code)}</th><th class="r">${hrs(p.hours)}</th><th></th>${d.show_amounts ? `<th class="r">${money(p.amount)}</th>` : ''}</tr></table>`).join('')}
     <p style="margin-top:12px"><b>Total: ${hrs(d.total_hours)} h</b>${d.show_amounts ? ' · ' + money(d.total_amount) : ''}</p></div>`;
 }
 function csBody(f) {
@@ -921,6 +837,8 @@ const actions = {
   },
   async 'apr-approve'(el) { await aprDecide(el, 'approve'); },
   async 'apr-return'(el) { await aprDecide(el, 'return'); },
+  async 'int-approve'(el) { await aprDecide(el, 'approve', '/internal/sheets/'); },
+  async 'int-return'(el) { await aprDecide(el, 'return', '/internal/sheets/'); },
   wk: el => { S.weekDate = addDays(S.weekDate, Number(el.dataset.n)); render(); },
   'wk-now': () => { S.weekDate = today(); render(); },
   'open-week': el => { S.weekDate = el.dataset.end; location.hash = '#/week'; },
@@ -977,12 +895,12 @@ const actions = {
   async 'cs-xlsx'() { const b = csBody(document.querySelector('form[data-form=cs]')); await download('/client-timesheet/download', { method: 'POST', body: { ...b, format: 'xlsx' } }, 'timesheet.xlsx'); flash('Excel file created.'); render(); },
   async 'sales-preview'() { const f = document.querySelector('form[data-form=sales]'); const o = formObj(f); try { S.cache.salesPreview = await api('/integrations/accountisi/sales-preview', { method: 'POST', body: o }); } catch (e) { flash(e.message, 'err'); } render(); },
 };
-async function aprDecide(el, kind) {
+async function aprDecide(el, kind, base = '/approver/sheets/') {
   const id = Number(el.dataset.id); saveDraft(id);
   const { comment, code } = S.cache.apDraft;
   if (kind === 'return' && !comment.trim()) throw new Error('Write a comment saying what needs to be corrected.');
   const body = { version: Number(el.dataset.v), ...(comment.trim() ? { comment: comment.trim() } : {}), ...(code.trim() ? { code: code.trim() } : {}) };
-  try { await api(`/approver/sheets/${id}/${kind}`, { method: 'POST', body }); }
+  try { await api(`${base}${id}/${kind}`, { method: 'POST', body }); }
   catch (e) { if (e.needs_code || e.errors?.code) { (S.cache.apCode ??= {})[id] = true; } throw e; }
   S.cache.apDraft = null; flash(kind === 'approve' ? 'Timesheet approved.' : 'Timesheet returned for correction.'); render();
 }
@@ -1046,14 +964,15 @@ const forms = {
   async project(f) {
     const o = formObj(f); const id = o.id; delete o.id; o.meta = parseMeta(o.meta); o.user_ids = o.user_ids || [];
     for (const k of ['customer_id', 'approver_id']) if (o[k] != null) o[k] = Number(o[k]);
-    o.billable = !!o.billable;
+    o.billable = !!o.billable; o.requires_internal_approval = !!o.requires_internal_approval; o.internal_approver_ids = o.requires_internal_approval ? (o.internal_approver_ids || []) : [];
+    if (o.requires_internal_approval && !o.internal_approver_ids.length) throw new Error('Pick at least one internal approver.');
     if (o.billable && !o.customer_id) throw new Error('Pick a client: a billable project needs one.');
     if (id) await api('/projects/' + id, { method: 'PUT', body: o }); else await api('/projects', { method: 'POST', body: o });
     S.cache.editProject = null; flash('Project saved.'); render();
   },
   async user(f) {
     const o = formObj(f); const id = o.id; delete o.id;
-    const terms = { rate: o.t_rate, retention_pct: o.t_retention_pct, ivu_pct: o.t_ivu_pct, terms_days: o.t_terms_days, ivu_agent: o.t_ivu_agent, accountisi_vendor_id: o.t_accountisi_vendor_id };
+    const terms = { rate: o.t_rate ?? 0, retention_pct: o.t_retention_pct ?? 0, ivu_pct: o.t_ivu_pct ?? 0, terms_days: o.t_terms_days ?? 30, ivu_agent: o.t_ivu_agent, accountisi_vendor_id: o.t_accountisi_vendor_id };
     for (const k of Object.keys(o)) if (k.startsWith('t_')) delete o[k];
     o.project_ids = o.project_ids || []; if (o.approver_id != null) o.approver_id = Number(o.approver_id);
     if (o.worker_type === 'consultant') o.terms = terms; delete o.password;   // nobody types passwords for others: new people get an invitation
@@ -1099,6 +1018,495 @@ const forms = {
     S.cache.salesPreview = null; flash('Invoice created in Accountisi (id ' + r.accountisi_invoice_id + ').'); render();
   },
 };
+/* ===== WEB-PERSONAS: People and Approvals screens, copied from the mockup (styles: people.css, Spanish: i18n-es-people.js) ===== */
+const optHtml = (v, l, cur) => `<option value="${esc(v)}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
+const numOrNull = v => (v === '' || v == null ? null : Number(v));
+const nz = v => (v === '' || v == null ? '' : String(Number(v)));
+async function peopleScreen() {
+  const [accounts, users, approvers, projects] = await Promise.all([api('/accounts'), api('/users'), api('/approvers'), api('/projects')]);
+  S.cache.ppUsers = users;
+  const F = FL('ppl');
+  const shown = accounts.filter(a => matchQ(F.q, [a.name, a.email]) && (!F.role || a.role === F.role) && (!F.worker_type || a.worker_type === F.worker_type));
+  const ids = new Set(shown.map(a => a.user_id));
+  const billing = users.filter(x => x.worker_type === 'consultant' && ids.has(x.id));
+  const u = S.cache.editUser ? users.find(x => x.id === S.cache.editUser) : null; const t = u?.terms || {};
+  const roleName = { worker: 'Worker', approver: 'Approver', backoffice: 'Back office' };
+  const stPill = { active: pill('Active', 'green'), invited: pill('Invited', 'amber'), disabled: pill('Disabled', 'red') };
+  const row = a => {
+    const edit = a.role === 'approver' && a.approver_id && a.approver_kind !== 'internal' ?`<button class="btn ghost sm" data-act="pp-edit-approver" data-id="${a.approver_id}">Edit</button>`
+      : a.user_id ? `<button class="btn ghost sm" data-act="pp-edit" data-id="${a.user_id}">Edit</button>` : '';
+    const reset = a.user_id && a.user_id !== S.me.id ? `<button class="btn ghost sm" data-act="reset-user" data-id="${a.user_id}" data-name="${esc(a.name)}">Reset password</button>` : '';
+    const resend = a.status === 'invited' && a.user_id ? `<button class="btn ghost sm" data-act="resend-invite" data-id="${a.user_id}" data-email="${esc(a.email)}">Resend invitation</button>` : '';
+    return `<div class="rw cols-users"><div class="nm">${esc(a.name)}</div><div class="em">${esc(a.email)}</div><div>${roleName[a.role] || ''}${a.role === 'approver' && a.approver_kind ? `<div class="note">${a.approver_kind === 'internal' ? 'Internal' : 'External'}</div>` : ''}</div>
+      <div>${a.worker_type === 'employee' ? 'Employee' : a.worker_type === 'consultant' ? 'Consultant' : '—'}</div><div>${esc(a.employee_number || '—')}</div>
+      <div>${a.two_step ? pill('Enabled', 'green') : a.status === 'invited' ? pill('Not set up') : '—'}</div><div>${stPill[a.status] || pill('None')}</div><div class="acts">${edit}${reset}${resend}</div></div>`;
+  };
+  const bill = x => { const b = x.terms || {};
+    return `<div class="rw cols-bill" data-brow="${x.id}"><div class="nm">${esc(x.name)}</div>
+      <input class="num" type="number" min="0" step="0.01" aria-label="Hourly rate" data-bill="rate" value="${esc(nz(b.rate))}">
+      <input class="num" type="number" min="0" max="100" step="0.5" aria-label="Professional services retention percent" data-bill="retention_pct" value="${esc(nz(b.retention_pct))}">
+      <label class="bchk"><input type="checkbox" data-bill="ivu_agent" ${b.ivu_agent ? 'checked' : ''}><span>${b.ivu_agent ? 'Yes, adds IVU' : 'No'}</span></label>
+      <input class="num" type="number" min="0" max="100" step="0.5" aria-label="IVU percent" data-bill="ivu_pct" ${b.ivu_agent ? '' : 'disabled'} value="${esc(nz(b.ivu_pct))}"></div>`; };
+  const editCard = u ? `<div class="card edit" id="pp-edit"><h2>Edit ${esc(u.name)}</h2><form data-form="user" style="margin-top:12px"><input type="hidden" name="id" value="${u.id}">
+    <div class="grid"><div><label>Name</label><input name="name" required value="${esc(u.name)}"></div><div><label>Email</label><input name="email" type="email" required value="${esc(u.email)}"></div>
+    <div><label>Worker type</label><select name="worker_type"><option value="consultant" ${u.worker_type !== 'employee' ? 'selected' : ''}>Consultant (invoices)</option><option value="employee" ${u.worker_type === 'employee' ? 'selected' : ''}>Employee (no invoices)</option></select></div>
+    <div><label>Entry preference (used when a service allows both)</label><select name="capture_mode"><option value="from_to" ${u.capture_mode !== 'full_day' ? 'selected' : ''}>From / to (detail)</option><option value="full_day" ${u.capture_mode === 'full_day' ? 'selected' : ''}>Total hours per day</option></select></div>
+    <div><label>Hours per week (employee)</label><input name="weekly_hours" type="number" step="0.5" value="${esc(u.weekly_hours || '')}" placeholder="40"></div>
+    <div><label>Approver</label><select name="approver_id"><option value="">—</option>${approvers.map(a => `<option value="${a.id}" ${u.approver_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>
+    <div><label>ID number</label><input name="employee_number" maxlength="40" value="${esc(u.employee_number)}"></div></div>
+    <h2 style="margin:16px 0 8px;font-size:16px">Contractor billing terms</h2><div class="grid">
+    <div><label>Hourly rate</label><input name="t_rate" type="number" step="0.01" min="0" value="${esc(t.rate)}"></div>
+    <div><label>Professional services withholding (%)</label><input name="t_retention_pct" type="number" step="0.01" min="0" max="100" value="${esc(t.retention_pct)}"></div>
+    <div><label>IVU / sales tax (%)</label><input name="t_ivu_pct" type="number" step="0.01" min="0" max="100" value="${esc(t.ivu_pct)}"></div>
+    <div><label>Payment terms (days)</label><input name="t_terms_days" type="number" min="0" max="365" value="${esc(t.terms_days ?? 30)}"></div>
+    <div><label>Accountisi vendor id</label><input name="t_accountisi_vendor_id" value="${esc(t.accountisi_vendor_id)}"></div></div>
+    <p class="row"><label class="chk"><input type="checkbox" name="t_ivu_agent" ${t.ivu_agent ? 'checked' : ''}> IVU withholding agent</label> <label class="chk"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}> Active</label></p>
+    <p><label>Assigned projects</label><span class="row">${projects.map(p => `<label class="chk"><input type="checkbox" data-multi="1" name="project_ids" value="${p.id}" ${u.project_ids?.includes(p.id) ? 'checked' : ''}> ${esc(p.code)}</label>`).join('')}</span></p>
+    <button class="btn pri" type="submit">Save</button> <button class="btn ghost" type="button" data-act="new-user">Close</button></form></div>` : '';
+  return `<div class="pp"><div><h1>People &amp; rates</h1><p class="sub">Invite users, set roles, and configure each contractor's billing terms.</p></div>
+    <form class="card inv invrow" data-form="invite">
+      <label class="lbl" style="flex:1 1 180px">Name<input name="name" required maxlength="120" placeholder="Full name"></label>
+      <label class="lbl" style="flex:2 1 240px">Invite by email<input name="email" type="email" required placeholder="name@company.com"></label>
+      <label class="lbl" style="flex:1 1 160px">Role<select name="role" data-pp-role><option value="worker">Worker</option><option value="approver">Approver</option><option value="backoffice">Back office</option></select></label>
+      <label class="lbl" style="flex:1 1 160px" data-pp-wt>Worker type<select name="worker_type"><option value="employee">Employee</option><option value="consultant">Consultant</option></select></label>
+      <button class="btn pri" type="submit">Send invitation</button></form>
+    <div class="card flt">
+      <label class="flbl" style="flex:2 1 240px">Search by name or email<input type="search" data-filter="ppl" name="q" placeholder="Start typing" value="${esc(F.q ?? '')}"></label>
+      <label class="flbl" style="flex:1 1 160px">Role<select data-filter="ppl" name="role">${optHtml('', 'All roles', F.role)}${optHtml('worker', 'Worker', F.role)}${optHtml('approver', 'Approver', F.role)}${optHtml('backoffice', 'Back office', F.role)}</select></label>
+      <label class="flbl" style="flex:1 1 160px">Worker type<select data-filter="ppl" name="worker_type">${optHtml('', 'All types', F.worker_type)}${optHtml('employee', 'Employee', F.worker_type)}${optHtml('consultant', 'Consultant', F.worker_type)}</select></label>
+      <div class="note" style="flex:1 1 100%">Showing ${shown.length} of ${accounts.length} users. The search also filters the contractor billing terms below.</div></div>
+    <div class="card"><h2 style="font-size:18px;margin-bottom:12px">Users</h2><div class="scrollx"><div style="min-width:1260px">
+      <div class="hd cols-users"><div class="th">Name</div><div class="th">Email</div><div class="th">Role</div><div class="th">Worker type</div><div class="th">ID number</div><div class="th">2-step</div><div class="th">Status</div><div class="th"></div></div>
+      ${shown.map(row).join('') || '<div class="empty">No user matches the filter.</div>'}</div></div></div>
+    <div class="card"><h2 style="font-size:18px">Contractor billing terms</h2><p class="muted" style="font-size:15px;margin:4px 0 12px">Applies to contractors only. Employees have no billing terms: the system records hours, nothing else. Changes affect new invoices, never invoices already submitted.</p>
+      <div class="scrollx"><div style="min-width:760px"><div class="hd cols-bill"><div class="th">Contractor</div><div class="th">Rate ($/h)</div><div class="th">Retention (%)</div><div class="th">IVU withholding agent</div><div class="th">IVU (%)</div></div>
+      ${billing.map(bill).join('') || '<div class="empty">No contractor matches the filter.</div>'}</div></div></div>
+    ${editCard}</div>`;
+}
+/* Approvals (owner and approver see the same screen): status pills with counts, filters, list on the left, the selected timesheet on the right. */
+function rvState() {
+  const R = (S.cache.rv ??= { status: 'pending', q: '', type: '', period: '4w', from: '', to: '' });
+  if (R.period === '4w') { R.from = addDays(today(), -28); R.to = ''; } else if (R.period === '3m') { R.from = addDays(today(), -91); R.to = ''; } else if (R.period === 'all') { R.from = ''; R.to = ''; }
+  return R;
+}
+async function reviewScreen() {
+  const ap = isAp(), inn = isIn(); const R = rvState(); const pend = R.status === 'pending';
+  const qs = new URLSearchParams({ status: R.status });
+  if (R.q.trim()) qs.set('q', R.q.trim());
+  if (R.type) qs.set('type', R.type);
+  if (!pend) { if (R.from) qs.set('from', R.from); if (R.to) qs.set('to', R.to); }
+  const res = await api((ap ? '/approver/review?' : inn ? '/internal/review?' : '/review/sheets?') + qs.toString());
+  const sheets = res.sheets || [], cnt = res.counts || {};
+  const sel = sheets.find(s => s.id === S.cache.apSel) || sheets[0];
+  const stColor = { submitted: 'amber', pending: 'amber', approved: 'green', returned: 'red' };
+  const stName = s => (s === 'submitted' || s === 'pending' ? 'Pending' : STATUS[s] || s);
+  // The owner sees which stage a pending sheet is in: waiting for the internal approvers or for the client.
+  const stOf = s => ((s.status === 'submitted' || s.status === 'pending') && !ap && !inn && (s.stage === 'internal' || s.stage === 'external') ? (s.stage === 'internal' ? 'Pending · internal' : 'Pending · client') : stName(s.status));
+  const waitTxt = s => (!inn && s.stage && (s.waiting_for || []).length ? `<p class="note" style="margin:0">${T(s.stage === 'internal' ? 'Waiting for' : 'Waiting for client approval:')} ${esc(s.waiting_for.map(w => w.name).join(', '))}</p>` : '');
+  const typeName = s => (s.worker_type === 'consultant' ? 'Contractor' : 'Employee');
+  const nameOf = s => s.user?.name ?? s.name ?? s.worker_name ?? '';
+  const projOf = s => (s.projects || []).map(p => (typeof p === 'string' ? p : [p.code, p.name].filter(Boolean).join(' · '))).join(', ');
+  let detail = '<div class="card r"><div class="empty">No timesheet selected.</div></div>';
+  if (sel) {
+    let d = null; try { d = await api((ap ? '/approver/sheets/' : inn ? '/internal/sheets/' : '/sheets/') + sel.id); } catch (e) { if (e.message === 'Session expired') throw e; }
+    const days = Array.from({ length: 7 }, (_, i) => addDays(addDays(sel.week_ending, -6), i));
+    const lines = new Map();
+    for (const e of (d?.entries || [])) { const k = e.project_id + '|' + (e.service_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: e.service, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
+    const open = sel.status === 'submitted' || sel.status === 'pending';
+    const dr = S.cache.apDraft && S.cache.apDraft.id === sel.id ? S.cache.apDraft : { comment: '', code: '' };
+    const needs = ap && open && (d?.needs_code || sel.needs_code || (S.cache.apCode || {})[sel.id]);
+    const ret = sel.status === 'returned' && (d?.return_comment || sel.return_comment) ? `<div class="msg err"><b>Returned for correction:</b> ${esc(d?.return_comment || sel.return_comment)}${(d?.return_by || sel.return_by) ? ` <span class="muted">${T('Returned by')} ${esc(d?.return_by?.name || d?.return_by || sel.return_by?.name || sel.return_by)}</span>` : ''}</div>` : '';
+    const A = ap ? ['apr-approve', 'apr-return'] : inn ? ['int-approve', 'int-return'] : ['approve', 'return'];
+    const acts = open ? `<div style="display:flex;flex-direction:column;gap:10px"><label class="lbl">Comment (required when returning)<textarea id="ap-comment" placeholder="Example: Thursday should be OT, please fix and resubmit.">${esc(dr.comment)}</textarea></label>
+      ${needs ? `<div class="msg warn">This decision needs a 6-digit code. We send it to your email.</div><div class="row" style="align-items:end"><button class="btn ghost" type="button" data-act="apr-code" data-id="${sel.id}">Send me a code</button>
+        <label class="lbl" style="max-width:200px">6-digit code<input id="ap-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="${esc(dr.code)}" style="letter-spacing:.2em"></label></div>` : ''}
+      <div class="decided"><button class="btn" data-act="${A[0]}" data-id="${sel.id}" data-v="${sel.version}">Approve</button><button class="btn danger" data-act="${A[1]}" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></div></div>`
+      : (sel.decided_at ? `<p class="muted" style="margin:0">Decided on ${esc(String(sel.decided_at).slice(0, 10))}.</p>` : '');
+    const cell = (v, extra = '') => `<div class="mono" style="text-align:center;${extra}">${v ? h1(v) : ''}</div>`;
+    detail = `<div class="card r"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><div><h2 style="font-size:19px">${esc(nameOf(sel))}</h2><p style="margin:0">${typeName(sel)} · week ending ${nice(sel.week_ending)}</p></div>${pill(stOf(sel), stColor[sel.status] || 'gray')}</div>${waitTxt(sel)}
+      ${(d?.warnings || sel.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('')}${ret}
+      <div class="scrollx"><div style="min-width:440px"><div class="hd cols-det"><div class="th">Line</div>${days.map(x => `<div class="th c">${dow(parse(x).getDay())}</div>`).join('')}<div class="th r">Total</div></div>
+      ${[...lines.values()].map(r => `<div class="rw cols-det"><div style="font-size:14px">${esc([r.p?.code, r.p?.name, r.s?.name].filter(Boolean).join(' · '))}</div>${days.map(x => cell(r.by[x])).join('')}<div class="mono" style="text-align:right;font-weight:500">${h1(Object.values(r.by).reduce((a, v) => a + v, 0))}</div></div>`).join('')}
+      <div class="tot"><span>Total hours</span><span class="mono">${h1(sel.total_hours)}</span></div></div></div>
+      ${(d?.entries || []).some(e => e.note) ? `<p class="muted" style="white-space:pre-wrap;margin:0">${esc(d.entries.filter(e => e.note).map(e => dayLabel(e.work_date) + ': ' + e.note).join('\n'))}</p>` : ''}${acts}</div>`;
+  }
+  const pillBtn = ([k, l]) => `<button type="button" class="pill ${k === R.status ? 'on' : ''}" aria-pressed="${k === R.status}" data-act="rv-status" data-s="${k}">${l} (${cnt[k] ?? 0})</button>`;
+  const per = ([k, l]) => `<button type="button" class="pill ${R.period === k ? 'on' : ''}" data-act="rv-period" data-p="${k}" ${pend ? 'disabled' : ''}>${l}</button>`;
+  const rows = sheets.map(s => `<button type="button" class="rowbtn cols-rev ${sel && s.id === sel.id ? 'sel' : ''}" data-act="rv-pick" data-id="${s.id}"><span><span style="font-weight:500">${esc(nameOf(s))}</span>${s.late ? ' <span class="bd amber">Late</span>' : ''}</span>
+    <span>${nice(s.week_ending)}</span><span>${typeName(s)}</span><span>${esc(projOf(s))}</span><span class="mono" style="text-align:right">${h1(s.total_hours)}</span><span>${pill(stOf(s), stColor[s.status] || 'gray')}</span></button>`).join('');
+  return `<div class="pp"><div><h1>Approvals</h1><p class="sub">${inn ? 'These are hours waiting for your approval. After you approve, they go to the external approver.' : 'Approving replaces the manager signature. Weeks filled in after the deadline are flagged as late.'}</p></div>
+    <div class="twin"><div class="card l"><div class="pillrow" style="margin-bottom:12px">${[['pending', 'Pending'], ['approved', 'Approved'], ['returned', 'Returned'], ['all', 'All']].map(pillBtn).join('')}</div>
+      <div class="fpanel"><label class="flbl" style="flex:1 1 160px">Search person<input type="search" data-rv="q" placeholder="Name" value="${esc(R.q)}"></label>
+      <label class="flbl" style="flex:1 1 140px">Type<select data-rv="type">${optHtml('', 'All types', R.type)}${optHtml('employee', 'Employees', R.type)}${optHtml('consultant', 'Contractors', R.type)}</select></label>
+      <label class="flbl" style="flex:1 1 150px">Week ending from<input type="date" data-rv="from" ${pend ? 'disabled' : ''} value="${esc(R.from)}"></label>
+      <label class="flbl" style="flex:1 1 150px">to<input type="date" data-rv="to" ${pend ? 'disabled' : ''} value="${esc(R.to)}"></label>
+      <div class="pillrow" style="flex:1 1 100%"><span class="note">Quick period:</span>${[['4w', 'Last 4 weeks'], ['3m', 'Last 3 months'], ['all', 'All time']].map(per).join('')}</div></div>
+      <p class="note" style="margin:0 0 8px">Pending always shows everything waiting for you, whatever the dates. The period applies to Approved, Returned and All.</p>
+      <div class="revscroll"><div style="min-width:620px"><div class="hd cols-rev" style="padding:0 8px 8px"><div class="th">Person</div><div class="th">Week ending</div><div class="th">Type</div><div class="th">Project</div><div class="th r">Hours</div><div class="th">Status</div></div>
+      ${rows || `<div class="empty">${pend && !R.q && !R.type ? 'Nothing is waiting for approval.' : 'No timesheet matches the filter.'}</div>`}</div></div></div>${detail}</div></div>`;
+}
+Object.assign(actions, {
+  async 'pp-edit'(el) { S.cache.editUser = Number(el.dataset.id); await render(); document.getElementById('pp-edit')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+  'pp-edit-approver'(el) { S.cache.editApprover = Number(el.dataset.id); location.hash = '#/approvers'; },
+  'rv-status'(el) { rvState().status = el.dataset.s; S.cache.apSel = null; render(); },
+  'rv-pick'(el) { S.cache.apSel = Number(el.dataset.id); render(); },
+  'rv-period'(el) { if (el.disabled) return; rvState().period = el.dataset.p; render(); },
+});
+Object.assign(forms, {
+  async invite(f) {
+    const o = formObj(f); const body = { name: String(o.name || '').trim(), email: o.email, role: o.role || 'worker' };
+    if (body.role === 'worker') body.worker_type = o.worker_type || 'employee';
+    const r = await api('/invitations', { method: 'POST', body }); flash('Invitation sent to ' + (r.emailed_to || body.email)); render();
+  },
+});
+document.addEventListener('change', e => {
+  const rv = e.target.closest('[data-rv]');
+  if (rv) { const R = rvState(); R[rv.dataset.rv] = rv.value; if (rv.dataset.rv === 'from' || rv.dataset.rv === 'to') R.period = ''; S.cache.apSel = null; render(); return; }
+  const role = e.target.closest('[data-pp-role]');
+  if (role) { const w = role.closest('form').querySelector('[data-pp-wt]'); if (w) w.hidden = role.value !== 'worker'; return; }
+  const b = e.target.closest('[data-bill]');
+  if (b) guard(async () => {
+    const row = b.closest('[data-brow]'); const x = (S.cache.ppUsers || []).find(y => y.id === Number(row.dataset.brow)); if (!x) return;
+    const g = k => row.querySelector(`[data-bill="${k}"]`);
+    const terms = { rate: numOrNull(g('rate').value) ?? 0, retention_pct: numOrNull(g('retention_pct').value) ?? 0, ivu_agent: g('ivu_agent').checked, ivu_pct: numOrNull(g('ivu_pct').value) ?? 0, terms_days: x.terms?.terms_days ?? 30, accountisi_vendor_id: x.terms?.accountisi_vendor_id ?? null };
+    const body = { name: x.name, email: x.email, role: x.role, worker_type: x.worker_type, employee_number: x.employee_number, capture_mode: x.capture_mode, weekly_hours: x.weekly_hours, approver_id: x.approver_id, active: x.active, project_ids: x.project_ids, terms };
+    await api('/users/' + x.id, { method: 'PUT', body }); flash('Billing terms saved.'); render();
+  })();
+});
+/* ================= Week screen (WEB-HOJA): editable weekly grid, clock icon and toasts ================= */
+const HOUR_TYPES = [['reg', 'REG'], ['ot', 'OT'], ['hol', 'HOL'], ['sick', 'Sick'], ['vac', 'VAC'], ['nb', 'NB']];
+const WK = () => ((S.cache.wkst ??= {})[S.weekDate] ??= { extra: [], edits: {}, pend: {}, n: 0, cert: false });
+const wkSvcs = p => (p?.services || []).filter(s => s.active);
+const wkMode = (p, sid) => { const s = (p?.services || []).find(x => x.id === Number(sid)); return (s && s.mode) || (S.me.capture_mode === 'from_to' ? 'from_to' : 'full_day'); };
+/* "Submitted · waiting for Ana" (internal stage) or "Submitted · waiting for client approval" (external stage). */
+const stageLabel = s => {
+  const base = STATUS[s.status] || s.status;
+  if (s.status !== 'submitted') return base;
+  const names = (s.waiting_for || []).map(w => w.name).filter(Boolean);
+  if (s.stage === 'internal') return base + ' · waiting for ' + (names.join(', ') || 'internal approval');
+  if (s.stage === 'external') return base + ' · waiting for client approval';
+  return base;
+};
+const wkInternal = sheet => ((sheet.internal || []).length ? `<div class="wkint">${sheet.internal.map(i => {
+  const proj = typeof i.project === 'string' ? i.project : [i.project?.code, i.project?.name].filter(Boolean).join(' · ');
+  const names = (i.approvers || []).map(a => a.name || a).join(', ');
+  const by = i.approved_by?.name || i.approved_by;
+  const txt = i.status === 'approved' ? 'approved by ' + (by || names) : i.status === 'skipped' ? 'skipped' : 'waiting for ' + names;
+  return `<div>${esc(proj)} — ${txt}</div>`; }).join('')}</div>` : '');
+const wkPL = p => (p ? `${p.code} · ${p.name}` : '—');
+const wkClose = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+const wkClock = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
+
+/* Floating messages: success disappears by itself after ~2.5 s; errors and warnings stay until closed. They never move the page. */
+function toast(text, kind = 'ok') {
+  let box = document.getElementById('toasts');
+  if (!box) { box = document.createElement('div'); box.id = 'toasts'; document.body.appendChild(box); }
+  const t = document.createElement('div'); const ok = kind === 'ok';
+  t.className = 'toast ' + (ok ? 'ok' : kind === 'warn' ? 'warn' : 'err'); t.setAttribute('role', ok ? 'status' : 'alert');
+  t.innerHTML = `<span>${esc(T(text))}</span>` + (ok ? '' : `<button type="button" class="x" aria-label="${esc(T('Close'))}">✕</button>`);
+  const gone = () => t.remove();
+  if (ok) setTimeout(gone, 2500); else t.querySelector('.x').addEventListener('click', gone);
+  box.appendChild(t);
+}
+
+async function weekView() {
+  wkPopClose(); wkModalClose();
+  const end = weekEnd(S.weekDate), start = addDays(end, -6), cur = weekEnd(today());
+  const [sheet, ents, projects, mine, recent] = await Promise.all([
+    api('/sheets/week?date=' + S.weekDate), api(`/entries?from=${start}&to=${end}`), api('/projects'), api('/sheets').catch(() => []),
+    api(`/entries?from=${addDays(today(), -3)}&to=${today()}`).catch(() => ({ entries: [] }))]);
+  S.cache.projects = projects; S.cache.entries = ents.entries; S.cache.wkSheet = sheet;
+  const R = S.me.rules || {}; const inc = Number(R.increment) || 0.25; const maxDay = Number(R.max_day_hours) || 24;
+  const emp = (sheet.worker?.worker_type || S.me.worker_type) === 'employee';
+  const locked = !!sheet.locked; const st = WK();
+  S.cache.wkRunning = recent.entries.find(e => e.running) || ents.entries.find(e => e.running) || null;
+  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  const list = ents.entries.filter(e => !e.running);
+
+  // Lines: one per project + service + hour type that has entries this week, plus the ones added on screen
+  const map = new Map();
+  for (const e of list) {
+    const lid = [e.project_id, e.service_id ?? '', e.hour_type || 'reg'].join('|');
+    if (!map.has(lid)) map.set(lid, { lid, project_id: e.project_id, service_id: e.service_id ?? null, hour_type: e.hour_type || 'reg', ents: [] });
+    map.get(lid).ents.push(e);
+  }
+  if (!locked && !map.size && !st.extra.length) { const p = projects.find(x => x.active && wkSvcs(x).length); if (p) st.extra.push({ lid: 'n' + (++st.n), project_id: p.id, service_id: wkSvcs(p)[0].id, hour_type: 'reg' }); }
+  for (const x of st.extra) if (!map.has(x.lid)) map.set(x.lid, { ...x, ents: [] });
+  const lines = [...map.values()].map(l => ({ ...l, ...(st.edits[l.lid] || {}), ents: l.ents }));
+  S.cache.wkLines = lines; S.cache.wkCtx = { days, emp, inc, maxDay, locked };
+
+  // A. title, deadline, status, clock icon
+  const dl = R.deadline_dow != null ? ` · <span>Deadline: ${esc(new Date(2024, 0, 7 + Number(R.deadline_dow)).toLocaleDateString(LOC(), { weekday: 'long' }))} ${esc(R.deadline_time || '')} after the week ends</span>` : '';
+  const pillColor = { draft: 'gray', submitted: 'blue', approved: 'green', returned: 'red' }[sheet.status] || 'gray';
+  const running = S.cache.wkRunning;
+  const head = `<div class="wkhead"><div><h1>Weekly time record</h1><p class="wksub"><span>Week ending ${longDay(end)}</span>${dl}</p></div>
+    <div class="wkstat"><button type="button" class="clkbtn ${running ? 'on' : ''}" data-act="clock-open" aria-label="Clock" title="Clock">${wkClock}${running ? '<i class="dot"></i>' : ''}</button>
+    <span class="bd ${pillColor}">${stageLabel(sheet)}</span>${sheet.late ? '<span class="bd red">Late</span>' : ''}</div></div>`;
+
+  // B. week selector
+  const stateOf = Object.fromEntries(mine.map(s => [s.week_ending, STATUS[s.status] || s.status]));
+  const weeks = Array.from({ length: 12 }, (_, i) => addDays(cur, -7 * i));
+  if (!weeks.includes(end)) weeks.push(end);
+  weeks.sort().reverse();
+  const picker = weeks.map(w => `<option value="${w}" ${w === end ? 'selected' : ''}>${nice(w)} · ${stateOf[w] ? T(stateOf[w]) : T('Not started')}${w === cur ? ' · ' + T('current') : ''}</option>`).join('');
+  const nav = `<div class="card wknav"><button class="btn ghost" data-act="wk" data-n="-7" aria-label="Previous week (older)">←</button>
+    <label class="wkpick">Week ending (Sunday)<select data-act-change="wk-pick">${picker}</select></label>
+    <button class="btn ghost" data-act="wk" data-n="7" ${end >= cur ? 'disabled' : ''} aria-label="Next week (newer)">→</button>
+    <button class="btn ghost" data-act="wk-now" ${end === cur ? 'disabled' : ''}>Current week</button></div>`;
+
+  // C. past weeks with no timesheet (or no hours), oldest first
+  const byEnd = Object.fromEntries(mine.map(s => [s.week_ending, s])); const back = Number(R.weeks_back ?? 8); const miss = [];
+  const first = S.me.member_since ? weekEnd(S.me.member_since) : null;   // weeks before the account existed are never reclaimed
+  for (let i = back; i >= 1; i--) { const w = addDays(cur, -7 * i); if (first && w < first) continue; const s = byEnd[w]; if (!s || !Number(s.total_hours)) miss.push(w); }
+  const alert = miss.length ? `<div class="wkalert" role="status"><div class="t">${miss.length === 1 ? 'You have 1 past week with no timesheet. Start with the oldest:' : `You have ${miss.length} past weeks with no timesheet. Start with the oldest:`}</div>
+    <div class="b">${miss.map(w => `<button class="btn ghost" data-act="wk-go" data-end="${w}">Fill in week ending ${nice(w)}</button>`).join('')}</div></div>` : '';
+
+  // D. person data
+  const co = S.me.brand?.name || S.me.company?.name || '';
+  const empNo = sheet.worker?.employee_number ?? S.me.employee_number;
+  const facts = `<div class="card wkfacts"><div><div class="lbl">Name</div><div class="val">${esc(sheet.worker?.name || S.me.name)}</div></div>
+    <div><div class="lbl">${esc(co)} ID number</div><div class="val mono">${esc(empNo || '—')}</div></div>
+    <div><div class="lbl">Worker type</div><div class="val">${emp ? 'Employee' : 'Consultant'}</div></div>
+    <div><div class="lbl">Approver</div><div class="val">${esc(sheet.approver?.name || '—')}</div></div></div>`;
+
+  // E. the editable grid
+  const tot = { day: days.map(() => 0), all: 0 };
+  const rows = lines.map((ln, li) => {
+    const p = projects.find(x => x.id === Number(ln.project_id)); const mode = wkMode(p, ln.service_id);
+    const pOpts = projects.filter(x => x.active || x.id === Number(ln.project_id)).map(x => `<option value="${x.id}" ${x.id === Number(ln.project_id) ? 'selected' : ''}>${esc(wkPL(x))}</option>`).join('');
+    const svcs = (p?.services || []).filter(s => s.active || s.id === Number(ln.service_id));
+    const sSel = wkSvcs(p).length > 1 ? `<select class="wksvc" data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="service_id" aria-label="Service" ${locked ? 'disabled' : ''}>${svcs.map(s => `<option value="${s.id}" ${s.id === Number(ln.service_id) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>` : '';
+    const tSel = emp ? `<select data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="hour_type" aria-label="Code" ${locked ? 'disabled' : ''}>${HOUR_TYPES.map(([v, l]) => `<option value="${v}" ${v === ln.hour_type ? 'selected' : ''}>${l}</option>`).join('')}</select>` : '';
+    let lt = 0;
+    const cells = days.map((d, di) => {
+      const es = ln.ents.filter(e => e.work_date === d); const sum = es.reduce((a, e) => a + Number(e.hours), 0); const key = ln.lid + '|' + d;
+      const aria = `${dow(parse(d).getDay())} hours, line ${li + 1}`;
+      if (mode === 'from_to' || es.length > 1) { lt += sum; tot.day[di] += sum; return `<input class="inp num wkc ro" readonly data-di="${di}" data-act="cell-pop" data-lid="${esc(ln.lid)}" data-d="${d}" title="Details" aria-label="${aria}" value="${sum ? h1(sum) : ''}">`; }
+      const orig = es[0] ? Number(es[0].hours) : ''; const dirty = Object.prototype.hasOwnProperty.call(st.pend, key); const v = dirty ? st.pend[key] : orig;
+      const n = parseFloat(v) || 0; lt += n; tot.day[di] += n;
+      return `<input class="inp num wkc ${dirty ? 'dirty' : ''}" type="number" min="0" max="${maxDay}" step="${inc}" data-di="${di}" data-cell="${esc(key)}" data-orig="${orig}" aria-label="${aria}" value="${esc(v)}" ${locked ? 'readonly' : ''}>`;
+    }).join('');
+    tot.all += lt;
+    return `<div class="wkrow wkg ${emp ? 'emp' : ''}"><div class="wkproj"><select data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="project_id" aria-label="Project" ${locked ? 'disabled' : ''}>${pOpts}</select>${sSel}</div>${tSel}${cells}
+      <div class="mono wktot">${h1(lt)}</div><button class="icon" type="button" data-act="wk-del" data-lid="${esc(ln.lid)}" aria-label="Remove line" ${locked ? 'disabled' : ''}>${wkClose}</button></div>`;
+  }).join('');
+  const grid = `<div class="card wkcard"><div class="wkscroll"><div class="wkmin">
+    <div class="wkg wkh ${emp ? 'emp' : ''}"><div class="th">Project</div>${emp ? '<div class="th">Code</div>' : ''}${days.map(d => `<div class="th c">${dow(parse(d).getDay())}<br><span class="dd">${parse(d).toLocaleDateString(LOC(), { month: 'short', day: 'numeric' })}</span></div>`).join('')}<div class="th r">Total</div><div></div></div>
+    ${rows}
+    <div class="wkg wkd ${emp ? 'emp' : ''}"><div class="dl">Daily total</div>${emp ? '<div></div>' : ''}${days.map((d, di) => `<div class="mono wkdt" data-di="${di}">${h1(tot.day[di])}</div>`).join('')}<div class="mono wkgt">${h1(tot.all)}</div><div></div></div></div></div>
+    ${locked ? '' : '<div class="wkbtns"><button class="btn ghost" type="button" data-act="wk-add">+ Add project line</button><button class="btn ghost" type="button" data-act="wk-copy">Copy lines from previous week</button></div>'}</div>`;
+
+  // F. totals and certification
+  const total = Number(sheet.total_hours ?? tot.all);
+  const bill = sheet.billable_hours ?? list.filter(e => e.billable !== false).reduce((a, e) => a + Number(e.hours), 0);
+  const non = sheet.non_billable_hours ?? Math.max(0, total - bill);
+  const left = emp
+    ? `<div class="card wktotals"><div><div class="lbl">Billable hours</div><div class="mono big">${h1(bill)}</div></div><div><div class="lbl">Non-billable hours</div><div class="mono big">${h1(non)}</div></div><div><div class="lbl">Employee total</div><div class="mono big acc wktotbig">${h1(total)}</div></div></div>`
+    : `<div class="card wktotals"><div><div class="lbl">Total hours</div><div class="mono big acc wktotbig">${h1(total)}</div></div><p class="note">Your invoice is generated from approved weeks. You never retype hours.</p></div>`;
+  const canSubmit = ['draft', 'returned'].includes(sheet.status);
+  const right = locked ? `<div class="card wkcert"><p class="muted" style="margin:0">Approved and locked.</p></div>`
+    : `<div class="card wkcert"><label class="cert"><input type="checkbox" class="chk" data-act-change="wk-cert" ${st.cert ? 'checked' : ''}><span>I certify these hours are accurate. Submitting counts as my electronic signature.</span></label>
+      <div class="wkbtns0"><button class="btn ghost" type="button" data-act="wk-save">Save draft</button>
+      ${canSubmit ? `<button class="btn pri" type="button" data-act="wk-submit" ${st.cert && tot.all > 0 ? '' : 'disabled'}>${sheet.status === 'returned' ? 'Corrected: submit again' : 'Submit for approval'}</button>` : ''}</div>
+      ${sheet.status === 'submitted' ? '<p class="muted" style="margin:0">Waiting for a decision. If you change it, the approver gets a notice that it changed.</p>' : ''}</div>`;
+  const warn = (sheet.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('');
+  const ret = sheet.status === 'returned' && sheet.return_comment ? `<div class="msg err" role="alert"><b>Returned for correction:</b> ${esc(sheet.return_comment)}${sheet.return_by ? ` <span class="muted">${T('Returned by')} ${esc(sheet.return_by.name || sheet.return_by)}</span>` : ''}</div>` : '';
+  return `<div class="wk">${head}${ret}${warn}${nav}${alert}${facts}${wkInternal(sheet)}${grid}<div class="wkbottom">${left}${right}</div></div>`;
+}
+
+/* live totals while typing */
+function wkRecalc() {
+  const root = document.querySelector('.wk'); if (!root) return;
+  const day = Array(7).fill(0);
+  root.querySelectorAll('.wkrow').forEach(r => { let t = 0; r.querySelectorAll('.wkc').forEach(i => { const v = parseFloat(i.value) || 0; day[+i.dataset.di] += v; t += v; }); r.querySelector('.wktot').textContent = h1(t); });
+  root.querySelectorAll('.wkdt').forEach(c => { c.textContent = h1(day[+c.dataset.di]); });
+  const all = day.reduce((a, v) => a + v, 0);
+  const g = root.querySelector('.wkgt'); if (g) g.textContent = h1(all);
+  const big = root.querySelector('.wktotbig'); if (big) big.textContent = h1(all);
+  const sub = root.querySelector('[data-act="wk-submit"]'); if (sub) sub.disabled = !(WK().cert && all > 0);
+}
+const wkIdKey = ln => [ln.project_id, ln.service_id ?? '', ln.hour_type].join('|');
+/* body of an entry for the server, with the line's project / service / type */
+function wkBody(e, ln, over = {}) {
+  const b = { work_date: e.work_date, project_id: Number(ln.project_id), note: e.note || null };
+  if (ln.service_id) b.service_id = Number(ln.service_id);
+  if (S.cache.wkCtx.emp) b.hour_type = ln.hour_type;
+  if (over.hours !== undefined) b.hours = over.hours; else if (e.start_time) { b.start_time = e.start_time; b.end_time = e.end_time; } else b.hours = e.hours;
+  return b;
+}
+/* Save draft: new entries are created, changed ones updated, cells left at 0 or empty are deleted. Returns how many calls were made. */
+async function wkSave() {
+  const st = WK(); const C = S.cache.wkCtx; const del = [], put = [], post = []; const now = today();
+  for (const ln of S.cache.wkLines) {
+    const p = (S.cache.projects || []).find(x => x.id === Number(ln.project_id)); const mode = wkMode(p, ln.service_id); const changed = !!st.edits[ln.lid];
+    for (const d of C.days) {
+      const es = ln.ents.filter(e => e.work_date === d); const key = ln.lid + '|' + d;
+      if (Object.prototype.hasOwnProperty.call(st.pend, key) && mode === 'full_day' && es.length <= 1) {
+        const raw = String(st.pend[key]).trim(); const n = raw === '' ? 0 : Number(raw);
+        if (!Number.isFinite(n) || n < 0) throw new Error('Hours must be a number, zero or more.');
+        if (n > C.maxDay) throw new Error('The most hours you can enter for one day is ' + C.maxDay + '.');
+        if (n > 0 && d > now) throw new Error('You cannot enter hours on future dates.');
+        const e = es[0];
+        if (e && n === 0) del.push(e.id);
+        else if (e) { if (n !== Number(e.hours) || changed) put.push([e.id, wkBody(e, ln, { hours: n })]); }
+        else if (n > 0) post.push(wkBody({ work_date: d, note: null }, ln, { hours: n }));
+      } else if (changed) for (const e of es) put.push([e.id, wkBody(e, ln)]);
+    }
+  }
+  for (const id of del) await api('/entries/' + id, { method: 'DELETE' });
+  for (const [id, b] of put) await api('/entries/' + id, { method: 'PUT', body: b });
+  for (const b of post) await api('/entries', { method: 'POST', body: b });
+  delete S.cache.wkst[S.weekDate];
+  return del.length + put.length + post.length;
+}
+/* a line whose project / service / type was changed on screen: move its saved entries first */
+async function wkApplyEdits(ln) {
+  const st = WK(); if (!st.edits[ln.lid]) return;
+  for (const e of ln.ents) await api('/entries/' + e.id, { method: 'PUT', body: wkBody(e, ln) });
+  delete st.edits[ln.lid];
+}
+/* once a line has saved entries it is identified by project + service + type: carry its pending cells over and drop the on-screen placeholder */
+function wkRelid(ln) {
+  const st = WK(); const nl = wkIdKey(ln);
+  if (nl !== ln.lid) for (const k of Object.keys(st.pend)) if (k.startsWith(ln.lid + '|')) { st.pend[nl + k.slice(ln.lid.length)] = st.pend[k]; delete st.pend[k]; }
+  st.extra = st.extra.filter(x => x.lid !== ln.lid); delete st.edits[ln.lid];
+}
+
+/* small box for "detail" cells (from / to) and for days with several entries */
+let wkPopPos = null;
+function wkPopClose() { document.querySelectorAll('.wkpop').forEach(x => x.remove()); }
+function wkPop(lid, d, anchor, editId) {
+  wkPopClose();
+  const ln = (S.cache.wkLines || []).find(l => l.lid === lid); if (!ln) return;
+  const C = S.cache.wkCtx; const p = (S.cache.projects || []).find(x => x.id === Number(ln.project_id)); const mode = wkMode(p, ln.service_id);
+  const es = ln.ents.filter(e => e.work_date === d); const ed = editId ? es.find(e => e.id === editId) : null;
+  const svc = (p?.services || []).find(s => s.id === Number(ln.service_id));
+  const items = es.map(e => `<li><span class="mono">${e.start_time ? esc(e.start_time) + '–' + esc(e.end_time) : 'Full day'}</span><span class="mono">${h1(e.hours)} h</span><span class="n">${esc(e.note || '')}</span>
+    ${C.locked ? '' : `<button type="button" class="btn ghost sm" data-act="pop-edit" data-id="${e.id}">Edit</button><button type="button" class="icon" data-act="pop-del" data-id="${e.id}" aria-label="Delete this entry">${wkClose}</button>`}</li>`).join('');
+  const form = C.locked ? '' : `<form data-form="wk-pop"><input type="hidden" name="lid" value="${esc(lid)}"><input type="hidden" name="d" value="${d}"><input type="hidden" name="id" value="${ed ? ed.id : ''}">
+    <div class="g2">${mode === 'from_to'
+      ? `<div><label>From</label><input name="start_time" type="time" required value="${esc(ed?.start_time || '')}"></div><div><label>To</label><input name="end_time" type="time" required value="${esc(ed?.end_time || '')}"></div>`
+      : `<div><label>Hours for the day</label><input name="hours" type="number" min="0" max="${C.maxDay}" step="${C.inc}" required value="${ed ? ed.hours : ''}"></div>`}</div>
+    <div><label>Note</label><input name="note" maxlength="1000" value="${esc(ed?.note || '')}"></div>
+    <div class="fb"><button class="btn pri sm" type="submit">${ed ? 'Save entry' : 'Add entry'}</button><button class="btn ghost sm" type="button" data-act="pop-close">Close</button></div></form>`;
+  const el = document.createElement('div'); el.className = 'wkpop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Entries for ' + dayLabel(d));
+  el.innerHTML = localizeHtml(`<div class="h"><b>${dayLabel(d)}</b><span class="muted">${esc(wkPL(p))}${svc && wkSvcs(p).length > 1 ? ' · ' + esc(svc.name) : ''}</span></div>${items ? `<ul>${items}</ul>` : ''}${form}`);
+  document.body.appendChild(el);
+  if (anchor && anchor.isConnected) { const r = anchor.getBoundingClientRect(); wkPopPos = { left: r.left + scrollX, top: r.bottom + scrollY + 6 }; }
+  const pos = wkPopPos || { left: 40, top: 120 };
+  el.style.left = Math.max(8, Math.min(pos.left, scrollX + innerWidth - 340)) + 'px'; el.style.top = pos.top + 'px';
+  const f = el.querySelector('input:not([type=hidden])'); if (f) f.focus();
+}
+/* clock: icon on the screen, small dialog to start / stop */
+function wkModalClose() { document.querySelectorAll('.wkmodal').forEach(x => x.remove()); }
+function wkModalOpen(inner) {
+  wkModalClose();
+  const m = document.createElement('div'); m.className = 'wkmodal';
+  m.innerHTML = localizeHtml(`<div class="box" role="dialog" aria-modal="true" aria-labelledby="clk-t">${inner}</div>`);
+  m.addEventListener('mousedown', e => { if (e.target === m) wkModalClose(); });
+  document.body.appendChild(m); const f = m.querySelector('select,button'); if (f) f.focus(); return m;
+}
+
+Object.assign(actions, {
+  'wk-go': el => { S.weekDate = el.dataset.end; render(); },
+  'wk-add'() {
+    const p = (S.cache.projects || []).find(x => x.active && wkSvcs(x).length); if (!p) throw new Error('There are no projects to add.');
+    const st = WK(); st.extra.push({ lid: 'n' + (++st.n), project_id: p.id, service_id: wkSvcs(p)[0].id, hour_type: 'reg' }); render();
+  },
+  async 'wk-copy'() {
+    const prev = addDays(weekEnd(S.weekDate), -7); const r = await api(`/entries?from=${addDays(prev, -6)}&to=${prev}`);
+    const seen = new Set(S.cache.wkLines.map(wkIdKey)); const st = WK(); let n = 0;
+    for (const e of r.entries.filter(x => !x.running)) {
+      const t = e.hour_type || 'reg'; const k = [e.project_id, e.service_id ?? '', t].join('|'); if (seen.has(k)) continue; seen.add(k);
+      st.extra.push({ lid: 'n' + (++st.n), project_id: e.project_id, service_id: e.service_id ?? null, hour_type: t }); n++;
+    }
+    flash(n ? (n === 1 ? '1 line copied.' : n + ' lines copied.') : 'There are no new lines to copy from the previous week.', n ? 'ok' : 'warn'); render();
+  },
+  async 'wk-del'(el) {
+    const ln = S.cache.wkLines.find(l => l.lid === el.dataset.lid); if (!ln) return; const st = WK();
+    const hours = ln.ents.reduce((a, e) => a + Number(e.hours), 0) + Object.entries(st.pend).filter(([k, v]) => k.startsWith(ln.lid + '|') && Number(v) > 0).length;
+    if (hours > 0 && !confirm(T('Remove this line and delete its hours for this week?'))) return;
+    for (const e of ln.ents) await api('/entries/' + e.id, { method: 'DELETE' });
+    st.extra = st.extra.filter(x => x.lid !== ln.lid); delete st.edits[ln.lid];
+    for (const k of Object.keys(st.pend)) if (k.startsWith(ln.lid + '|')) delete st.pend[k];
+    render();
+  },
+  async 'wk-save'() { const n = await wkSave(); flash(n ? 'Draft saved.' : 'Nothing to save.'); render(); },
+  async 'wk-submit'() {
+    if (!WK().cert) return; const id = S.cache.wkSheet.id;
+    await wkSave(); await api(`/sheets/${id}/submit`, { method: 'POST' }); flash('Timesheet submitted for approval.'); render();
+  },
+  'cell-pop'(el) { wkPop(el.dataset.lid, el.dataset.d, el); },
+  'pop-edit'(el) { const f = el.closest('.wkpop').querySelector('form'); wkPop(f ? f.elements.lid.value : '', f ? f.elements.d.value : '', null, Number(el.dataset.id)); },
+  async 'pop-del'(el) {
+    if (!confirm(T('Delete this entry?'))) return;
+    wkPopClose(); await api('/entries/' + el.dataset.id, { method: 'DELETE' }); flash('Entry deleted.'); render();
+  },
+  'pop-close': () => wkPopClose(),
+  'wk-modal-close': () => wkModalClose(),
+  'clock-open'() {
+    const run = S.cache.wkRunning;
+    if (run) {
+      const p = (S.cache.projects || []).find(x => x.id === run.project_id) || run.project;
+      wkModalOpen(`<h2 id="clk-t">Clock</h2><p>Running on <b>${esc(wkPL(p))}${run.service && wkSvcs(p).length > 1 ? ' · ' + esc(run.service.name) : ''}</b> since <b class="mono">${esc(run.start_time)}</b></p>
+        <div class="fb"><button class="btn pri" type="button" data-act="clock-stop">Stop</button><button class="btn ghost" type="button" data-act="wk-modal-close">Close</button></div>`);
+      return;
+    }
+    const ps = (S.cache.projects || []).filter(x => x.active && wkSvcs(x).some(s => s.mode === 'from_to'));
+    if (!ps.length) { wkModalOpen(`<h2 id="clk-t">Clock</h2><p class="muted">There are no projects where the clock can be used.</p><div class="fb"><button class="btn ghost" type="button" data-act="wk-modal-close">Close</button></div>`); return; }
+    const m = wkModalOpen(`<h2 id="clk-t">Clock</h2><form data-form="clock"><div><label>Project</label><select name="project_id" data-act-change="clock-project">${ps.map(x => `<option value="${x.id}">${esc(wkPL(x))}</option>`).join('')}</select></div>
+      <div><label>Service</label><select name="service_id"></select></div>
+      <div class="fb"><button class="btn pri" type="submit">Start</button><button class="btn ghost" type="button" data-act="wk-modal-close">Cancel</button></div></form>`);
+    const f = m.querySelector('form'); syncClockForm(f); f.elements.service_id.parentElement.hidden = f.elements.service_id.hidden;
+  },
+  async 'clock-stop'() { await api('/clock/stop', { method: 'POST', body: {} }); wkModalClose(); flash('Clock stopped.'); render(); },
+});
+Object.assign(forms, {
+  async clock(f) { const o = formObj(f); if (!o.service_id) delete o.service_id; await api('/clock/start', { method: 'POST', body: o }); wkModalClose(); flash('Clock started.'); render(); },
+  async 'wk-pop'(f) {
+    const o = formObj(f); const ln = S.cache.wkLines.find(l => l.lid === o.lid); if (!ln) return; const C = S.cache.wkCtx;
+    const p = (S.cache.projects || []).find(x => x.id === Number(ln.project_id)); const mode = wkMode(p, ln.service_id);
+    await wkApplyEdits(ln);
+    const b = { work_date: o.d, project_id: Number(ln.project_id), note: o.note || null };
+    if (ln.service_id) b.service_id = Number(ln.service_id); if (C.emp) b.hour_type = ln.hour_type;
+    if (mode === 'from_to') { b.start_time = o.start_time; b.end_time = o.end_time; } else b.hours = o.hours;
+    wkPopClose();
+    if (o.id) await api('/entries/' + o.id, { method: 'PUT', body: b }); else await api('/entries', { method: 'POST', body: b });
+    wkRelid(ln); flash('Entry saved.'); render();
+  },
+});
+/* typing in a cell: the change stays pending (marked) until Save draft */
+document.addEventListener('input', e => {
+  const i = e.target.closest?.('[data-cell]'); if (!i) return;
+  i.classList.add('dirty'); WK().pend[i.dataset.cell] = i.value; wkRecalc();
+});
+document.addEventListener('change', e => {
+  const i = e.target.closest?.('[data-cell]');
+  if (i) {
+    const C = S.cache.wkCtx; const st = WK(); let v = i.value === '' ? 0 : Number(i.value); let bad = '';
+    if (!(v >= 0)) bad = 'Hours must be a number, zero or more.';
+    else { v = Math.round(v / C.inc) * C.inc; i.value = v ? h1(v) : ''; wkRecalc(); const di = +i.dataset.di; const dsum = [...document.querySelectorAll(`.wk .wkc[data-di="${di}"]`)].reduce((a, x) => a + (parseFloat(x.value) || 0), 0); if (dsum > C.maxDay) bad = 'The most hours you can enter for one day is ' + C.maxDay + '.'; }
+    if (bad) { i.value = i.dataset.orig; delete st.pend[i.dataset.cell]; i.classList.remove('dirty'); wkRecalc(); toast(bad, 'err'); return; }
+    if (String(i.value) === String(i.dataset.orig)) { delete st.pend[i.dataset.cell]; i.classList.remove('dirty'); } else st.pend[i.dataset.cell] = i.value;
+    return;
+  }
+  const c = e.target.closest?.('[data-act-change="wk-cert"]'); if (c) { WK().cert = c.checked; wkRecalc(); return; }
+  const s = e.target.closest?.('[data-act-change="wk-line"]');
+  if (s) {
+    const ln = S.cache.wkLines.find(l => l.lid === s.dataset.lid); if (!ln) return; const ed = (WK().edits[ln.lid] ??= {});
+    if (s.dataset.fld === 'project_id') { const p = S.cache.projects.find(x => x.id === Number(s.value)); ed.project_id = p.id; ed.service_id = wkSvcs(p)[0]?.id ?? null; }
+    else if (s.dataset.fld === 'service_id') ed.service_id = Number(s.value); else ed.hour_type = s.value;
+    render();
+  }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { wkPopClose(); wkModalClose(); return; }
+  const cp = e.target.closest?.('[data-act="cell-pop"]'); if (cp && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); cp.click(); return; }
+  if (e.key !== 'Enter') return; const i = e.target.closest?.('[data-cell]'); if (!i) return;
+  e.preventDefault(); const all = [...document.querySelectorAll('.wk input.wkc:not([readonly])')]; const n = all[all.indexOf(i) + 1]; if (n) { n.focus(); n.select(); }
+});
+document.addEventListener('mousedown', e => { if (!e.target.closest('.wkpop') && !e.target.closest('[data-act="cell-pop"]') && !e.target.closest('[data-act="pop-edit"]')) wkPopClose(); });
+
 const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { if (e.message !== 'Session expired') { flash(e.message, 'err'); render(); } } };
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="entry-project"],[data-act-change="entry-service"]'); if (el) syncEntryForm(el.closest('form')); });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="clock-project"]'); if (el) syncClockForm(el.closest('form')); });
@@ -1108,6 +1516,8 @@ document.addEventListener('change', e => {
   const f = el.closest('form'); const sel = f.elements.customer_id; sel.required = el.checked;
   const lb = sel.parentElement.querySelector('label'); lb.textContent = T('Client') + (el.checked ? ' *' : '');
 });
+document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="proj-internal"]'); if (el) el.closest('.intap').querySelector('.intap-body').hidden = !el.checked; });
+document.addEventListener('input', e => { const q = e.target.closest?.('[data-intap-q]'); if (!q) return; const v = q.value.trim().toLowerCase(); q.closest('.intap-body').querySelectorAll('.chip').forEach(c => { c.hidden = !!v && !c.dataset.nm.includes(v); }); });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="lang-pick"]'); if (el) guard(actions.lang)({ dataset: { to: el.value } }); });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="wk-pick"]'); if (el) { S.weekDate = el.value; render(); } });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="exp-refresh"]'); if (el) { const f = el.closest('form'); const o = formObj(f); S.cache.exp = { ...o, picked: ['customer_id', 'from', 'to', 'user_id'].includes(el.name) ? null : (o.project_ids || null) }; render(); } });

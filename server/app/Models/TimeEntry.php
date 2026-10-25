@@ -7,6 +7,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TimeEntry extends Model
 {
+    /** reg = regular, ot = tiempo extra, hol = feriado, sick = enfermedad, vac = vacaciones, nb = no facturable. */
+    public const HOUR_TYPES = ['reg', 'ot', 'hol', 'sick', 'vac', 'nb'];
+
+    /** Tipos que se facturan según el servicio; los demás nunca. */
+    public const BILLABLE_HOUR_TYPES = ['reg', 'ot'];
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -46,6 +52,12 @@ class TimeEntry extends Model
     public function payRate(): float
     {
         return (float) ($this->pay_rate ?? $this->user?->terms?->rate ?? 0);
+    }
+
+    /** 'times' si se entró hora por hora (desde/hasta); 'total' si se entró el total de horas del día. */
+    public function enteredAs(): string
+    {
+        return $this->start_time && $this->end_time ? 'times' : 'total';
     }
 
     public function timesheet(): BelongsTo

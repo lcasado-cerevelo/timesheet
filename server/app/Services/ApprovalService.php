@@ -117,12 +117,12 @@ class ApprovalService
         });
     }
 
-    public function notifyWorkerDecision(Timesheet $sheet, string $decision): void
+    public function notifyWorkerDecision(Timesheet $sheet, string $decision, ?string $by = null): void
     {
         $sheet->loadMissing('user', 'company');
         // La persona que trabaja recibe el correo en su propio idioma.
         $lang = $sheet->user->lang();
-        Lang::with($lang, function () use ($sheet, $decision, $lang) {
+        Lang::with($lang, function () use ($sheet, $decision, $lang, $by) {
             $week = $sheet->week_ending->toDateString();
             Mail::to($sheet->user->email, $sheet->user->name)->locale($lang)->send(new BrandedMail(
                 $sheet->company,
@@ -131,7 +131,7 @@ class ApprovalService
                     : __('Hoja devuelta para corregir: semana :week', ['week' => $week]),
                 'mail.sheet-decision',
                 ['decision' => $decision, 'week' => $week, 'comment' => $sheet->return_comment,
-                 'name' => $sheet->user->name]
+                 'name' => $sheet->user->name, 'by' => $by]
             ));
         });
     }
@@ -175,18 +175,19 @@ class ApprovalService
             $rules = $a->company->rules();
             $days = (int) $rules->get('approval_remind_days');
             $every = (int) $rules->get('remind_every_days');
-            $stale = Timesheet::where('approver_id', $a->id)->where('status', Timesheet::SUBMITTED)
+            $stale = Timesheet::where('approver_id', $a->id)->where('status', Timesheet::SUBMITTED)->releasedToExternal()
                 ->where('submitted_at', '<=', now()->subDays($days))
                 ->where(fn ($q) => $q->whereNull('last_reminded_at')->orWhere('last_reminded_at', '<=', now()->subDays($every)))
                 ->get();
             if ($stale->isEmpty()) {
                 return;
             }
-            $pending = Timesheet::where('approver_id', $a->id)->where('status', Timesheet::SUBMITTED)->count();
+            $pending = Timesheet::where('approver_id', $a->id)->where('status', Timesheet::SUBMITTED)->releasedToExternal()->count();
             $this->sendDigest($a, $pending);
             Timesheet::whereIn('id', $stale->pluck('id'))->update(['last_reminded_at' => now()]);
             $sent++;
         });
-        return $sent;
+        // Los aprobadores internos con partes pendientes también reciben su recordatorio.
+        return $sent + app(InternalApprovalService::class)->sendReminders();
     }
 }

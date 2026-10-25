@@ -16,6 +16,7 @@ class Project extends Model
         return [
             'billable' => 'boolean',
             'active' => 'boolean',
+            'requires_internal_approval' => 'boolean',
             'meta' => 'array',
             'bill_rate' => 'decimal:2',
             'budget_hours' => 'decimal:2',
@@ -37,6 +38,12 @@ class Project extends Model
         return $this->belongsToMany(User::class);
     }
 
+    /** Supervisores (usuarios con cuenta) que aprueban las horas de este proyecto antes del aprobador externo. */
+    public function internalApprovers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'project_internal_approvers');
+    }
+
     public function services(): HasMany
     {
         return $this->hasMany(Service::class)->orderBy('sort')->orderBy('id');
@@ -51,10 +58,5 @@ class Project extends Model
                     'billable' => (bool) ($p->billable ?? true), 'capture_mode' => 'both', 'active' => true]);
             }
         });
-    }
-
-    public function requiresTimes(): bool
-    {
-        return $this->invoice_detail === 'with_times';
     }
 }

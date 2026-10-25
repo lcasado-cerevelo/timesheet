@@ -61,9 +61,6 @@ class EntryService
                 if ($start || $end || $running) {
                     $this->fail('start_time', __('Este servicio se registra con el total de horas del día; no lleva hora desde ni hasta.'));
                 }
-                if ($project->requiresTimes()) {
-                    $this->fail('project_id', __('Ese proyecto exige hora desde y hasta; este servicio se registra con el total del día.'));
-                }
                 if ($hours === null || $hours <= 0) {
                     $this->fail('hours', __('Escribe las horas del día.'));
                 }
@@ -127,6 +124,19 @@ class EntryService
                 $before = $this->describe($entry);
             }
 
+            // El tipo de hora solo cuenta para empleados; los consultores siempre son 'reg'.
+            $hourType = 'reg';
+            if ($user->isEmployee()) {
+                $hourType = $data['hour_type'] ?? ($entry?->hour_type ?: 'reg');
+                if (! in_array($hourType, TimeEntry::HOUR_TYPES, true)) {
+                    $this->fail('hour_type', __('Tipo de hora no válido.'));
+                }
+            }
+            $billable = (bool) ($data['billable'] ?? $service->billable);
+            if (! in_array($hourType, TimeEntry::BILLABLE_HOUR_TYPES, true)) {
+                $billable = false;
+            }
+
             $attrs = [
                 'company_id' => $user->company_id,
                 'user_id' => $user->id,
@@ -139,7 +149,8 @@ class EntryService
                 'running' => $running,
                 'hours' => $hours,
                 'note' => isset($data['note']) ? mb_substr((string) $data['note'], 0, 1000) : null,
-                'billable' => (bool) ($data['billable'] ?? $service->billable),
+                'billable' => $billable,
+                'hour_type' => $hourType,
             ];
             // Las tarifas quedan guardadas en la entrada al crearla: cambiar la tarifa de un servicio solo afecta entradas nuevas.
             if (! $entry || (int) $entry->service_id !== $service->id || $entry->bill_rate === null && $entry->pay_rate === null) {

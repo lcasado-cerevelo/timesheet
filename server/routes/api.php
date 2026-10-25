@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\ClientTimesheetController;
@@ -8,6 +9,7 @@ use App\Http\Controllers\Api\EntryController;
 use App\Http\Controllers\Api\ContractorInvoiceController;
 use App\Http\Controllers\Api\ExportController;
 use App\Http\Controllers\Api\IntegrationController;
+use App\Http\Controllers\Api\InternalSheetController;
 use App\Http\Controllers\Api\ApproverSheetController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\ProjectController;
@@ -36,11 +38,20 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
 
     // Cuentas de aprobador: solo sus hojas
     Route::middleware('approver')->prefix('approver')->group(function () {
+        Route::get('/review', [ApproverSheetController::class, 'review']);
         Route::get('/sheets', [ApproverSheetController::class, 'index']);
         Route::get('/sheets/{sheet}', [ApproverSheetController::class, 'show']);
         Route::post('/sheets/{sheet}/code', [ApproverSheetController::class, 'code'])->middleware('throttle:5,1');
         Route::post('/sheets/{sheet}/approve', [ApproverSheetController::class, 'approve']);
         Route::post('/sheets/{sheet}/return', [ApproverSheetController::class, 'return']);
+    });
+
+    // Aprobadores internos (supervisores): solo las líneas de los proyectos que supervisan
+    Route::middleware('internal')->prefix('internal')->group(function () {
+        Route::get('/review', [InternalSheetController::class, 'review']);
+        Route::get('/sheets/{sheet}', [InternalSheetController::class, 'show']);
+        Route::post('/sheets/{sheet}/approve', [InternalSheetController::class, 'approve']);
+        Route::post('/sheets/{sheet}/return', [InternalSheetController::class, 'return']);
     });
 
     Route::get('/me', [AuthController::class, 'me']);
@@ -125,6 +136,10 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::put('/services/{service}', [ServiceController::class, 'update']);
 
         Route::get('/sheets-pending', [SheetController::class, 'pending']);
+        Route::get('/review/sheets', [SheetController::class, 'review']);
+
+        Route::get('/accounts', [AccountController::class, 'index']);
+        Route::post('/invitations', [AccountController::class, 'invite']);
         Route::post('/sheets/{sheet}/approve', [SheetController::class, 'approve']);
         Route::post('/sheets/{sheet}/return', [SheetController::class, 'return']);
     });

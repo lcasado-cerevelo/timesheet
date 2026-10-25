@@ -54,5 +54,6 @@ return [
         'service_id' => 'el servicio', 'work_date' => 'la fecha', 'start_time' => 'la hora desde', 'end_time' => 'la hora hasta',
         'hours' => 'las horas', 'from' => 'la fecha desde', 'to' => 'la fecha hasta', 'code' => 'el código',
         'comment' => 'el comentario', 'locale' => 'el idioma',
+        'employee_number' => 'el número de empleado', 'hour_type' => 'el tipo de hora', 'worker_type' => 'el tipo de persona', 'role' => 'el rol',
     ],
 ];

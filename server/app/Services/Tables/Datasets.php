@@ -188,14 +188,13 @@ class Datasets
             ->when(! empty($f['customer_id']), fn ($x) => $x->where('customer_id', $f['customer_id']))
             ->orderBy('code')->get()
             ->filter(fn ($x) => $this->matches($f['q'] ?? null, [$x->code, $x->name, $x->customer?->name]))->values();
-        $detail = ['hours_total' => __('Total'), 'by_day' => __('Por día'), 'with_times' => __('Con desde/hasta')];
         return [
             'title' => __('Proyectos'), 'subtitle' => __(':count proyecto(s)', ['count' => $list->count()]).$this->describe([$this->txt($f),
                 $active === null ? null : ($active ? __('solo activos') : __('solo inactivos')), $billable === null ? null : ($billable ? __('solo facturables') : __('solo no facturables')),
                 ! empty($f['customer_id']) ? __('cliente :name', ['name' => Customer::find($f['customer_id'])?->name ?? '#'.$f['customer_id']]) : null]),
             'columns' => [['h' => __('Código'), 't' => 'text'], ['h' => __('Nombre'), 't' => 'text'], ['h' => __('Cliente'), 't' => 'text'], ['h' => __('Facturable'), 't' => 'bool'], ['h' => __('Activo'), 't' => 'bool'],
-                ['h' => __('Detalle de factura'), 't' => 'text'], ['h' => __('Tarifa'), 't' => 'money'], ['h' => __('Horas presupuestadas'), 't' => 'hours'], ['h' => __('Aprobador'), 't' => 'text']],
-            'rows' => $list->map(fn ($p) => [$p->code, $p->name, $p->customer?->name ?? '', (bool) $p->billable, (bool) $p->active, $detail[$p->invoice_detail] ?? '',
+                ['h' => __('Tarifa'), 't' => 'money'], ['h' => __('Horas presupuestadas'), 't' => 'hours'], ['h' => __('Aprobador'), 't' => 'text']],
+            'rows' => $list->map(fn ($p) => [$p->code, $p->name, $p->customer?->name ?? '', (bool) $p->billable, (bool) $p->active,
                 $p->bill_rate !== null ? (float) $p->bill_rate : null, $p->budget_hours !== null ? (float) $p->budget_hours : null, $p->approver?->name ?? ''])->all(),
             'total' => null,
         ];

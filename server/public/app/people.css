@@ -1,0 +1,47 @@
+/* people screens (People and Approvals): styles added by their own agent so two agents never edit the same CSS block. Copied from the mockup. */
+.pp{display:flex;flex-direction:column;gap:20px;line-height:1.45}
+.pp [hidden]{display:none!important}
+.pp h1{margin:0}.pp .sub{margin:4px 0 0}
+.pp h2{margin:0}
+.pp .card{margin:0;padding:16px}.pp .card.inv{padding:20px}
+.pp .msg{margin:0}
+.pp .th{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.pp .th.c{text-align:center}.pp .th.r{text-align:right}
+.pp .mono{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
+.pp .scrollx{overflow-x:auto}
+.pp .hd,.pp .rw{display:grid;gap:8px}
+.pp .hd{padding-bottom:8px;border-bottom:2px solid var(--text)}
+.pp .rw{align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.pp .rw .nm{font-weight:500}.pp .rw .em{color:var(--muted);overflow-wrap:anywhere}
+.pp .rw .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.pp .cols-users{grid-template-columns:minmax(150px,1.4fr) minmax(190px,1.8fr) 110px 120px 100px 100px 100px 350px}
+.pp .cols-bill{grid-template-columns:minmax(150px,1.4fr) 130px 150px 190px 110px}
+.pp .cols-rev{grid-template-columns:minmax(150px,1.4fr) 110px 90px minmax(110px,1.2fr) 56px 100px}
+.pp .cols-det{grid-template-columns:minmax(140px,2fr) repeat(7,38px) 56px;gap:6px}
+.pp .cols-det.rw{padding:8px 0}
+/* labelled fields */
+.pp .lbl{display:flex;flex-direction:column;gap:6px;font-weight:500;font-size:15px;letter-spacing:0;text-transform:none;color:var(--text);margin:0}
+.pp .flbl{display:flex;flex-direction:column;gap:4px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0}
+.pp .flbl input,.pp .flbl select{text-transform:none;letter-spacing:0;font-size:15px;color:var(--text)}
+.pp .num{text-align:right;font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;padding:0 8px}
+.pp .bchk{display:flex;align-items:center;gap:10px;min-height:44px;text-transform:none;letter-spacing:0;font-size:15px;color:var(--text);margin:0}
+.pp .note{font-size:13px;color:var(--muted)}
+.pp .flt{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:flex-end}
+.pp .invrow{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+/* pills, like the mockup (44 px tall) */
+.pp .pill{font:inherit;font-size:13px;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--field);background:#fff;color:var(--text);cursor:pointer}
+.pp .pill:hover{background:var(--hover)}
+.pp .pill.on{background:var(--tint);border-color:var(--primary);color:#085A88;font-weight:600}
+.pp .pill:disabled{opacity:.45;cursor:not-allowed}
+.pp .pillrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pp .fpanel{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-end;padding:12px;background:#F6F7F8;border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
+.pp .twin{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.pp .twin>.card{min-width:0}
+.pp .twin>.l{flex:1 1 560px}.pp .twin>.r{flex:1 1 440px;display:flex;flex-direction:column;gap:14px}
+.pp .rowbtn{display:grid;width:100%;text-align:left;font:inherit;color:inherit;background:transparent;border:0;border-bottom:1px solid var(--line);padding:10px 8px;cursor:pointer;align-items:center;gap:8px}
+.pp .rowbtn:hover{background:var(--hover)}.pp .rowbtn.sel{background:#E6F3FB}
+.pp .revscroll{overflow:auto;max-height:560px}
+.pp .tot{display:flex;justify-content:space-between;padding-top:10px;font-weight:600}
+.pp .decided{display:flex;flex-wrap:wrap;gap:10px}
+.pp .edit h2{font-size:18px}
+.pp .empty{color:var(--muted);padding:12px 0}

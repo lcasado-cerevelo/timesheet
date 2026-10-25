@@ -40,19 +40,19 @@ td{padding:5px 6px;border-bottom:1px solid #ddd;vertical-align:top;word-wrap:bre
 @foreach($d['projects'] as $p)
 <h2>{{ $p['code'] }} · {{ $p['name'] }}</h2>
 <table>
-<colgroup><col style="width:11%"><col style="width:17%"><col style="width:13%"><col style="width:8%"><col>@if($d['show_amounts'])<col style="width:11%">@endif</colgroup>
-<tr><th>{{ __('Fecha') }}</th><th>{{ __('Persona') }}</th><th>{{ __('Horario') }}</th><th class="r">{{ __('Horas') }}</th><th>{{ __('Descripción') }}</th>@if($d['show_amounts'])<th class="r">{{ __('Importe') }}</th>@endif</tr>
+<colgroup><col style="width:11%"><col style="width:17%">@if($p['has_times'])<col style="width:13%">@endif<col style="width:8%"><col>@if($d['show_amounts'])<col style="width:11%">@endif</colgroup>
+<tr><th>{{ __('Fecha') }}</th><th>{{ __('Persona') }}</th>@if($p['has_times'])<th>{{ __('Horario') }}</th>@endif<th class="r">{{ __('Horas') }}</th><th>{{ __('Descripción') }}</th>@if($d['show_amounts'])<th class="r">{{ __('Importe') }}</th>@endif</tr>
 @foreach($p['lines'] as $l)
 <tr>
 <td>{{ $l['date'] }}</td>
 <td>{{ $l['worker'] }}</td>
-<td>{{ $l['start'] ? $l['start'].'–'.$l['end'] : __('Día completo') }}</td>
+@if($p['has_times'])<td>{{ $l['entered_as'] === 'times' ? $l['start'].'–'.$l['end'] : '' }}</td>@endif
 <td class="r">{{ number_format($l['hours'], 2) }}</td>
 <td>{!! nl2br(e($l['description'])) !!}@unless($l['approved']) <span class="warn">({{ __('sin aprobar') }})</span>@endunless</td>
 @if($d['show_amounts'])<td class="r">${{ number_format($l['amount'], 2) }}</td>@endif
 </tr>
 @endforeach
-<tr class="sub"><td colspan="3">{{ __('Subtotal :code', ['code' => $p['code']]) }}@if(count($p['by_worker']) > 1) — @foreach($p['by_worker'] as $w){{ $w['worker'] }}: {{ number_format($w['hours'], 2) }} h{{ $loop->last ? '' : ' · ' }}@endforeach @endif</td>
+<tr class="sub"><td colspan="{{ $p['has_times'] ? 3 : 2 }}">{{ __('Subtotal :code', ['code' => $p['code']]) }}@if(count($p['by_worker']) > 1) — @foreach($p['by_worker'] as $w){{ $w['worker'] }}: {{ number_format($w['hours'], 2) }} h{{ $loop->last ? '' : ' · ' }}@endforeach @endif</td>
 <td class="r">{{ number_format($p['hours'], 2) }}</td><td></td>@if($d['show_amounts'])<td class="r">${{ number_format($p['amount'], 2) }}</td>@endif</tr>
 </table>
 @endforeach

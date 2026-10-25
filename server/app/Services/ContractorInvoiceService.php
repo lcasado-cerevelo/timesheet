@@ -94,7 +94,7 @@ class ContractorInvoiceService
             $logo = 'data:'.Storage::disk('public')->mimeType($company->logo_path).';base64,'.base64_encode(Storage::disk('public')->get($company->logo_path));
         }
         $html = view('pdf.contractor-invoice', ['inv' => $inv, 'worker' => $inv->user, 'terms' => $inv->user->terms,
-            'brand' => $brand, 'logo' => $logo, 'company' => $company])->render();
+            'brand' => $brand, 'logo' => $logo, 'company' => $company, 'detail' => $this->hoursDetail($inv)])->render();
         $opts = new Options();
         $opts->set('isRemoteEnabled', false);
         $opts->set('defaultFont', 'DejaVu Sans');
@@ -105,6 +105,36 @@ class ContractorInvoiceService
         $path = 'invoices/'.$company->id.'/'.$inv->number.'.pdf';
         Storage::disk('local')->put($path, $pdf->output());
         return $path;
+    }
+
+    /**
+     * Detalle de horas de la factura: las entradas incluidas, igual que se entraron. Hora por hora (desde–hasta) una línea por
+     * entrada; total de horas, una línea por día. Agrupado por proyecto. No cambia líneas ni importes de la factura.
+     * @return array<int, array{title:string, hours:float, lines:array, has_times:bool}>
+     */
+    public function hoursDetail(ContractorInvoice $inv): array
+    {
+        $entries = Timesheet::with('entries.project.services', 'entries.service')->where('contractor_invoice_id', $inv->id)->get()
+            ->flatMap->entries->where('billable', true)->sortBy(fn ($e) => $e->work_date->toDateString().'|'.$e->start_time.'|'.str_pad((string) $e->id, 10, '0', STR_PAD_LEFT));
+        $out = [];
+        foreach ($entries->groupBy('project_id')->sortBy(fn ($rows) => $rows->first()->project->code) as $rows) {
+            $p = $rows->first()->project;
+            $lines = [];
+            foreach ($rows->groupBy('service_id') as $svcRows) {
+                $svc = $p->services->count() > 1 ? $svcRows->first()->service?->name : null;
+                foreach ($svcRows->filter(fn ($e) => $e->enteredAs() === 'times') as $e) {
+                    $lines[] = ['date' => $e->work_date->toDateString(), 'start' => substr($e->start_time, 0, 5), 'end' => substr((string) $e->end_time, 0, 5),
+                        'hours' => (float) $e->hours, 'service' => $svc];
+                }
+                foreach ($svcRows->filter(fn ($e) => $e->enteredAs() === 'total')->groupBy(fn ($e) => $e->work_date->toDateString()) as $day => $g) {
+                    $lines[] = ['date' => $day, 'start' => null, 'end' => null, 'hours' => round((float) $g->sum('hours'), 2), 'service' => $svc];
+                }
+            }
+            usort($lines, fn ($a, $b) => [$a['date'], $a['start'] ?? ''] <=> [$b['date'], $b['start'] ?? '']);
+            $out[] = ['title' => $p->code.' · '.$p->name, 'hours' => round(array_sum(array_column($lines, 'hours')), 2), 'lines' => $lines,
+                'has_times' => in_array(true, array_map(fn ($l) => $l['start'] !== null, $lines), true)];
+        }
+        return $out;
     }
 
     private function emailOwners(ContractorInvoice $inv): void

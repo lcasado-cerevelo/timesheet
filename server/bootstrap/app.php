@@ -28,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'approver.scope' => \App\Http\Middleware\ApproverScope::class,
             'approver' => \App\Http\Middleware\ApproverOnly::class,
             'owner' => \App\Http\Middleware\OwnerOnly::class,
+            'internal' => \App\Http\Middleware\InternalOnly::class,
             'public.page' => \App\Http\Middleware\PublicPageHeaders::class,
         ]);
     })

@@ -92,6 +92,8 @@ class UserController extends Controller
             'email' => ['required', 'email', 'max:190', Rule::unique('users', 'email')->ignore($user?->id)],
             'role' => 'in:owner,member',
             'worker_type' => 'required|in:consultant,employee',
+            // Único por compañía cuando no es nulo.
+            'employee_number' => ['nullable', 'string', 'max:40', Rule::unique('users', 'employee_number')->where('company_id', $companyId)->ignore($user?->id)],
             // Lo decide el dueño por usuario: día completo o desde/hasta.
             'capture_mode' => 'required|in:full_day,from_to',
             'weekly_hours' => 'nullable|numeric|min:1|max:168',
@@ -137,7 +139,7 @@ class UserController extends Controller
         return [
             'id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'role' => $u->role,
             'worker_type' => $u->worker_type, 'capture_mode' => $u->capture_mode,
-            'weekly_hours' => $u->weekly_hours, 'approver_id' => $u->approver_id, 'active' => $u->active,
+            'weekly_hours' => $u->weekly_hours, 'employee_number' => $u->employee_number, 'approver_id' => $u->approver_id, 'active' => $u->active,
             'project_ids' => $u->projects()->pluck('projects.id'),
             'terms' => $u->terms, 'invitation_status' => $u->invitationStatus(),
         ];

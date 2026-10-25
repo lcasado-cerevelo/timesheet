@@ -38,6 +38,14 @@ class SimpleCrudController extends Controller
             'active' => 'boolean',
             'can_login' => 'boolean',
         ]);
+        [$approver, $created] = $this->persistApprover($request->user(), $approver, $v);
+        return response()->json($this->approverPayload($approver->fresh('account')), $created ? 201 : 200);
+    }
+
+    /** Crea o actualiza un aprobador y, según can_login, su cuenta de entrada (con invitación). Devuelve [aprobador, creado]. */
+    public function persistApprover(User $actor, ?Approver $approver, array $v): array
+    {
+        $cid = $actor->company_id;
         $wantsLogin = array_key_exists('can_login', $v) ? (bool) $v['can_login'] : (bool) $approver?->can_login;
         $account = $approver?->account;
 
@@ -61,12 +69,12 @@ class SimpleCrudController extends Controller
                     'worker_type' => 'employee', 'capture_mode' => 'full_day', 'password' => Str::random(64), 'must_set_password' => true,
                     'approver_profile_id' => $approver->id, 'active' => true,
                 ]);
-                $this->accounts->invite($account->load('company'), $request->user());
+                $this->accounts->invite($account->load('company'), $actor);
             } else {
                 $account->update(['name' => $approver->name, 'email' => $approver->email]);
                 if (! $account->active) {
                     $account->update(['active' => true]);
-                    $this->accounts->invite($account->load('company'), $request->user());
+                    $this->accounts->invite($account->load('company'), $actor);
                 }
             }
         } elseif ($account) {
@@ -74,7 +82,7 @@ class SimpleCrudController extends Controller
             $this->accounts->revokeAccess($account);
         }
         $approver->update(['can_login' => $wantsLogin]);
-        return response()->json($this->approverPayload($approver->fresh('account')), $created ? 201 : 200);
+        return [$approver, $created];
     }
 
     private function approverPayload(Approver $a): array
