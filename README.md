@@ -1,0 +1,112 @@
+# Tiempo — registro de horas con aprobación
+
+Aplicación de registro de tiempo para consultores y empleados, con aprobación por email, marca configurable,
+exportación a Excel (incluida la plantilla de Consultorio 1500) e integración opcional con Accountisi.
+
+| Carpeta | Qué es |
+|---|---|
+| `server/` | Servidor y API: Laravel 13, PHP 8.4, MariaDB/MySQL. Incluye la web (`/app`) y las páginas de aprobación sin cuenta. |
+| `mobile/` | Aplicación móvil Android e iPhone: React Native (Expo 52, expo-router). Funciona sin conexión. |
+| `tools/` | PHP 8.4, Composer y MariaDB 11.4 portátiles para desarrollar sin instalar nada en Windows. |
+| `diseno.md`, `analisis-preliminar.md` | Decisiones de diseño. |
+
+## Probar en esta máquina
+
+```bash
+export PATH="$PWD/tools/php:$PATH"
+cd server
+php artisan migrate:fresh
+php artisan tiempo:demo          # compañía de ejemplo (Cerevelo) con personas y proyectos
+php artisan storage:link
+php artisan serve                # http://127.0.0.1:8000/app/
+```
+
+Usuarios de ejemplo (clave `demo-password-123`): `luis@demo.test` (dueño), `ana@demo.test` (consultora, desde/hasta),
+`marcos@demo.test` (empleado, día completo). En desarrollo los emails se escriben en `server/storage/logs/laravel.log`
+(`MAIL_MAILER=log`): ahí está el enlace de aprobación.
+
+Crear una compañía real: `php artisan tiempo:instalar "Mi Compañía" dueno@correo.com --nombre="Luis"`.
+
+### Pruebas
+
+```bash
+cd server && php artisan test        # 48 pruebas; también pasan contra MariaDB
+cd mobile && npx jest && npx tsc --noEmit
+```
+
+Contra MariaDB (el motor del hosting barato): `tools/mariadb-x/.../bin/mariadbd.exe --datadir=tools/mariadb-data --port=3307`
+y `DB_CONNECTION=mariadb DB_HOST=127.0.0.1 DB_PORT=3307 DB_DATABASE=tiempo_test DB_USERNAME=root php artisan test`.
+
+## Poner en producción (GoDaddy u otro hosting con PHP 8.3+)
+
+1. Sube `server/` (sin `tests/`) y ejecuta `composer install --no-dev --optimize-autoloader`
+   (si el plan no tiene SSH: corre ese comando en tu máquina y sube también `vendor/`).
+2. El dominio debe apuntar a la carpeta `server/public`. Si el hosting solo deja usar `public_html`, copia ahí el contenido de
+   `public/` y en su `index.php` cambia las rutas `__DIR__.'/../...'` para que apunten a donde subiste el resto.
+3. Copia `.env.production.example` a `.env`, rellena base de datos y correo, y corre:
+   ```bash
+   php artisan key:generate --force
+   php artisan migrate --force
+   php artisan storage:link
+   php artisan config:cache && php artisan route:cache
+   php artisan tiempo:instalar "Tu Compañía" tu@correo.com --nombre="Tu Nombre"
+   ```
+4. **Cron** (cada minuto): `* * * * * php /ruta/server/artisan schedule:run >> /dev/null 2>&1`.
+   Envía los avisos de "la hoja cambió" (tras la espera de 10 minutos) y los recordatorios de hojas sin decidir (8:00 a. m.).
+5. **HTTPS obligatorio** (los enlaces de aprobación y el token de la app viajan por ahí).
+6. Correo con un servicio de envío (SES, Postmark, Brevo) y SPF/DKIM del dominio del remitente.
+7. Permisos: `storage/` y `bootstrap/cache/` escribibles por el servidor web; nada de `.env` dentro de la carpeta pública.
+8. Opcional: en `config/cors.php` limita `allowed_origins` al dominio de la web si sirves la app web móvil desde otro sitio
+   (la app nativa no usa CORS).
+
+## Marca, reglas y personas (todo desde la web, sin tocar código)
+
+- **Marca:** Configuración → Marca (nombre, logo, colores, remitente, pie). Se aplica a web, emails, PDF y app móvil.
+- **Reglas:** semanas hacia atrás, fecha límite, incremento, máximo por día, recordatorio a los 7 días, vigencia de enlaces,
+  espera antes de avisar un cambio (10 min), horas sobre las cuales se pide código.
+- **Personas:** el dueño fija por usuario si se permite el día completo o se exige desde/hasta; consultores llevan tarifa,
+  retención e IVU; empleados llevan horas por semana (por omisión 40; solo se avisa si se pasan).
+- **Proyectos:** solo los administra el dueño. Para Consultorio 1500, cada paciente es un proyecto con los campos
+  `plan_medico` y `numero_contrato`.
+
+## Aprobación
+
+El email lleva el resumen (sin tarifas) y un botón que abre una página con la hoja completa; abrirla no aprueba nada.
+Enlaces de un solo uso, ligados a la versión de la hoja, con vencimiento. Si la hoja cambia antes de decidirse, el enlace
+anterior deja de servir y sale un email nuevo ("Esta hoja cambió"). A los 7 días llega un recordatorio con una pantalla de
+todas las pendientes (pide un código de 6 dígitos al mismo correo). Una hoja aprobada no se puede cambiar.
+
+## Integración con Accountisi
+
+Configuración → Integración. La URL es configurable (localhost hoy, el servidor de Amazon mañana). Dos modos:
+
+- **Usuario de servicio** (funciona hoy): crea en Accountisi un usuario sin MFA con permisos de facturas y cuentas por pagar.
+- **API key** (a futuro): Accountisi todavía no la tiene; el cliente ya la envía como `Authorization: Bearer`.
+
+Crea facturas de venta (proyecto en el comentario; nueva o añadida a una abierta) y la cuenta por pagar de la factura del
+consultor (en borrador). Probado el 2026-10-24 contra la API real de Accountisi con la base `AccountisiTest` (nunca contra
+Cerevelo): conexión, clientes, suplidores, factura de venta y cuenta por pagar. El usuario de servicio necesita permisos de
+crear facturas y cuentas por pagar. Ojo: en la cuenta por pagar, Accountisi calcula el impuesto según el artículo usado y la
+retención según el suplidor al postear; los montos de IVU y retención del PDF del consultor pueden no coincidir con los de
+Accountisi hasta que el contador defina cuál manda.
+
+## App móvil
+
+```bash
+cd mobile
+npm install --legacy-peer-deps
+npx expo start                       # Expo Go sirve para lo básico
+eas build --profile development --platform android   # para reloj fijo, geocercas y notificaciones con botones
+```
+
+En la pantalla de entrada se escribe la URL del servidor. La marca (logo y colores) llega del servidor al iniciar sesión.
+Una sola aplicación sirve a todas las compañías.
+
+## Pendiente / límites conocidos
+
+- Notificación del reloj con botón "Parar" y avisos al llegar a un lugar: escritos con `expo-notifications` y
+  `expo-location`, **sin probar en un teléfono** (la web de prueba no los ejecuta). Requieren compilación nativa (EAS).
+- iPhone: la Live Activity en pantalla de bloqueo necesita un módulo nativo; no está hecha. El reloj sí funciona (hora de inicio guardada).
+- Exportar sin conexión desde el móvil no está; el archivo se genera en el servidor.
+- Apple Developer (99 USD/año) hace falta para publicar en iPhone.
+- Integración Accountisi: añadir la credencial de servicio (API key) a Accountisi y definir qué impuesto y retención manda en las cuentas por pagar.

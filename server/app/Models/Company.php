@@ -1,0 +1,54 @@
+<?php
+
+namespace App\Models;
+
+use App\Support\Rules;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
+
+class Company extends Model
+{
+    protected $guarded = [];
+
+    protected function casts(): array
+    {
+        return ['rules' => 'array'];
+    }
+
+    public function users(): HasMany
+    {
+        return $this->hasMany(User::class);
+    }
+
+    public function rules(): Rules
+    {
+        return Rules::make($this->rules);
+    }
+
+    public function displayName(): string
+    {
+        return $this->brand_name ?: $this->name;
+    }
+
+    public function logoUrl(bool $dark = false): ?string
+    {
+        $path = $dark ? ($this->logo_dark_path ?: $this->logo_path) : $this->logo_path;
+        return $path ? url(Storage::disk('public')->url($path)) : null;
+    }
+
+    /** Campos de marca tal como los lee la web, los emails, los PDF y la app móvil. */
+    public function brand(): array
+    {
+        return [
+            'name' => $this->displayName(),
+            'logo_url' => $this->logoUrl(),
+            'logo_dark_url' => $this->logoUrl(true),
+            'color_primary' => $this->color_primary,
+            'color_accent' => $this->color_accent,
+            'email_from_name' => $this->email_from_name ?: $this->displayName(),
+            'email_from_address' => $this->email_from_address,
+            'email_footer' => $this->email_footer,
+        ];
+    }
+}

@@ -1,0 +1,12 @@
+# Herramientas portátiles de desarrollo (PHP, Composer, MariaDB y sus datos): pesan cientos de MB
+tools/
+
+# Maqueta del cliente EBVS (marca y datos de un tercero): se queda local
+EBVS*.html
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

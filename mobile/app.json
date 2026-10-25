@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Tiempo",
+    "slug": "tiempo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "tiempo",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.cerevelo.tiempo",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Para avisarte cuando llegas a un lugar de trabajo y proponerte encender el reloj.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Para avisarte cuando llegas a un lugar de trabajo aunque la aplicación esté cerrada.",
+        "UIBackgroundModes": ["location"]
+      }
+    },
+    "android": {
+      "package": "com.cerevelo.tiempo",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "POST_NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ]
+    },
+    "web": { "bundler": "metro", "output": "single" },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Para avisarte cuando llegas a un lugar de trabajo aunque la aplicación esté cerrada.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      ["expo-notifications", { "color": "#1f4e79" }]
+    ],
+    "experiments": { "typedRoutes": false }
+  }
+}
