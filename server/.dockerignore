@@ -8,3 +8,8 @@ storage/framework/views/*
 database/*.sqlite
 public/storage
 .git
+tests
+storage/app/*
+!storage/app/.gitignore
+storage/app/public/*
+bootstrap/cache/*.php

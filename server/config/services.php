@@ -14,6 +14,12 @@ return [
     |
     */
 
+    // Cloudflare Turnstile (anti-bots en el login web). Las llaves se crean en el panel de Cloudflare > Turnstile.
+    'turnstile' => [
+        'site_key' => env('TURNSTILE_SITE_KEY'),
+        'secret' => env('TURNSTILE_SECRET'),
+    ],
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],

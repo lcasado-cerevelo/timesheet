@@ -1,0 +1,29 @@
+# Caddy: pone el HTTPS (certificado de Let's Encrypt, pedido y renovado solo) y le pasa el tráfico a la aplicación.
+# Requisitos de Let's Encrypt: el dominio apunta a la IP de este servidor (en Cloudflare, nube GRIS = solo DNS) y los puertos 80 y 443
+# están abiertos a internet. Los certificados se guardan en el volumen caddy_data: no lo borres o se pedirán de nuevo (hay límites).
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Lo que sube la gente (logos) no pasa de unos MB
+	request_body {
+		max_size 12MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Caddy manda X-Forwarded-Proto/For por su cuenta; la aplicación confía en ellos (TRUSTED_PROXIES).
+	reverse_proxy app:80 {
+		health_uri /up
+		health_interval 30s
+	}
+}

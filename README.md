@@ -65,6 +65,48 @@ Si Docker Desktop no arranca en Windows y su registro dice `The file cannot be a
 (en `%LOCALAPPDATA%\Docker\run` o `%LOCALAPPDATA%\docker-secrets-engine`), son sockets viejos que Windows no deja borrar; se borran desde
 WSL con `rm -f` (solo esos archivos) y Docker los recrea solo.
 
+## Producción en un servidor con Docker (por ejemplo AWS EC2)
+
+Una sola máquina pequeña con Docker. `docker-compose.prod.yml` levanta: **Caddy** (HTTPS con Let's Encrypt, gratis y automático),
+la aplicación (imagen de producción: código adentro, sin depuración), el programador de tareas y MariaDB. Solo Caddy abre puertos
+(80 y 443); la aplicación y la base no son alcanzables desde internet.
+
+```bash
+cp .env.prod.example .env.prod          # rellena los valores marcados CAMBIAR (dominio, claves, Brevo...)
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec app php artisan tiempo:instalar "Mi Compañía" dueno@correo.com
+```
+
+**HTTPS (Let's Encrypt).** En Cloudflare: registro `A` del dominio hacia la IP del servidor con la **nube gris** (solo DNS), para que la
+verificación de Let's Encrypt llegue directo al servidor. Abre los puertos 80 y 443 en el grupo de seguridad de AWS. Los certificados
+quedan en el volumen `caddy_data`: no lo borres (Let's Encrypt limita cuántos se piden por semana). Con la nube naranja (proxy de
+Cloudflare) la verificación se complica; si algún día lo quieres, se usa un certificado de origen de Cloudflare en vez de Let's Encrypt.
+La aplicación confía en el encabezado `X-Forwarded-Proto` de Caddy (`TRUSTED_PROXIES=*`, seguro porque solo Caddy la alcanza) y
+fuerza `https` en todos los enlaces cuando `APP_URL` empieza con `https://`.
+
+**Correo con Brevo.** En Brevo, SMTP y API → SMTP: copia el servidor (`smtp-relay.brevo.com`), el usuario y la clave SMTP a `.env.prod`.
+El remitente (`MAIL_FROM_ADDRESS`) debe estar verificado en Brevo y el dominio autenticado (SPF y DKIM) para que los emails de
+aprobación lleguen a la bandeja de entrada. Para comprobarlo:
+`docker compose -f docker-compose.prod.yml --env-file .env.prod exec app php artisan tiempo:probar-correo tu@correo.com`.
+
+**Login.** Cinco intentos fallidos con un mismo correo desde una misma IP bloquean ese par por 15 minutos, y además cada IP tiene un
+límite de peticiones por minuto. En la web se puede añadir el desafío anti-bots de **Cloudflare Turnstile** (gratis, funciona con la
+nube gris): crea el widget en el panel de Cloudflare → Turnstile y pon `TURNSTILE_SITE_KEY` y `TURNSTILE_SECRET` en `.env.prod`. La app
+móvil no puede mostrar ese desafío; su login se protege con el límite por IP y el bloqueo por cuenta. Con la nube gris, las reglas de
+límite de Cloudflare no se aplican (necesitan el proxy); el límite lo hace la propia aplicación.
+
+**Programador de tareas.** El contenedor `scheduler` corre `schedule:work`. Si prefieres no depender del contenedor (o en un hosting),
+pon `CRON_KEY` (32+ caracteres) y haz un `POST https://TU-DOMINIO/api/cron/run` cada minuto con el encabezado `X-Cron-Key: <la clave>`
+desde cualquier cosa que pueda hacerlo (cron, AWS EventBridge, el Hangfire de Accountisi). Envía los avisos de "la hoja cambió" en cada
+llamada y los recordatorios una sola vez al día después de las 8:00 (hora de Puerto Rico), aunque lo llamen varios sitios a la vez.
+
+**Respaldo y restauración.** `./scripts/backup.sh` guarda la base (MariaDB) y los archivos (logos y PDF de facturas) en `backups/`, y
+comprueba que no estén dañados. `./scripts/restore.sh <db.sql.gz> <archivos.tar.gz>` los restaura (pide escribir RESTAURAR). Para
+mudarte a otro servidor: copia el `.env.prod` con la **misma `APP_KEY`**, levanta el compose, corre `restore.sh`. Sin la misma `APP_KEY`,
+lo cifrado (la contraseña de Accountisi) no se puede leer y hay que escribirlo de nuevo en Integración. Guarda los respaldos y la
+`APP_KEY` fuera del servidor (por ejemplo en S3). Actualizar a una versión nueva: `git pull` y el mismo `up -d --build`; la base y los archivos
+están en volúmenes y se conservan.
+
 ## Poner en producción (GoDaddy u otro hosting con PHP 8.3+)
 
 1. Sube `server/` (sin `tests/`) y ejecuta `composer install --no-dev --optimize-autoloader`

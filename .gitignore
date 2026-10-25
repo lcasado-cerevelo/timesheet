@@ -10,3 +10,8 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+
+# Secretos de producción y respaldos
+.env.prod
+.env.*.local
+backups/

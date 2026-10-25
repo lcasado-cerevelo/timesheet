@@ -394,3 +394,19 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 # Adenda v1.3 (2026-10-25) — Docker para desarrollo
 
 `docker-compose.yml` (raíz) y `server/Dockerfile`: app (PHP 8.4 + Apache, puerto 8180), MariaDB 11.4 (3380), Mailpit para ver los emails (8125) y el programador de tareas. El código se edita en Windows y se ve dentro del contenedor. Las pruebas corren en una base aparte (`tiempo_test`) y se niegan a correr contra otra. No toca los contenedores `sephas-hud-search-api` ni `teikem-sql-local`.
+
+---
+
+# Adenda v1.4 (2026-10-25) — producción en Docker
+
+- **HTTPS:** Caddy con Let's Encrypt (gratis, automático) en el mismo servidor; el dominio en Cloudflare con la nube gris (solo DNS).
+  La aplicación confía en el `X-Forwarded-Proto` de Caddy (`TRUSTED_PROXIES`) y fuerza `https` en los enlaces si `APP_URL` es https.
+- **Correo:** Brevo por SMTP; comando `tiempo:probar-correo` para comprobar la configuración.
+- **Login:** bloqueo por correo+IP tras 5 fallos (15 min), límite de peticiones por IP y Cloudflare Turnstile en el login web (opcional).
+  La app móvil no puede mostrar Turnstile: su login se protege con el límite y el bloqueo.
+- **Programador:** contenedor `scheduler` y, además, `POST /api/cron/run` con `X-Cron-Key` para dispararlo desde fuera (cron, EventBridge,
+  Hangfire de Accountisi); los recordatorios salen una vez al día.
+- **Imagen de producción** (`server/Dockerfile.prod`, `docker-compose.prod.yml`, `deploy/Caddyfile`, `.env.prod.example`) y **respaldo/restauración**
+  (`scripts/backup.sh`, `scripts/restore.sh`); la misma `APP_KEY` es obligatoria para poder leer lo cifrado.
+- Probado en local: la pila completa (Caddy con certificado interno, migraciones, login, cookies seguras, cron externo) y un ciclo de desastre y
+  restauración. No probado: la emisión real de Let's Encrypt (necesita un dominio público), el envío real con Brevo y Turnstile con llaves reales.

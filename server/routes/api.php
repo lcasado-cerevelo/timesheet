@@ -16,7 +16,12 @@ use App\Http\Controllers\Api\TableExportController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+// Disparador externo del programador de tareas (protegido por CRON_KEY; sin sesión ni CSRF)
+Route::post('/cron/run', [\App\Http\Controllers\Api\CronController::class, 'run'])->middleware('throttle:20,1');
+
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');                 // app móvil
+Route::post('/login/web', [AuthController::class, 'loginWeb'])->middleware('throttle:10,1');           // web (con Turnstile si está configurado)
+Route::get('/public-config', [AuthController::class, 'publicConfig'])->middleware('throttle:60,1');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);

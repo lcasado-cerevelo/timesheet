@@ -1,0 +1,50 @@
+# Imagen de PRODUCCIÓN de Tiempo: el código va dentro de la imagen, sin dependencias de desarrollo y sin depuración.
+# Para desarrollo se usa ./Dockerfile (el código se monta desde la carpeta). Esta imagen se reconstruye en cada versión nueva.
+
+# ---- 1) Dependencias de PHP (solo las de producción) ----
+FROM composer:2 AS vendor
+WORKDIR /app
+COPY composer.json composer.lock ./
+# Las extensiones (gd, zip...) las tiene la imagen final; aquí solo se descargan los paquetes.
+RUN composer install --no-dev --no-interaction --prefer-dist --no-scripts --no-autoloader --ignore-platform-reqs
+COPY . .
+RUN composer dump-autoload --optimize --classmap-authoritative --no-dev --no-scripts --ignore-platform-reqs
+
+# ---- 2) Imagen final: PHP 8.4 + Apache ----
+FROM php:8.4-apache
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libzip-dev libpng-dev libjpeg-dev libfreetype6-dev libicu-dev libxml2-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j"$(nproc)" pdo_mysql zip gd intl bcmath exif opcache \
+    && a2enmod rewrite headers \
+    && rm -rf /var/lib/apt/lists/*
+
+# Apache sirve la carpeta public de Laravel; los logos subidos se sirven en /storage
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
+    && sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+COPY docker/storage.conf /etc/apache2/conf-available/storage.conf
+RUN a2enconf storage && { echo "ServerName localhost"; echo "ServerTokens Prod"; echo "ServerSignature Off"; } > /etc/apache2/conf-available/hardening.conf && a2enconf hardening
+
+# PHP de producción: sin errores a pantalla, sin firma, caché de código que no revisa archivos (la imagen no cambia)
+RUN { \
+      echo "date.timezone=America/Puerto_Rico"; echo "memory_limit=512M"; echo "upload_max_filesize=8M"; echo "post_max_size=10M"; \
+      echo "expose_php=Off"; echo "display_errors=Off"; echo "log_errors=On"; \
+      echo "opcache.enable=1"; echo "opcache.validate_timestamps=0"; echo "opcache.memory_consumption=128"; \
+    } > /usr/local/etc/php/conf.d/tiempo.ini
+
+WORKDIR /var/www/html
+COPY --from=vendor --chown=www-data:www-data /app /var/www/html
+RUN mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs storage/app/public bootstrap/cache \
+    && chown -R www-data:www-data storage bootstrap/cache && chmod -R ug+rwX storage bootstrap/cache \
+    && rm -rf tests .env database/*.sqlite bootstrap/cache/*.php
+# Los paquetes que la aplicación conoce se descubren aquí, con lo que de verdad trae esta imagen (sin los de desarrollo)
+RUN php artisan package:discover --ansi && chown -R www-data:www-data bootstrap/cache
+
+COPY docker/entrypoint-prod.sh /usr/local/bin/tiempo-entrypoint
+RUN sed -i 's/\r$//' /usr/local/bin/tiempo-entrypoint && chmod +x /usr/local/bin/tiempo-entrypoint
+
+ENV APP_ENV=production APP_DEBUG=false
+ENTRYPOINT ["tiempo-entrypoint"]
+CMD ["apache2-foreground"]

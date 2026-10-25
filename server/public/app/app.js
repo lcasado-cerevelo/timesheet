@@ -119,11 +119,24 @@ async function render() {
   }
 }
 
-function loginView(err) {
+/* Login. Si el servidor tiene llaves de Cloudflare Turnstile, se muestra el desafío anti-bots antes de entrar. */
+async function loginView(err) {
+  if (S.cache.pub === undefined) { try { S.cache.pub = await (await fetch('/api/public-config')).json(); } catch { S.cache.pub = {}; } }
+  const key = S.cache.pub.turnstile_site_key;
   $app.innerHTML = `<div class="card login"><h1>Entrar</h1>${err ? `<div class="msg err">${esc(err)}</div>` : ''}
     <form data-form="login"><p><label>Correo</label><input name="email" type="email" required autocomplete="username"></p>
     <p><label>Contraseña</label><input name="password" type="password" required autocomplete="current-password"></p>
+    ${key ? '<div id="ts-box" style="margin:8px 0"></div>' : ''}
     <button class="btn pri" type="submit">Entrar</button></form></div>`;
+  if (key) mountTurnstile(key);
+}
+function mountTurnstile(key) {
+  const draw = () => { const box = document.getElementById('ts-box'); if (box && window.turnstile) { box.innerHTML = ''; S.cache.tsWidget = window.turnstile.render(box, { sitekey: key }); } };
+  if (window.turnstile) return draw();
+  if (document.getElementById('ts-script')) return;
+  const s = document.createElement('script');
+  s.id = 'ts-script'; s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; s.async = true; s.onload = draw;
+  document.head.appendChild(s);
 }
 
 /* --- Mi semana --- */
@@ -484,7 +497,8 @@ const actions = {
 const forms = {
   async login(f) {
     const o = formObj(f);
-    try { const r = await api('/login', { method: 'POST', body: { ...o, device: 'web' } }); S.token = r.token; localStorage.setItem('tt', r.token); S.me = null; location.hash = '#/week'; render(); }
+    const ts = f.querySelector('[name="cf-turnstile-response"]');
+    try { const r = await api('/login/web', { method: 'POST', body: { ...o, device: 'web', ...(ts ? { turnstile_token: ts.value } : {}) } }); S.token = r.token; localStorage.setItem('tt', r.token); S.me = null; location.hash = '#/week'; render(); }
     catch (e) { loginView(e.message); }
   },
   async entry(f) {
