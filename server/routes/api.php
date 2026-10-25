@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BrandController;
+use App\Http\Controllers\Api\ClientTimesheetController;
 use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\EntryController;
 use App\Http\Controllers\Api\ContractorInvoiceController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\SheetController;
 use App\Http\Controllers\Api\SimpleCrudController;
+use App\Http\Controllers\Api\TableExportController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -37,6 +39,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/sheets/{sheet}/submit', [SheetController::class, 'submit']);
 
     Route::get('/reports/summary', [ReportController::class, 'summary']);
+    // Exportar cualquier tabla a CSV, Excel o PDF con la marca de la compañía
+    Route::match(['get', 'post'], '/tables/{dataset}/export', [TableExportController::class, 'export']);
     Route::get('/brand', [BrandController::class, 'show']);
 
     Route::get('/export-templates', [ExportController::class, 'templates']);
@@ -77,6 +81,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/integrations/accountisi/vendors', [IntegrationController::class, 'vendors']);
         Route::post('/integrations/accountisi/sales-preview', [IntegrationController::class, 'salesPreview']);
         Route::post('/integrations/accountisi/sales-invoice', [IntegrationController::class, 'salesCreate']);
+
+        Route::match(['get', 'post'], '/client-timesheet/preview', [ClientTimesheetController::class, 'preview']);
+        Route::match(['get', 'post'], '/client-timesheet/download', [ClientTimesheetController::class, 'download']);
+        Route::post('/client-timesheet/email', [ClientTimesheetController::class, 'email']);
 
         Route::get('/company', [CompanyController::class, 'show']);
         Route::put('/company', [CompanyController::class, 'update']);

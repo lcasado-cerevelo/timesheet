@@ -31,3 +31,6 @@ input[type=checkbox]{width:auto}input[type=color]{padding:2px;height:38px}
 .preview{border:1px solid var(--line);border-radius:10px;overflow:hidden}.preview .ph{padding:12px 16px;color:#fff;font-weight:700}.preview .pb{padding:14px 16px}
 .running{background:#e6f4ea;border:1px solid #1b7f3b;border-radius:10px;padding:10px 14px;margin-bottom:12px}
 @media(max-width:700px){header.top .who{display:none}th,td{padding:6px 4px;font-size:13px}}
+.xbar{float:right;display:inline-flex;gap:6px;margin:0 0 8px 8px}.xbar .btn{padding:4px 10px;font-size:12px}
+@media print{.xbar,.btn,nav,.who{display:none!important}body{background:#fff}.card{box-shadow:none}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+.fbar{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:10px 0 12px;clear:both}.fbar>div{min-width:150px;flex:1;max-width:220px}

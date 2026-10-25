@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { api, apiUrl, authHeaders } from '../../src/lib/api';
@@ -27,7 +27,7 @@ export default function Reports() {
   const r = useMemo(() => summarize(entries, projects, from, to, group), [entries, projects, from, to, group]);
 
   useEffect(() => {
-    api<Tpl[]>('/export-templates').then((x) => { setTpls(x); setTpl((c) => c ?? x[0]?.id ?? null); }).catch(() => undefined);
+    api<Tpl[]>('/export-templates').then((x) => { const list = Array.isArray(x) ? x : []; setTpls(list); setTpl((c) => c ?? list[0]?.id ?? null); }).catch(() => undefined);
   }, []);
 
   const exportFile = async () => {
@@ -67,6 +67,9 @@ export default function Reports() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 12 }}>
+      <View style={{ alignItems: 'center', paddingVertical: 8, marginBottom: 8, borderBottomWidth: 3, borderColor: t.primary }}>
+        {t.brand.logo_url ? <Image source={{ uri: t.brand.logo_url }} style={{ width: 180, height: 44 }} resizeMode="contain" /> : <Text style={{ fontSize: 20, fontWeight: '800', color: t.primary }}>{t.brand.name}</Text>}
+      </View>
       <Card>
         <Text style={{ fontWeight: '700', marginBottom: 8 }}>Período</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>

@@ -367,3 +367,30 @@ Ver `README.md` para ejecutar, probar y poner en producción.
 - **Móvil** (`mobile/`, Expo 52): Día, Semana, Mes, Reportes y Ajustes; reloj; sin conexión con sincronización idempotente; exportación; marca desde el servidor. 20 pruebas de la lógica. Pantallas probadas en su versión web.
 - **Sin probar:** notificación fija del reloj con botón Parar, avisos al llegar a un lugar y recordatorio semanal (necesitan teléfono y compilación EAS); integración con la API real de Accountisi (solo respuestas simuladas); Live Activity de iPhone (no hecha).
 - **Decisión de seguridad:** no se aceptan logos SVG (pueden llevar scripts).
+
+---
+
+# Adenda v1.0 (2026-10-24) — hoja de tiempo para el cliente
+
+Dash no tiene un informe aparte: la "hoja" es su lista de horas (empleado, proyecto, cliente, fecha, total y descripción) que se
+imprime o exporta. Aquí se genera desde la app: por cliente y período, con la descripción de cada entrada, subtotales por proyecto
+y total; PDF con la marca, Excel y envío opcional por email. Solo aprobado y facturable por omisión, sin tarifas. Ver README.
+
+---
+
+# Adenda v1.1 (2026-10-24) — exportar tablas
+
+Toda tabla de la **web** se exporta a CSV, Excel y PDF; Excel y PDF con el logo y los colores de la compañía. La app móvil no
+exporta tablas (solo las plantillas de exportación, como Consultorio 1500). Ver README.
+
+---
+
+# Adenda v1.2 (2026-10-24) — se exporta lo filtrado
+
+Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exactamente los mismos: solo salen las filas visibles, con totales recalculados y el filtro escrito en el encabezado. Las reglas de búsqueda están duplicadas a propósito en `app.js` y en `Datasets.php`; se verificó en pantalla que dan las mismas filas.
+
+---
+
+# Adenda v1.3 (2026-10-25) — Docker para desarrollo
+
+`docker-compose.yml` (raíz) y `server/Dockerfile`: app (PHP 8.4 + Apache, puerto 8180), MariaDB 11.4 (3380), Mailpit para ver los emails (8125) y el programador de tareas. El código se edita en Windows y se ve dentro del contenedor. Las pruebas corren en una base aparte (`tiempo_test`) y se niegan a correr contra otra. No toca los contenedores `sephas-hud-search-api` ni `teikem-sql-local`.

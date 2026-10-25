@@ -30,6 +30,28 @@ async function api(path, o = {}) {
   }
   return data;
 }
+/* Filtros de las tablas. Lo que se ve filtrado en pantalla es exactamente lo que se exporta. */
+const fold = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const matchQ = (q, fields) => { const hay = fold(fields.join(' ')); return fold(q).split(/\s+/).filter(Boolean).every(w => hay.includes(w)); };
+const FL = view => ((S.cache.f ??= {})[view] ??= {});
+const activeF = view => Object.fromEntries(Object.entries(FL(view)).filter(([, v]) => v !== '' && v != null));
+const flag = v => (v === '1' ? true : v === '0' ? false : null);
+const sameFlag = (v, actual) => flag(v) === null || Boolean(actual) === flag(v);
+const YN = (a, b) => [['', 'Todos'], ['1', a], ['0', b]];
+function filterBar(view, defs) {
+  const F = FL(view);
+  const ctl = d => d.type === 'select'
+    ? `<select data-filter="${view}" name="${d.k}">${d.opts.map(([v, l]) => `<option value="${esc(v)}" ${String(F[d.k] ?? '') === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`
+    : `<input data-filter="${view}" name="${d.k}" type="${d.type || 'text'}" value="${esc(F[d.k] ?? '')}" placeholder="${esc(d.ph || '')}">`;
+  const on = Object.keys(activeF(view)).length;
+  return `<div class="fbar">${defs.map(d => `<div><label>${d.label}</label>${ctl(d)}</div>`).join('')}
+    <button class="btn ghost sm" type="button" data-act="f-clear" data-view="${view}" ${on ? '' : 'disabled'}>Limpiar filtros</button></div>`;
+}
+/** Botones para exportar cualquier tabla a CSV, Excel o PDF (con el logo y los colores de la compañía en Excel y PDF). */
+function exportBar(ds, q = {}) {
+  const j = esc(JSON.stringify(q));
+  return `<span class="xbar" title="Exportar esta tabla">${[['csv', 'CSV'], ['xlsx', 'Excel'], ['pdf', 'PDF']].map(([f, l]) => `<button class="btn ghost sm" type="button" data-act="tx" data-ds="${ds}" data-fmt="${f}" data-q="${j}">${l}</button>`).join('')}</span>`;
+}
 function flash(text, kind = 'ok') { S.flash = { text, kind }; }
 function logout() { S.token = null; S.me = null; localStorage.removeItem('tt'); location.hash = ''; render(); }
 function applyBrand(b) {
@@ -64,6 +86,7 @@ const ROUTES = {
   reports: { t: 'Reportes', f: reportsView },
   approvals: { t: 'Aprobaciones', owner: true, f: approvalsView },
   invoices: { t: 'Facturas', f: invoicesView },
+  clientsheet: { t: 'Hoja para cliente', owner: true, f: clientSheetView },
   export: { t: 'Exportar', f: exportView },
   projects: { t: 'Proyectos', owner: true, f: projectsView },
   people: { t: 'Personas', owner: true, f: peopleView },
@@ -142,7 +165,7 @@ async function weekView() {
       ? `<div class="running">Corriendo en <b>${esc(running.project?.code)}</b> desde ${esc(running.start_time)} · <button class="btn sm" data-act="clock-stop">Parar</button></div>`
       : `<form data-form="clock" class="row"><select name="project_id" style="max-width:320px">${opts}</select><button class="btn" type="submit">Iniciar reloj</button></form>`}</div>` : ''}`;
   return `<div class="card"><div class="row"><button class="btn ghost sm" data-act="wk" data-n="-7">‹</button>
-    <h1 style="margin:0">Semana ${esc(start)} a ${esc(end)}</h1><button class="btn ghost sm" data-act="wk" data-n="7">›</button><span class="spacer"></span>
+    <h1 style="margin:0">Semana ${esc(start)} a ${esc(end)}</h1><button class="btn ghost sm" data-act="wk" data-n="7">›</button><span class="spacer"></span>${exportBar('week', { date: S.weekDate })}
     <span class="badge ${sheet.status}">${{ draft: 'Borrador', submitted: 'Enviada', approved: 'Aprobada', returned: 'Devuelta' }[sheet.status]}</span>
     ${sheet.late ? '<span class="badge returned">Tarde</span>' : ''}</div>
     <p class="muted">Total <b>${hrs(sheet.total_hours)} h</b> · versión ${sheet.version} · modo ${mode === 'full_day' ? 'día completo' : 'desde / hasta'}</p>${warn}${ret}
@@ -155,25 +178,30 @@ async function weekView() {
 async function reportsView() {
   const q = S.cache.rep || { from: addDays(today(), -30), to: today(), group: 'project' };
   S.cache.rep = q;
-  const r = await api(`/reports/summary?from=${q.from}&to=${q.to}&group=${q.group}`);
+  const projs = await api('/projects');
+  const r = await api(`/reports/summary?from=${q.from}&to=${q.to}&group=${q.group}${q.project_id ? '&project_id=' + q.project_id : ''}`);
   return `<div class="card"><h1>Reportes</h1><form data-form="report" class="row">
     <div><label>Desde</label><input type="date" name="from" value="${q.from}"></div><div><label>Hasta</label><input type="date" name="to" value="${q.to}"></div>
     <div><label>Agrupar por</label><select name="group">${[['project', 'Proyecto'], ['day', 'Día'], ['week', 'Semana'], ['customer', 'Cliente']].map(([v, t]) => `<option value="${v}" ${q.group === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div><label>Proyecto</label><select name="project_id"><option value="">Todos</option>${projs.map(p => `<option value="${p.id}" ${Number(q.project_id) === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select></div>
     <button class="btn pri" type="submit" style="align-self:end">Ver</button></form>
-    <table style="margin-top:12px"><tr><th></th><th class="r">Horas</th><th class="r">Facturables</th><th class="r">No facturables</th></tr>
+    <div style="margin-top:12px;text-align:right">${exportBar('report', { from: q.from, to: q.to, group: q.group, ...(q.project_id ? { project_id: q.project_id } : {}) })}</div>
+    <table style="margin-top:6px"><tr><th></th><th class="r">Horas</th><th class="r">Facturables</th><th class="r">No facturables</th></tr>
     ${r.rows.map(x => `<tr><td>${esc(x.label)}</td><td class="r">${hrs(x.hours)}</td><td class="r">${hrs(x.billable_hours)}</td><td class="r">${hrs(x.non_billable_hours)}</td></tr>`).join('')}
     <tr><th>Total</th><th class="r">${hrs(r.total_hours)}</th><th class="r">${hrs(r.billable_hours)}</th><th></th></tr></table></div>`;
 }
 
 /* --- Aprobaciones (dueño) --- */
 async function approvalsView() {
-  const rows = await api('/sheets-pending');
-  return `<div class="card"><h1>Hojas pendientes</h1>${rows.length ? `<table><tr><th>Persona</th><th>Semana</th><th class="r">Horas</th><th>Enviada</th><th></th></tr>
+  const [all, people] = await Promise.all([api('/sheets-pending'), api('/users')]);
+  const F = FL('pending');
+  const rows = all.filter(s => matchQ(F.q, [s.user?.name]) && (!F.user_id || s.user_id === Number(F.user_id)) && (flag(F.late) !== true || s.late));
+  return `<div class="card"><h1>Hojas pendientes</h1>${exportBar('pending', activeF('pending'))}${filterBar('pending', [{ k: 'q', label: 'Buscar', ph: 'persona' }, { k: 'user_id', label: 'Persona', type: 'select', opts: [['', 'Todas'], ...people.map(p => [p.id, p.name])] }, { k: 'late', label: 'Envío', type: 'select', opts: [['', 'Todas'], ['1', 'Solo tarde']] }])}${rows.length ? `<table><tr><th>Persona</th><th>Semana</th><th class="r">Horas</th><th>Enviada</th><th></th></tr>
     ${rows.map(s => `<tr><td>${esc(s.user?.name)} ${s.late ? '<span class="badge returned">Tarde</span>' : ''}${s.warnings.map(w => `<div class="muted">${esc(w.message)}</div>`).join('')}</td>
     <td>${esc(s.week_ending)}</td><td class="r">${hrs(s.total_hours)}</td><td>${esc((s.submitted_at || '').slice(0, 10))}</td>
     <td class="r"><button class="btn sm" data-act="approve" data-id="${s.id}" data-v="${s.version}">Aprobar</button>
     <button class="btn danger sm" data-act="return" data-id="${s.id}" data-v="${s.version}">Devolver</button></td></tr>`).join('')}</table>`
-    : '<p class="muted">No hay hojas pendientes.</p>'}</div>`;
+    : `<p class="muted">${all.length ? 'Ninguna hoja pendiente cumple el filtro.' : 'No hay hojas pendientes.'}</p>`}</div>`;
 }
 
 /* --- Facturas --- */
@@ -182,13 +210,16 @@ async function invoicesView() {
   const owner = S.me.role === 'owner';
   const people = owner ? (await api('/users')).filter(u => u.worker_type === 'consultant') : [];
   const canInvoice = S.me.worker_type === 'consultant' || owner;
-  return `<div class="card"><h1>Facturas de consultores</h1>
+  const F = FL('invoices');
+  const shown = list.filter(i => matchQ(F.q, [i.number, i.user?.name]) && (!F.status || i.status === F.status) && (!owner || !F.user_id || i.user_id === Number(F.user_id))
+    && (!F.from || i.issued_on >= F.from) && (!F.to || i.issued_on <= F.to));
+  return `<div class="card"><h1>Facturas de consultores</h1>${exportBar('invoices', activeF('invoices'))}${filterBar('invoices', [{ k: 'q', label: 'Buscar', ph: 'número o consultor' }, { k: 'status', label: 'Estado', type: 'select', opts: [['', 'Todos'], ['issued', 'Emitida'], ['sent', 'Enviada'], ['paid', 'Pagada']] }, ...(owner ? [{ k: 'user_id', label: 'Consultor', type: 'select', opts: [['', 'Todos'], ...people.map(p => [p.id, p.name])] }] : []), { k: 'from', label: 'Emitida desde', type: 'date' }, { k: 'to', label: 'hasta', type: 'date' }])}
     ${canInvoice ? `<form data-form="cinv" class="row"><div><label>Desde</label><input type="date" name="from" value="${addDays(today(), -30)}"></div>
     <div><label>Hasta</label><input type="date" name="to" value="${today()}"></div>
     ${owner ? `<div><label>Consultor</label><select name="user_id"><option value="">Yo</option>${people.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>` : ''}
     <button class="btn pri" type="submit" style="align-self:end">Generar factura de semanas aprobadas</button></form>` : '<p class="muted">Los empleados no generan factura.</p>'}
     <table style="margin-top:12px"><tr><th>Número</th><th>Consultor</th><th>Período</th><th class="r">Bruto</th><th class="r">Neto</th><th>Estado</th><th>Accountisi</th><th></th></tr>
-    ${list.map(i => `<tr><td>${esc(i.number)}</td><td>${esc(i.user?.name)}</td><td>${esc(i.period_from)} a ${esc(i.period_to)}</td><td class="r">${money(i.gross)}</td><td class="r">${money(i.net)}</td>
+    ${shown.map(i => `<tr><td>${esc(i.number)}</td><td>${esc(i.user?.name)}</td><td>${esc(i.period_from)} a ${esc(i.period_to)}</td><td class="r">${money(i.gross)}</td><td class="r">${money(i.net)}</td>
     <td>${esc(i.status)}</td><td>${esc(i.accountisi_status || '—')}</td>
     <td class="r"><button class="btn ghost sm" data-act="pdf" data-id="${i.id}">PDF</button>
     ${owner && i.accountisi_status !== 'draft' ? `<button class="btn ghost sm" data-act="push-bill" data-id="${i.id}">Enviar a Accountisi</button>` : ''}</td></tr>`).join('')}</table></div>`;
@@ -220,11 +251,13 @@ async function exportView() {
 async function projectsView() {
   const [list, customers, approvers, users] = await Promise.all([api('/projects'), api('/customers'), api('/approvers'), api('/users')]);
   S.cache.pl = list;
+  const F = FL('projects');
+  const shown = list.filter(x => matchQ(F.q, [x.code, x.name, x.customer?.name]) && sameFlag(F.active, x.active) && sameFlag(F.billable, x.billable) && (!F.customer_id || x.customer_id === Number(F.customer_id)));
   const edit = S.cache.editProject; const p = edit ? list.find(x => x.id === edit) : null;
   const metaTxt = p?.meta ? Object.entries(p.meta).map(([k, v]) => k + '=' + v).join('\n') : '';
-  return `<div class="card"><h1>Proyectos</h1><p class="muted">Solo el dueño de la compañía administra los proyectos. Para Consultorio 1500, cada paciente es un proyecto (plan_medico y numero_contrato en “Campos”).</p>
+  return `<div class="card"><h1>Proyectos</h1>${exportBar('projects', activeF('projects'))}${filterBar('projects', [{ k: 'q', label: 'Buscar', ph: 'código, nombre o cliente' }, { k: 'customer_id', label: 'Cliente', type: 'select', opts: [['', 'Todos'], ...customers.map(c => [c.id, c.name])] }, { k: 'active', label: 'Estado', type: 'select', opts: YN('Activos', 'Inactivos') }, { k: 'billable', label: 'Facturable', type: 'select', opts: YN('Facturables', 'No facturables') }])}<p class="muted">Solo el dueño de la compañía administra los proyectos. Para Consultorio 1500, cada paciente es un proyecto (plan_medico y numero_contrato en “Campos”).</p>
     <table><tr><th>Código</th><th>Nombre</th><th>Cliente</th><th>Detalle de factura</th><th class="r">Tarifa</th><th></th></tr>
-    ${list.map(x => `<tr><td>${esc(x.code)} ${x.active ? '' : '<span class="badge">inactivo</span>'}</td><td>${esc(x.name)}</td><td>${esc(x.customer?.name || '—')}</td>
+    ${shown.map(x => `<tr><td>${esc(x.code)} ${x.active ? '' : '<span class="badge">inactivo</span>'}</td><td>${esc(x.name)}</td><td>${esc(x.customer?.name || '—')}</td>
     <td>${{ hours_total: 'Total', by_day: 'Por día', with_times: 'Con desde/hasta' }[x.invoice_detail]}</td><td class="r">${x.bill_rate ? money(x.bill_rate) : '—'}</td>
     <td class="r"><button class="btn ghost sm" data-act="edit-project" data-id="${x.id}">Editar</button></td></tr>`).join('')}</table></div>
     <div class="card"><h2>${p ? 'Editar ' + esc(p.code) : 'Nuevo proyecto'}</h2><form data-form="project"><input type="hidden" name="id" value="${p?.id || ''}">
@@ -248,8 +281,10 @@ async function projectsView() {
 async function peopleView() {
   const [list, approvers, projects] = await Promise.all([api('/users'), api('/approvers'), api('/projects')]);
   const edit = S.cache.editUser; const u = edit ? list.find(x => x.id === edit) : null; const t = u?.terms || {};
-  return `<div class="card"><h1>Personas</h1><table><tr><th>Nombre</th><th>Tipo</th><th>Modo de captura</th><th>Aprobador</th><th></th></tr>
-    ${list.map(x => `<tr><td>${esc(x.name)}<div class="muted">${esc(x.email)}</div> ${x.active ? '' : '<span class="badge">inactivo</span>'}</td>
+  const F = FL('people');
+  const shown = list.filter(x => matchQ(F.q, [x.name, x.email]) && sameFlag(F.active, x.active) && (!F.worker_type || x.worker_type === F.worker_type) && (!F.capture_mode || x.capture_mode === F.capture_mode));
+  return `<div class="card"><h1>Personas</h1>${exportBar('people', activeF('people'))}${filterBar('people', [{ k: 'q', label: 'Buscar', ph: 'nombre o correo' }, { k: 'worker_type', label: 'Tipo', type: 'select', opts: [['', 'Todos'], ['consultant', 'Consultores'], ['employee', 'Empleados']] }, { k: 'capture_mode', label: 'Modo de captura', type: 'select', opts: [['', 'Todos'], ['from_to', 'Desde / hasta'], ['full_day', 'Día completo']] }, { k: 'active', label: 'Estado', type: 'select', opts: YN('Activas', 'Inactivas') }])}<table><tr><th>Nombre</th><th>Tipo</th><th>Modo de captura</th><th>Aprobador</th><th></th></tr>
+    ${shown.map(x => `<tr><td>${esc(x.name)}<div class="muted">${esc(x.email)}</div> ${x.active ? '' : '<span class="badge">inactivo</span>'}</td>
     <td>${x.worker_type === 'employee' ? 'Empleado (' + (x.weekly_hours || 40) + ' h/sem)' : 'Consultor'}${x.role === 'owner' ? ' · dueño' : ''}</td>
     <td>${x.capture_mode === 'full_day' ? 'Día completo' : 'Desde / hasta'}</td><td>${esc(approvers.find(a => a.id === x.approver_id)?.name || '—')}</td>
     <td class="r"><button class="btn ghost sm" data-act="edit-user" data-id="${x.id}">Editar</button></td></tr>`).join('')}</table></div>
@@ -274,8 +309,10 @@ async function peopleView() {
 
 async function approversView() {
   const list = await api('/approvers');
-  return `<div class="card"><h1>Aprobadores</h1><p class="muted">Pueden ser externos y no necesitan cuenta: reciben un email con un enlace seguro.</p>
-    <table><tr><th>Nombre</th><th>Correo</th><th>Código extra</th><th></th></tr>${list.map(a => `<tr><td>${esc(a.name)} ${a.active ? '' : '<span class="badge">inactivo</span>'}</td><td>${esc(a.email)}</td><td>${a.require_code ? 'Sí' : 'No'}</td>
+  const F = FL('approvers');
+  const shown = list.filter(a => matchQ(F.q, [a.name, a.email]) && sameFlag(F.active, a.active));
+  return `<div class="card"><h1>Aprobadores</h1>${exportBar('approvers', activeF('approvers'))}${filterBar('approvers', [{ k: 'q', label: 'Buscar', ph: 'nombre o correo' }, { k: 'active', label: 'Estado', type: 'select', opts: YN('Activos', 'Inactivos') }])}<p class="muted">Pueden ser externos y no necesitan cuenta: reciben un email con un enlace seguro.</p>
+    <table><tr><th>Nombre</th><th>Correo</th><th>Código extra</th><th></th></tr>${shown.map(a => `<tr><td>${esc(a.name)} ${a.active ? '' : '<span class="badge">inactivo</span>'}</td><td>${esc(a.email)}</td><td>${a.require_code ? 'Sí' : 'No'}</td>
     <td class="r"><button class="btn ghost sm" data-act="toggle-approver" data-id="${a.id}">${a.active ? 'Desactivar' : 'Activar'}</button></td></tr>`).join('')}</table></div>
     <div class="card"><h2>Nuevo aprobador</h2><form data-form="approver" class="grid"><div><label>Nombre</label><input name="name" required></div><div><label>Correo</label><input name="email" type="email" required></div>
     <div><label><input type="checkbox" name="require_code"> Pedir código de 6 dígitos siempre</label></div><div style="align-self:end"><button class="btn pri" type="submit">Agregar</button></div></form></div>`;
@@ -283,7 +320,9 @@ async function approversView() {
 
 async function customersView() {
   const list = await api('/customers');
-  return `<div class="card"><h1>Clientes</h1><table><tr><th>Nombre</th><th>Correo</th><th>Accountisi</th></tr>${list.map(c => `<tr><td>${esc(c.name)}</td><td>${esc(c.email || '')}</td><td>${esc(c.accountisi_id || '—')}</td></tr>`).join('')}</table></div>
+  const F = FL('customers');
+  const shown = list.filter(c => matchQ(F.q, [c.name, c.email]) && sameFlag(F.active, c.active) && sameFlag(F.linked, c.accountisi_id));
+  return `<div class="card"><h1>Clientes</h1>${exportBar('customers', activeF('customers'))}${filterBar('customers', [{ k: 'q', label: 'Buscar', ph: 'nombre o correo' }, { k: 'active', label: 'Estado', type: 'select', opts: YN('Activos', 'Inactivos') }, { k: 'linked', label: 'Accountisi', type: 'select', opts: YN('Vinculados', 'Sin vincular') }])}<table><tr><th>Nombre</th><th>Correo</th><th>Accountisi</th></tr>${shown.map(c => `<tr><td>${esc(c.name)}</td><td>${esc(c.email || '')}</td><td>${esc(c.accountisi_id || '—')}</td></tr>`).join('')}</table></div>
     <div class="card"><h2>Nuevo cliente</h2><form data-form="customer" class="grid"><div><label>Nombre</label><input name="name" required></div><div><label>Correo</label><input name="email" type="email"></div>
     <div style="align-self:end"><button class="btn pri" type="submit">Agregar</button></div></form></div>`;
 }
@@ -360,6 +399,52 @@ async function integrationsView() {
     <table>${pv.lines.map(l => `<tr><td>${esc(l.description)}</td><td class="r">${hrs(l.quantity)} h</td><td class="r">${money(l.unit_price)}</td></tr>`).join('')}</table></div>` : ''}</div>`;
 }
 
+
+/* --- Hoja de tiempo para el cliente (dueño) --- */
+async function clientSheetView() {
+  const [customers, projects, users] = await Promise.all([api('/customers'), api('/projects'), api('/users')]);
+  const q = S.cache.cs || { customer_id: customers[0]?.id, from: addDays(today(), -30), to: today() };
+  const pv = S.cache.csPreview;
+  const cust = customers.find(c => c.id === Number(q.customer_id));
+  const ofCustomer = projects.filter(p => p.customer_id === Number(q.customer_id));
+  return `<div class="card"><h1>Hoja de tiempo para el cliente</h1>
+    <p class="muted">Las horas de un cliente en un período, con la descripción de lo trabajado. Por omisión sale solo lo aprobado y facturable, sin tarifas.</p>
+    <form data-form="cs"><div class="grid">
+    <div><label>Cliente</label><select name="customer_id" data-act-change="cs-customer">${customers.map(c => `<option value="${c.id}" ${c.id === Number(q.customer_id) ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div><label>Desde</label><input name="from" type="date" value="${esc(q.from)}"></div><div><label>Hasta</label><input name="to" type="date" value="${esc(q.to)}"></div>
+    <div><label>Persona</label><select name="user_id"><option value="">Todas</option>${users.map(u => `<option value="${u.id}" ${Number(q.user_id) === u.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></div></div>
+    <p><label>Proyectos del cliente (sin marcar = todos)</label><span class="row">${ofCustomer.map(p => `<label><input type="checkbox" data-multi="1" name="project_ids" value="${p.id}" ${(q.project_ids || []).includes(p.id) ? 'checked' : ''}> ${esc(p.code)} · ${esc(p.name)}</label>`).join('') || '<span class="muted">Este cliente no tiene proyectos.</span>'}</span></p>
+    <p class="row"><label><input type="checkbox" name="include_pending" ${q.include_pending ? 'checked' : ''}> Incluir horas aún sin aprobar (salen marcadas)</label>
+    <label><input type="checkbox" name="include_non_billable" ${q.include_non_billable ? 'checked' : ''}> Incluir no facturables</label>
+    <label><input type="checkbox" name="show_amounts" ${q.show_amounts ? 'checked' : ''}> Mostrar importes</label></p>
+    <p class="row"><button class="btn pri" type="submit">Vista previa</button>
+    <button class="btn ghost" type="button" data-act="cs-pdf">Descargar PDF</button>
+    <button class="btn ghost" type="button" data-act="cs-xlsx">Descargar Excel</button>
+    <button class="btn ghost" type="button" data-act="cs-csv">Descargar CSV</button></p></form></div>
+    ${pv ? csPreviewHtml(pv) + `<div class="card"><h2>Enviar por email</h2><p class="muted">Se envía el PDF solo cuando tú lo pides aquí.</p>
+      <form data-form="cs-email"><div class="grid"><div><label>Correo del cliente</label><input name="email_to" type="email" value="${esc(S.cache.csEmail ?? cust?.email ?? '')}" required></div>
+      <div style="grid-column:span 2"><label>Mensaje (opcional)</label><input name="message" maxlength="1000"></div></div>
+      <p><button class="btn pri" type="submit" ${pv.entry_count ? '' : 'disabled'}>Enviar la hoja por email</button></p></form></div>` : ''}`;
+}
+function csPreviewHtml(d) {
+  if (!d.projects.length) return '<div class="card"><p class="muted">No hay horas para este cliente en el período.</p></div>';
+  return `<div class="card"><h2>${esc(d.customer)} · ${esc(d.from)} a ${esc(d.to)}</h2>${d.has_pending ? '<div class="msg warn">Incluye horas aún sin aprobar.</div>' : ''}
+    ${d.projects.map(p => `<h2 style="margin-top:14px">${esc(p.code)} · ${esc(p.name)}</h2>
+    <table><tr><th>Fecha</th><th>Persona</th><th>Horario</th><th class="r">Horas</th><th>Descripción</th>${d.show_amounts ? '<th class="r">Importe</th>' : ''}</tr>
+    ${p.lines.map(l => `<tr><td>${esc(l.date)}</td><td>${esc(l.worker)}</td><td>${l.start ? esc(l.start) + '–' + esc(l.end) : 'Día completo'}</td><td class="r">${hrs(l.hours)}</td>
+      <td style="white-space:pre-wrap">${esc(l.description)}${l.approved ? '' : ' <span class="badge submitted">sin aprobar</span>'}</td>${d.show_amounts ? `<td class="r">${money(l.amount)}</td>` : ''}</tr>`).join('')}
+    <tr><th colspan="3">Subtotal ${esc(p.code)}</th><th class="r">${hrs(p.hours)}</th><th></th>${d.show_amounts ? `<th class="r">${money(p.amount)}</th>` : ''}</tr></table>`).join('')}
+    <p style="margin-top:12px"><b>Total: ${hrs(d.total_hours)} h</b>${d.show_amounts ? ' · ' + money(d.total_amount) : ''}</p></div>`;
+}
+function csBody(f) {
+  const o = formObj(f);
+  const body = { customer_id: Number(o.customer_id), from: o.from, to: o.to, project_ids: o.project_ids || [], include_pending: !!o.include_pending,
+    include_non_billable: !!o.include_non_billable, show_amounts: !!o.show_amounts };
+  if (o.user_id) body.user_ids = [Number(o.user_id)];
+  S.cache.cs = { ...body, user_id: o.user_id };
+  return body;
+}
+
 /* ---------- acciones ---------- */
 function parseMeta(txt) { const o = {}; (txt || '').split('\n').forEach(l => { const i = l.indexOf('='); if (i > 0) o[l.slice(0, i).trim()] = l.slice(i + 1).trim(); }); return o; }
 const actions = {
@@ -385,6 +470,15 @@ const actions = {
   async 'revert-brand'(el) { await api(`/brand/history/${el.dataset.id}/revert`, { method: 'POST' }); S.me = null; flash('Marca restaurada.'); render(); },
   async 'acc-test'() { try { await api('/integrations/accountisi/test', { method: 'POST' }); flash('Conexión correcta con Accountisi.'); } catch (e) { flash(e.message, 'err'); } render(); },
   async 'acc-sync'() { const r = await api('/integrations/accountisi/sync-customers', { method: 'POST' }); flash(`Clientes vinculados: ${r.linked}, creados: ${r.created}.`); render(); },
+  'f-clear'(el) { (S.cache.f ??= {})[el.dataset.view] = {}; render(); },
+  async tx(el) {
+    const q = JSON.parse(el.dataset.q || '{}'); const fmtName = { csv: 'CSV', xlsx: 'Excel', pdf: 'PDF' }[el.dataset.fmt];
+    await download(`/tables/${el.dataset.ds}/export`, { method: 'POST', body: { ...q, format: el.dataset.fmt } }, 'tabla.' + el.dataset.fmt);
+    flash(fmtName + ' generado.'); render();
+  },
+  async 'cs-csv'() { const b = csBody(document.querySelector('form[data-form=cs]')); await download('/client-timesheet/download', { method: 'POST', body: { ...b, format: 'csv' } }, 'hoja-de-tiempo.csv'); flash('CSV generado.'); render(); },
+  async 'cs-pdf'() { const b = csBody(document.querySelector('form[data-form=cs]')); await download('/client-timesheet/download', { method: 'POST', body: { ...b, format: 'pdf' } }, 'hoja-de-tiempo.pdf'); flash('PDF generado.'); render(); },
+  async 'cs-xlsx'() { const b = csBody(document.querySelector('form[data-form=cs]')); await download('/client-timesheet/download', { method: 'POST', body: { ...b, format: 'xlsx' } }, 'hoja-de-tiempo.xlsx'); flash('Excel generado.'); render(); },
   async 'sales-preview'() { const f = document.querySelector('form[data-form=sales]'); const o = formObj(f); try { S.cache.salesPreview = await api('/integrations/accountisi/sales-preview', { method: 'POST', body: o }); } catch (e) { flash(e.message, 'err'); } render(); },
 };
 const forms = {
@@ -426,6 +520,14 @@ const forms = {
     if (id) await api('/users/' + id, { method: 'PUT', body: o }); else await api('/users', { method: 'POST', body: o });
     S.cache.editUser = null; flash('Persona guardada.'); render();
   },
+  async cs(f) { S.cache.csPreview = await api('/client-timesheet/preview', { method: 'POST', body: csBody(f) }); S.cache.csEmail = undefined; render(); },
+  async 'cs-email'(f) {
+    const o = formObj(f); const body = { ...S.cache.cs }; delete body.user_id;
+    if (!confirm('¿Enviar la hoja de tiempo a ' + o.email_to + '?')) return;
+    S.cache.csEmail = o.email_to;
+    const r = await api('/client-timesheet/email', { method: 'POST', body: { ...body, email_to: o.email_to, message: o.message || undefined } });
+    flash('Hoja enviada a ' + r.sent_to + ' (' + hrs(r.total_hours) + ' h).'); render();
+  },
   async approver(f) { await api('/approvers', { method: 'POST', body: formObj(f) }); flash('Aprobador agregado.'); render(); },
   async customer(f) { await api('/customers', { method: 'POST', body: formObj(f) }); flash('Cliente agregado.'); render(); },
   async brand(f) {
@@ -450,6 +552,8 @@ const forms = {
   },
 };
 const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { if (e.message !== 'Sesión vencida') { flash(e.message, 'err'); render(); } } };
+document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="cs-customer"]'); if (el) { const f = el.closest('form'); S.cache.cs = { customer_id: Number(el.value), from: f.elements.from.value, to: f.elements.to.value }; S.cache.csPreview = null; render(); } });
+document.addEventListener('change', e => { const el = e.target.closest('[data-filter]'); if (el) { FL(el.dataset.filter)[el.name] = el.value; render(); } });
 document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (el && actions[el.dataset.act]) { e.preventDefault(); guard(actions[el.dataset.act])(el); } });
 document.addEventListener('submit', e => { const f = e.target.closest('form[data-form]'); if (f && forms[f.dataset.form]) { e.preventDefault(); guard(forms[f.dataset.form])(f); } });
 window.addEventListener('hashchange', render);

@@ -37,6 +37,34 @@ cd mobile && npx jest && npx tsc --noEmit
 Contra MariaDB (el motor del hosting barato): `tools/mariadb-x/.../bin/mariadbd.exe --datadir=tools/mariadb-data --port=3307`
 y `DB_CONNECTION=mariadb DB_HOST=127.0.0.1 DB_PORT=3307 DB_DATABASE=tiempo_test DB_USERNAME=root php artisan test`.
 
+## Con Docker (entorno igual para todos)
+
+Alternativa a las herramientas de `tools/`: un entorno parecido a un hosting Linux, con la aplicación (PHP 8.4 + Apache), MariaDB 11.4,
+el programador de tareas y un buzón de correo de prueba. El código se edita en Windows y se ve al instante dentro del contenedor.
+
+```bash
+docker compose up -d --build                         # primera vez: baja las imágenes y construye
+docker compose exec -u www-data app php artisan tiempo:demo      # datos de ejemplo (clave demo-password-123)
+docker compose exec -u www-data -e DB_DATABASE=tiempo_test app php artisan test    # las pruebas, siempre con la base tiempo_test
+docker compose down                                  # apaga (la base se conserva); con -v también la borra
+```
+
+| Qué | Dónde |
+|---|---|
+| Web y API | http://localhost:8180/app/ |
+| Correos de prueba (aprobaciones, facturas) | http://localhost:8125 |
+| MariaDB desde esta máquina | `127.0.0.1:3380`, base `tiempo`, usuario `tiempo`, clave `tiempo_dev` |
+
+Los puertos son poco comunes a propósito para no chocar con otros contenedores. Los contenedores se llaman `tiempo-app`, `tiempo-scheduler`,
+`tiempo-db` y `tiempo-mail`; no tocan ningún otro contenedor ni volumen. Para crear una compañía real:
+`docker compose exec -u www-data app php artisan tiempo:instalar "Mi Compañía" dueno@correo.com`.
+
+Dos cuidados: (1) usa siempre `-u www-data` en `exec`; como `root` los archivos de `storage` quedarían ilegibles para Apache. (2) Las pruebas borran las tablas de la base que usan, por eso se niegan a correr si la base no es de pruebas (`tiempo_test` o SQLite en memoria); la base `tiempo` de desarrollo no se toca. Las pruebas pasan igual en Windows (`tools/`) y en este contenedor (Linux, PHP 8.4, MariaDB 11.4).
+
+Si Docker Desktop no arranca en Windows y su registro dice `The file cannot be accessed by the system` sobre un archivo `.sock`
+(en `%LOCALAPPDATA%\Docker\run` o `%LOCALAPPDATA%\docker-secrets-engine`), son sockets viejos que Windows no deja borrar; se borran desde
+WSL con `rm -f` (solo esos archivos) y Docker los recrea solo.
+
 ## Poner en producción (GoDaddy u otro hosting con PHP 8.3+)
 
 1. Sube `server/` (sin `tests/`) y ejecuta `composer install --no-dev --optimize-autoloader`
@@ -68,6 +96,25 @@ y `DB_CONNECTION=mariadb DB_HOST=127.0.0.1 DB_PORT=3307 DB_DATABASE=tiempo_test 
   retención e IVU; empleados llevan horas por semana (por omisión 40; solo se avisa si se pasan).
 - **Proyectos:** solo los administra el dueño. Para Consultorio 1500, cada paciente es un proyecto con los campos
   `plan_medico` y `numero_contrato`.
+
+## Exportar tablas (solo en la web)
+
+Cada tabla de la web (mi semana, reportes, aprobaciones pendientes, facturas, proyectos, personas, aprobadores y clientes) tiene
+botones **CSV**, **Excel** y **PDF**. Excel y PDF salen con el **logo y los colores de la compañía** (los de Configuración → Marca);
+el CSV lleva solo los datos. Se generan en el servidor con los permisos de quien pide: un miembro solo exporta lo suyo y las
+tablas de administración son del dueño. API: `GET|POST /api/tables/{tabla}/export?format=csv|xlsx|pdf`.
+
+**Se exporta lo filtrado.** Cada tabla tiene su barra de filtros (buscar, estado, cliente, tipo, fechas, etc.; "Limpiar filtros" los quita) y los botones de exportar llevan esos mismos filtros: el archivo trae solo las filas que se ven, con los totales recalculados, y en el encabezado del Excel y del PDF queda escrito el filtro aplicado. La búsqueda ignora mayúsculas y tildes. La app móvil no tiene
+estos botones; allí se exporta con las plantillas (por ejemplo Consultorio 1500).
+
+## Hoja de tiempo para el cliente
+
+Web → **Hoja para cliente** (solo el dueño). Eliges cliente y período (y, si quieres, proyectos o una persona) y ves la hoja:
+fecha, persona, horario, horas y la **descripción** de lo trabajado, con subtotales por proyecto y total. Se descarga en **PDF**
+(con tu logo y colores) o en **Excel**, y se puede **enviar por email** al cliente con un mensaje. Por omisión sale solo lo
+aprobado y facturable, sin tarifas; hay casillas para incluir horas sin aprobar (salen marcadas), no facturables e importes.
+Ver o descargar no envía nada: el email sale únicamente cuando pulsas "Enviar la hoja por email" y confirmas.
+API: `POST /api/client-timesheet/{preview|download|email}`. Es el equivalente de la lista que Dash imprime o exporta.
 
 ## Aprobación
 

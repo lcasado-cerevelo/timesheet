@@ -41,7 +41,15 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   } catch {
     throw new NetworkError();
   }
-  const data = await res.json().catch(() => ({}));
+  // Una respuesta que no es JSON (por ejemplo una página HTML de una dirección equivocada) no es válida,
+  // aunque el código sea 200: se avisa en vez de seguir con datos vacíos.
+  const text = await res.text();
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    if (res.ok) throw new ApiError('El servidor respondió algo inesperado. Revisa la dirección del servidor.', res.status);
+  }
   if (res.status === 401 && cfg.token) {
     cfg.onUnauthorized?.();
     throw new ApiError('La sesión venció. Entra de nuevo.', 401);

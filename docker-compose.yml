@@ -1,0 +1,91 @@
+# Entorno de desarrollo de Tiempo: la aplicación (PHP 8.4 + Apache), MariaDB 11.4 y un buzón de correo de prueba.
+#   docker compose up -d --build        levanta todo
+#   docker compose exec app php artisan tiempo:demo     datos de ejemplo
+#   docker compose exec -e DB_DATABASE=tiempo_test app php artisan test     pruebas (siempre con la base tiempo_test)
+# Los puertos son poco comunes a propósito para no chocar con otros contenedores: 8180, 3380 y 8125.
+
+name: tiempo
+
+x-app: &app
+  build: ./server
+  image: tiempo-app:dev
+  volumes:
+    - ./server:/var/www/html          # el código se edita en Windows y se ve al instante en el contenedor
+  environment: &app-env
+    APP_ENV: local
+    APP_DEBUG: "true"
+    APP_URL: http://localhost:8180
+    APP_LOCALE: es
+    DB_CONNECTION: mariadb
+    DB_HOST: db
+    DB_PORT: "3306"
+    DB_DATABASE: tiempo
+    DB_USERNAME: tiempo
+    DB_PASSWORD: tiempo_dev
+    SESSION_DRIVER: file
+    CACHE_STORE: file
+    QUEUE_CONNECTION: sync
+    # Los correos (aprobaciones, facturas) llegan a Mailpit: http://localhost:8125
+    MAIL_MAILER: smtp
+    MAIL_HOST: mail
+    MAIL_PORT: "1025"
+    MAIL_SCHEME: "null"
+    MAIL_FROM_ADDRESS: tiempo@tiempo.test
+    MAIL_FROM_NAME: Tiempo
+
+services:
+  app:
+    <<: *app
+    container_name: tiempo-app
+    ports:
+      - "8180:80"
+    environment:
+      <<: *app-env
+      WAIT_FOR_DB: "1"
+      AUTO_MIGRATE: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Hace lo que haría el cron en producción: avisos de "la hoja cambió" y recordatorios a los aprobadores.
+  scheduler:
+    <<: *app
+    container_name: tiempo-scheduler
+    command: php artisan schedule:work
+    environment:
+      <<: *app-env
+      WAIT_FOR_DB: "1"
+    depends_on:
+      app:
+        condition: service_started
+
+  db:
+    image: mariadb:11.4
+    container_name: tiempo-db
+    environment:
+      MARIADB_DATABASE: tiempo
+      MARIADB_USER: tiempo
+      MARIADB_PASSWORD: tiempo_dev
+      MARIADB_ROOT_PASSWORD: root_dev
+    ports:
+      - "127.0.0.1:3380:3306"          # solo desde esta máquina
+    volumes:
+      - tiempo-db:/var/lib/mysql
+      - ./server/docker/db-init:/docker-entrypoint-initdb.d:ro   # crea la base tiempo_test al inicializar el volumen
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  mail:
+    image: axllent/mailpit:latest
+    container_name: tiempo-mail
+    ports:
+      - "127.0.0.1:8125:8025"          # bandeja web
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+
+volumes:
+  tiempo-db:

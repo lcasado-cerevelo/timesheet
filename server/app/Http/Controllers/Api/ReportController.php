@@ -15,9 +15,11 @@ class ReportController extends Controller
             'from' => 'required|date_format:Y-m-d',
             'to' => 'required|date_format:Y-m-d|after_or_equal:from',
             'group' => 'in:project,day,week,customer',
+            'project_id' => 'nullable|integer',
         ]);
         $entries = TimeEntry::with('project.customer')->where('user_id', $request->user()->id)
-            ->where('running', false)->whereBetween('work_date', [$d['from'], $d['to']])->get();
+            ->where('running', false)->whereBetween('work_date', [$d['from'], $d['to']])
+            ->when(! empty($d['project_id']), fn ($q) => $q->where('project_id', $d['project_id']))->get();
 
         $group = $d['group'] ?? 'project';
         $rows = $entries->groupBy(function ($e) use ($group) {
