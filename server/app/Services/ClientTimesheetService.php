@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\Lang;
 use App\Mail\BrandedMail;
 use App\Models\Company;
 use App\Models\Customer;
@@ -9,6 +10,7 @@ use App\Models\TimeEntry;
 use App\Models\Timesheet;
 use Dompdf\Dompdf;
 use Dompdf\Options;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Shared\Date as XlDate;
@@ -29,7 +31,7 @@ class ClientTimesheetService
      */
     public function build(Company $company, Customer $customer, string $from, string $to, array $opts = []): array
     {
-        $q = TimeEntry::with(['project', 'user', 'timesheet.approver'])
+        $q = TimeEntry::with(['project.services', 'service', 'user', 'timesheet.approver'])
             ->where('company_id', $company->id)->where('running', false)
             ->whereBetween('work_date', [$from, $to])
             ->whereHas('project', fn ($p) => $p->where('customer_id', $customer->id)
@@ -54,9 +56,9 @@ class ClientTimesheetService
                     'start' => $e->start_time ? substr($e->start_time, 0, 5) : null,
                     'end' => $e->end_time ? substr($e->end_time, 0, 5) : null,
                     'hours' => (float) $e->hours,
-                    'description' => (string) $e->note,
+                    'description' => ($p->services->count() > 1 && $e->service ? $e->service->name.($e->note ? ' — ' : '') : '').(string) $e->note,
                     'approved' => $approved,
-                    'amount' => $showAmounts ? round((float) $e->hours * (float) ($p->bill_rate ?? 0), 2) : null,
+                    'amount' => $showAmounts ? round((float) $e->hours * $e->saleRate(), 2) : null,
                 ];
             })->values()->all();
             $byWorker = collect($lines)->groupBy('worker')->map(fn ($g, $w) => ['worker' => $w, 'hours' => round($g->sum('hours'), 2)])->values()->all();
@@ -90,20 +92,26 @@ class ClientTimesheetService
         foreach ($data['projects'] as $p) {
             foreach ($p['lines'] as $l) {
                 $rows[] = [$l['date'], $l['worker'], $p['code'].' · '.$p['name'], $l['start'] ?? '', $l['end'] ?? '', $l['hours'],
-                    $l['description'].($l['approved'] ? '' : ' (sin aprobar)')] + ($data['show_amounts'] ? [7 => $l['amount']] : []);
+                    $l['description'].($l['approved'] ? '' : ' ('.__('sin aprobar').')')] + ($data['show_amounts'] ? [7 => $l['amount']] : []);
             }
         }
-        $cols = [['h' => 'Fecha', 't' => 'date'], ['h' => 'Persona', 't' => 'text'], ['h' => 'Proyecto', 't' => 'text'], ['h' => 'Desde', 't' => 'text'],
-            ['h' => 'Hasta', 't' => 'text'], ['h' => 'Horas', 't' => 'hours'], ['h' => 'Descripción', 't' => 'text']];
-        $total = ['TOTAL', '', '', '', '', $data['total_hours'], ''];
+        $cols = [['h' => __('Fecha'), 't' => 'date'], ['h' => __('Persona'), 't' => 'text'], ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Desde'), 't' => 'text'],
+            ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Descripción'), 't' => 'text']];
+        $total = [__('TOTAL'), '', '', '', '', $data['total_hours'], ''];
         if ($data['show_amounts']) {
-            $cols[] = ['h' => 'Importe', 't' => 'money'];
+            $cols[] = ['h' => __('Importe'), 't' => 'money'];
             $total[] = $data['total_amount'];
         }
-        return ['title' => 'Hoja de tiempo', 'subtitle' => $data['customer'].' · '.$data['from'].' a '.$data['to'], 'columns' => $cols, 'rows' => $rows, 'total' => $total];
+        return ['title' => __('Hoja de tiempo'), 'subtitle' => $data['customer'].' · '.__(':from a :to', ['from' => $data['from'], 'to' => $data['to']]), 'columns' => $cols, 'rows' => $rows, 'total' => $total];
     }
 
     public function pdf(Company $company, array $data): string
+    {
+        // La hoja es para el cliente de la compañía: sale en el idioma de la compañía.
+        return Lang::with($company->lang(), fn () => $this->renderPdf($company, $data));
+    }
+
+    private function renderPdf(Company $company, array $data): string
     {
         $logo = null;
         if ($company->logo_path && Storage::disk('public')->exists($company->logo_path)) {
@@ -125,14 +133,14 @@ class ClientTimesheetService
     {
         $book = new Spreadsheet();
         $s = $book->getActiveSheet();
-        $s->setTitle('Hoja de tiempo');
-        $s->setCellValue('A1', $data['company'].' — Hoja de tiempo');
+        $s->setTitle(__('Hoja de tiempo'));
+        $s->setCellValue('A1', $data['company'].' — '.__('Hoja de tiempo'));
         $s->getStyle('A1')->getFont()->setBold(true)->setSize(14);
-        $s->setCellValue('A2', 'Cliente: '.$data['customer']);
-        $s->setCellValue('A3', 'Período: '.$data['from'].' a '.$data['to']);
-        $s->setCellValue('A4', 'Emitida: '.$data['generated_on']);
+        $s->setCellValue('A2', __('Cliente: :name', ['name' => $data['customer']]));
+        $s->setCellValue('A3', __('Período: :from a :to', ['from' => $data['from'], 'to' => $data['to']]));
+        $s->setCellValue('A4', __('Emitida: :date', ['date' => $data['generated_on']]));
         $row = 6;
-        $heads = ['Fecha', 'Persona', 'Proyecto', 'Desde', 'Hasta', 'Horas', 'Descripción'] + ($data['show_amounts'] ? [7 => 'Importe'] : []);
+        $heads = [__('Fecha'), __('Persona'), __('Proyecto'), __('Desde'), __('Hasta'), __('Horas'), __('Descripción')] + ($data['show_amounts'] ? [7 => __('Importe')] : []);
         foreach ($heads as $i => $h) {
             $s->setCellValue([$i + 1, $row], $h);
         }
@@ -147,14 +155,14 @@ class ClientTimesheetService
                 $s->setCellValue([4, $row], $l['start'] ?? '');
                 $s->setCellValue([5, $row], $l['end'] ?? '');
                 $s->setCellValue([6, $row], $l['hours']);
-                $s->setCellValue([7, $row], $l['description'].($l['approved'] ? '' : ' (sin aprobar)'));
+                $s->setCellValue([7, $row], $l['description'].($l['approved'] ? '' : ' ('.__('sin aprobar').')'));
                 $s->getStyle([7, $row])->getAlignment()->setWrapText(true)->setVertical(Alignment::VERTICAL_TOP);
                 if ($data['show_amounts']) {
                     $s->setCellValue([8, $row], $l['amount']);
                 }
                 $row++;
             }
-            $s->setCellValue([3, $row], 'Subtotal '.$p['code']);
+            $s->setCellValue([3, $row], __('Subtotal :code', ['code' => $p['code']]));
             $s->setCellValue([6, $row], $p['hours']);
             if ($data['show_amounts']) {
                 $s->setCellValue([8, $row], $p['amount']);
@@ -162,7 +170,7 @@ class ClientTimesheetService
             $s->getStyle('A'.$row.':'.($data['show_amounts'] ? 'H' : 'G').$row)->getFont()->setBold(true);
             $row += 2;
         }
-        $s->setCellValue([3, $row], 'TOTAL');
+        $s->setCellValue([3, $row], __('TOTAL'));
         $s->setCellValue([6, $row], $data['total_hours']);
         if ($data['show_amounts']) {
             $s->setCellValue([8, $row], $data['total_amount']);
@@ -181,16 +189,18 @@ class ClientTimesheetService
     /** Envía la hoja en PDF al correo indicado, con la marca de la compañía. */
     public function email(Company $company, array $data, string $to, ?string $message, string $pdfBytes): void
     {
-        $name = 'hoja-de-tiempo-'.$data['from'].'_'.$data['to'].'.pdf';
+        $name = \Illuminate\Support\Str::slug(Lang::with($company->lang(), fn () => __('Hoja de tiempo'))).'-'.$data['from'].'_'.$data['to'].'.pdf';
         $tmp = storage_path('app/exports/'.bin2hex(random_bytes(6)).'-'.$name);
         @mkdir(dirname($tmp), 0775, true);
         file_put_contents($tmp, $pdfBytes);
         try {
-            Mail::to($to)->send(new BrandedMail(
-                $company, 'Hoja de tiempo '.$data['from'].' a '.$data['to'].' — '.$company->displayName(), 'mail.client-timesheet',
-                ['d' => $data, 'note' => $message],
-                [['path' => $tmp, 'name' => $name, 'mime' => 'application/pdf']]
-            ));
+            Lang::with($company->lang(), function () use ($company, $data, $to, $message, $tmp, $name) {
+                Mail::to($to)->locale($company->lang())->send(new BrandedMail(
+                    $company, __('Hoja de tiempo :from a :to', ['from' => $data['from'], 'to' => $data['to']]).' — '.$company->displayName(), 'mail.client-timesheet',
+                    ['d' => $data, 'note' => $message],
+                    [['path' => $tmp, 'name' => $name, 'mime' => 'application/pdf']]
+                ));
+            });
         } finally {
             @unlink($tmp);
         }

@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import { t } from '../i18n';
 import { pickRegions } from './geo';
 import { showArrivePrompt } from './notify';
 import { kv } from './storage';
@@ -24,11 +25,11 @@ if (Platform.OS !== 'web') {
 }
 
 export async function startWatching(projects: Project[]): Promise<{ ok: boolean; message?: string; count: number }> {
-  if (Platform.OS === 'web') return { ok: false, message: 'Los lugares de trabajo solo funcionan en el teléfono.', count: 0 };
+  if (Platform.OS === 'web') return { ok: false, message: t('geo.phone_only'), count: 0 };
   const fg = await Location.requestForegroundPermissionsAsync();
-  if (fg.status !== 'granted') return { ok: false, message: 'Hace falta el permiso de ubicación.', count: 0 };
+  if (fg.status !== 'granted') return { ok: false, message: t('geo.need_permission'), count: 0 };
   const bg = await Location.requestBackgroundPermissionsAsync();
-  if (bg.status !== 'granted') return { ok: false, message: 'Para avisarte con la app cerrada, permite la ubicación “Siempre”.', count: 0 };
+  if (bg.status !== 'granted') return { ok: false, message: t('geo.need_always'), count: 0 };
   let here: { latitude: number; longitude: number } | null = null;
   try {
     const p = await Location.getLastKnownPositionAsync();
@@ -39,7 +40,7 @@ export async function startWatching(projects: Project[]): Promise<{ ok: boolean;
   const regions = pickRegions(projects, here, 20);
   if (!regions.length) {
     await stopWatching();
-    return { ok: false, message: 'Ningún proyecto tiene un lugar de trabajo definido todavía.', count: 0 };
+    return { ok: false, message: t('geo.no_places'), count: 0 };
   }
   await Location.startGeofencingAsync(GEOFENCE_TASK, regions);
   return { ok: true, count: regions.length };

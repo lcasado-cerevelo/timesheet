@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { useT } from '../src/i18n';
 import { useAuth } from '../src/store/auth';
+import { useBottomPad } from '../src/ui';
 import { Btn, C, Card, Field, Msg, useTheme } from '../src/ui';
 
 export default function Login() {
-  const t = useTheme();
+  const th = useTheme();
+  const { t } = useT();
+  const bottom = useBottomPad(20);
   const { baseUrl, login } = useAuth();
   const [url, setUrl] = useState(baseUrl);
   const [email, setEmail] = useState('');
@@ -18,7 +22,7 @@ export default function Login() {
     try {
       await login(url, email.trim(), password);
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudo entrar.');
+      setError(e?.message ?? t('login.failed'));
     } finally {
       setBusy(false);
     }
@@ -26,17 +30,17 @@ export default function Login() {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 70 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 70, paddingBottom: bottom }} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center', marginBottom: 24 }}>
-          {t.brand.logo_url ? <Image source={{ uri: t.brand.logo_url }} style={{ width: 200, height: 60 }} resizeMode="contain" /> : <Text style={{ fontSize: 30, fontWeight: '800', color: t.primary }}>{t.brand.name}</Text>}
+          {th.brand.logo_url ? <Image source={{ uri: th.brand.logo_url }} style={{ width: 200, height: 60 }} resizeMode="contain" /> : <Text style={{ fontSize: 30, fontWeight: '800', color: th.primary }}>{th.brand.name}</Text>}
         </View>
         <Card>
-          <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 12 }}>Entrar</Text>
+          <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 12 }}>{t('login.title')}</Text>
           {error ? <Msg kind="err" text={error} /> : null}
-          <Field testID="url" label="Servidor" value={url} onChangeText={setUrl} keyboardType="email-address" placeholder="https://tiempo.tuempresa.com" />
-          <Field testID="email" label="Correo" value={email} onChangeText={setEmail} keyboardType="email-address" />
-          <Field testID="password" label="Contraseña" value={password} onChangeText={setPassword} secure />
-          <Btn testID="login" title={busy ? 'Entrando…' : 'Entrar'} kind="pri" disabled={busy || !url || !email || !password} onPress={submit} />
+          <Field testID="url" label={t('login.server')} value={url} onChangeText={setUrl} keyboardType="email-address" placeholder="https://tiempo.tuempresa.com" />
+          <Field testID="email" label={t('login.email')} value={email} onChangeText={setEmail} keyboardType="email-address" />
+          <Field testID="password" label={t('login.password')} value={password} onChangeText={setPassword} secure />
+          <Btn testID="login" title={busy ? t('login.busy') : t('login.title')} kind="pri" disabled={busy || !url || !email || !password} onPress={submit} />
         </Card>
       </ScrollView>
     </KeyboardAvoidingView>

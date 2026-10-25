@@ -182,7 +182,7 @@ class TableExportTest extends TestCase
     public function test_exports_only_contain_the_requesters_company_and_own_hours(): void
     {
         $this->hours();
-        $c2 = \App\Models\Company::create(['name' => 'Otra', 'slug' => 'otra']);
+        $c2 = \App\Models\Company::create(['name' => 'Otra', 'slug' => 'otra', 'locale' => 'es']);
         $u2 = User::create(['company_id' => $c2->id, 'name' => 'Forastero Otra', 'email' => 'f@otra.test', 'password' => 'secret-password', 'role' => 'owner']);
         Customer::create(['company_id' => $c2->id, 'name' => 'Cliente de Otra']);
 

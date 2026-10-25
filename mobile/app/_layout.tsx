@@ -5,24 +5,33 @@ import { StatusBar } from 'expo-status-bar';
 import NetInfo from '@react-native-community/netinfo';
 import * as Notifications from 'expo-notifications';
 import '../src/lib/geofence';
-import { setupNotifications } from '../src/lib/notify';
+import { useT } from '../src/i18n';
+import { setupNotifications, setWeeklyReminder } from '../src/lib/notify';
 import { useAuth } from '../src/store/auth';
 import { useClock } from '../src/store/clock';
 import { useEntries } from '../src/store/entries';
 import { reconcileOwner } from '../src/store/session';
+import { useSelection } from '../src/store/selection';
 import { useSettings } from '../src/store/settings';
 
 export default function Root() {
   const { ready, token, brand, init, me } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const { t, locale } = useT();
 
   useEffect(() => {
     void (async () => {
-      await setupNotifications();
-      await Promise.all([init(), useEntries.getState().load(), useClock.getState().load(), useSettings.getState().load()]);
+      await Promise.all([init(), useEntries.getState().load(), useClock.getState().load(), useSelection.getState().load(), useSettings.getState().load()]);
     })();
   }, [init]);
+
+  // Los textos de las notificaciones (botones, canales, recordatorio) siguen el idioma elegido.
+  useEffect(() => {
+    if (!ready) return;
+    void setupNotifications();
+    if (useSettings.getState().weeklyReminder) void setWeeklyReminder(true);
+  }, [ready, locale]);
 
   // Cuando hay una persona con sesión: se separan los datos de otra persona y se sincroniza.
   useEffect(() => {
@@ -65,7 +74,7 @@ export default function Root() {
       <Stack screenOptions={{ headerStyle: { backgroundColor: brand.color_primary }, headerTintColor: '#fff', headerTitleStyle: { fontWeight: '700' } }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="entry" options={{ presentation: 'modal', title: 'Entrada' }} />
+        <Stack.Screen name="entry" options={{ presentation: 'modal', title: t('entry.title') }} />
       </Stack>
     </>
   );

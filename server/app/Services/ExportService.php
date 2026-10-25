@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\Lang;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Project;
@@ -12,6 +13,7 @@ use App\Models\Timesheet;
 use App\Models\User;
 use App\Support\Week;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Shared\Date as XlDate;
@@ -28,20 +30,42 @@ class ExportService
 {
     /** Orígenes de datos que puede usar una columna. */
     public const SOURCES = [
-        'date', 'week_ending', 'worker', 'project.code', 'project.name', 'project.patient', 'project.plan', 'project.contract', 'customer', 'hours', 'amount', 'rate',
+        'date', 'week_ending', 'worker', 'service', 'service_notes', 'project.code', 'project.name', 'project.patient', 'project.plan', 'project.contract', 'customer', 'hours', 'amount', 'rate',
         'start', 'end', 'notes', 'billable', 'literal',
     ];
     public const GROUPS = ['project', 'date', 'worker', 'week', 'customer'];
 
+    /**
+     * IDIOMA DE LAS PLANTILLAS DEL SISTEMA: en la base se guardan SIEMPRE en español (el idioma base del código), sin importar
+     * el idioma de la compañía, y se traducen al mostrarlas o al generar el archivo (localize()), según el idioma de quien
+     * las usa. Así un cambio de idioma de la compañía o de la persona no deja plantillas "congeladas" en el idioma equivocado.
+     * Excepción: 'consultorio-1500' NUNCA se traduce; el importador de ese programa solo reconoce sus encabezados en español.
+     */
     public function ensureSystemTemplates(Company $company): void
     {
-        foreach ($this->systemTemplates() as $slug => $def) {
-            // Las del sistema son de solo lectura, así que se mantienen al día con la versión actual del programa.
-            ExportTemplate::updateOrCreate(
-                ['company_id' => $company->id, 'slug' => $slug],
-                ['name' => $def['name'], 'format' => $def['format'], 'config' => $def['config'], 'is_system' => true]
-            );
+        Lang::with('es', function () use ($company) {
+            foreach ($this->systemTemplates() as $slug => $def) {
+                // Las del sistema son de solo lectura, así que se mantienen al día con la versión actual del programa.
+                ExportTemplate::updateOrCreate(
+                    ['company_id' => $company->id, 'slug' => $slug],
+                    ['name' => $def['name'], 'format' => $def['format'], 'config' => $def['config'], 'is_system' => true]
+                );
+            }
+        });
+    }
+
+    /** La plantilla con nombre y encabezados en el idioma actual (solo en memoria, no se guarda). Consultorio 1500 no cambia. */
+    public function localize(ExportTemplate $tpl): ExportTemplate
+    {
+        if (! $tpl->is_system || $tpl->slug === 'consultorio-1500') {
+            return $tpl;
         }
+        $def = $this->systemTemplates()[$tpl->slug] ?? null;
+        if ($def) {
+            $tpl->name = $def['name'];
+            $tpl->config = $def['config'];
+        }
+        return $tpl;
     }
 
     public function systemTemplates(): array
@@ -62,36 +86,36 @@ class ExportService
                         ['header' => 'Facturada sin plan', 'source' => 'amount',
                             'when' => ['source' => 'project.plan', 'op' => 'empty_or_contains', 'value' => 'privado']],
                         ['header' => 'Fecha', 'source' => 'date', 'format' => 'date'],
-                        ['header' => 'Descripcion', 'source' => 'notes'],
+                        ['header' => 'Descripcion', 'source' => 'service_notes'],
                     ],
                 ],
             ],
             'horas-por-dia' => [
-                'name' => 'Horas por día (detalle)', 'format' => 'xlsx',
+                'name' => __('Horas por día (detalle)'), 'format' => 'xlsx',
                 'config' => [
-                    'sheet_name' => 'Horas', 'group_by' => [],
+                    'sheet_name' => __('Horas'), 'group_by' => [],
                     'filters' => ['status' => 'approved'],
                     'columns' => [
-                        ['header' => 'Fecha', 'source' => 'date', 'format' => 'date'],
-                        ['header' => 'Persona', 'source' => 'worker'],
-                        ['header' => 'Proyecto', 'source' => 'project.code'],
-                        ['header' => 'Desde', 'source' => 'start'],
-                        ['header' => 'Hasta', 'source' => 'end'],
-                        ['header' => 'Horas', 'source' => 'hours'],
-                        ['header' => 'Nota', 'source' => 'notes'],
+                        ['header' => __('Fecha'), 'source' => 'date', 'format' => 'date'],
+                        ['header' => __('Persona'), 'source' => 'worker'],
+                        ['header' => __('Proyecto'), 'source' => 'project.code'],
+                        ['header' => __('Desde'), 'source' => 'start'],
+                        ['header' => __('Hasta'), 'source' => 'end'],
+                        ['header' => __('Horas'), 'source' => 'hours'],
+                        ['header' => __('Nota'), 'source' => 'notes'],
                     ],
                 ],
             ],
             'resumen-por-proyecto' => [
-                'name' => 'Resumen por proyecto', 'format' => 'xlsx',
+                'name' => __('Resumen por proyecto'), 'format' => 'xlsx',
                 'config' => [
-                    'sheet_name' => 'Resumen', 'group_by' => ['project'],
+                    'sheet_name' => __('Resumen'), 'group_by' => ['project'],
                     'filters' => ['status' => 'approved'],
                     'columns' => [
-                        ['header' => 'Cliente', 'source' => 'customer'],
-                        ['header' => 'Proyecto', 'source' => 'project.name'],
-                        ['header' => 'Horas', 'source' => 'hours'],
-                        ['header' => 'Importe', 'source' => 'amount'],
+                        ['header' => __('Cliente'), 'source' => 'customer'],
+                        ['header' => __('Proyecto'), 'source' => 'project.name'],
+                        ['header' => __('Horas'), 'source' => 'hours'],
+                        ['header' => __('Importe'), 'source' => 'amount'],
                     ],
                 ],
             ],
@@ -120,21 +144,21 @@ class ExportService
     {
         $errors = [];
         if (empty($c['columns']) || ! is_array($c['columns'])) {
-            return ['La plantilla necesita al menos una columna.'];
+            return [__('La plantilla necesita al menos una columna.')];
         }
         foreach ($c['columns'] as $i => $col) {
             $src = $col['source'] ?? '';
             $base = str_starts_with($src, 'project.meta.') ? 'project.meta.' : $src;
             if (trim((string) ($col['header'] ?? '')) === '') {
-                $errors[] = 'Columna '.($i + 1).': falta el encabezado.';
+                $errors[] = __('Columna :n: falta el encabezado.', ['n' => $i + 1]);
             }
             if ($base !== 'project.meta.' && ! in_array($src, self::SOURCES, true)) {
-                $errors[] = 'Columna '.($i + 1).': origen desconocido "'.$src.'".';
+                $errors[] = __('Columna :n: origen desconocido ":source".', ['n' => $i + 1, 'source' => $src]);
             }
         }
         foreach ($c['group_by'] ?? [] as $g) {
             if (! in_array($g, self::GROUPS, true)) {
-                $errors[] = 'Agrupación desconocida "'.$g.'".';
+                $errors[] = __('Agrupación desconocida ":group".', ['group' => $g]);
             }
         }
         return $errors;
@@ -146,6 +170,7 @@ class ExportService
     public function generate(ExportTemplate $tpl, User $actor, string $from, string $to, array $opts = []): array
     {
         $rows = $this->collect($tpl, $actor, $from, $to, $opts);
+        $tpl = $this->localize($tpl);
         $config = $tpl->config;
         $dir = storage_path('app/exports');
         @mkdir($dir, 0775, true);
@@ -173,7 +198,7 @@ class ExportService
             }
             foreach ($byYear->sortKeys() as $year => $yearRows) {
                 $sheet = $book->createSheet();
-                $sheet->setTitle(mb_substr(str_replace('{year}', (string) $year, $config['sheet_name'] ?? 'Datos'), 0, 31));
+                $sheet->setTitle(mb_substr(str_replace('{year}', (string) $year, $config['sheet_name'] ?? __('Datos')), 0, 31));
                 foreach ($config['columns'] as $i => $col) {
                     $sheet->setCellValue([$i + 1, 1], $col['header']);
                     $sheet->getStyle(Coordinate::stringFromColumnIndex($i + 1).'1')->getFont()->setBold(true);
@@ -227,7 +252,7 @@ class ExportService
             $parsed = self::parseProject($p);
             return [
                 'id' => $p->id, 'name' => $parsed['patient'], 'project' => $p->name, 'plan' => $parsed['plan'], 'contract' => $parsed['contract'],
-                'hours' => $hours, 'amount' => round($hours * (float) ($p->bill_rate ?? 0), 2),
+                'hours' => $hours, 'amount' => round($g->sum(fn ($e) => (float) $e->hours * $e->saleRate()), 2),
                 'days' => $g->pluck('work_date')->map(fn ($d) => $d->toDateString())->unique()->count(),
             ];
         })->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values()->all();
@@ -237,7 +262,7 @@ class ExportService
     public function collect(ExportTemplate $tpl, User $actor, string $from, string $to, array $opts = []): array
     {
         $filters = $tpl->config['filters'] ?? [];
-        $q = TimeEntry::with('project.customer', 'user', 'timesheet')
+        $q = TimeEntry::with('project.customer', 'project.services', 'service', 'user', 'timesheet')
             ->where('company_id', $actor->company_id)->where('running', false)
             ->whereBetween('work_date', [$from, $to])->orderBy('work_date')->orderBy('start_time');
 
@@ -263,7 +288,9 @@ class ExportService
 
         $flat = $q->get()->map(function (TimeEntry $e) {
             $p = $e->project;
-            $rate = (float) ($p->bill_rate ?? 0);
+            $rate = $e->saleRate();
+            // El nombre del servicio solo se muestra si el proyecto tiene más de uno; con uno solo es implícito.
+            $service = $p->services->count() > 1 ? (string) $e->service?->name : '';
             return [
                 'date' => $e->work_date->toDateString(),
                 'week_ending' => Week::ending($e->work_date),
@@ -277,7 +304,8 @@ class ExportService
                 'start' => $e->start_time ? substr($e->start_time, 0, 5) : '',
                 'end' => $e->end_time ? substr($e->end_time, 0, 5) : '',
                 'notes' => (string) $e->note,
-                'billable' => $e->billable ? 'Sí' : 'No',
+                'service' => $service,
+                'billable' => $e->billable ? __('Sí') : __('No'),
                 'user_id' => $e->user_id,
             ];
         });
@@ -294,6 +322,7 @@ class ExportService
             $first['hours'] = round($g->sum('hours'), 2);
             $first['amount'] = round($g->sum('amount'), 2);
             $first['notes'] = $g->pluck('notes')->filter()->unique()->implode('; ');
+            $first['service'] = $g->pluck('service')->filter()->unique()->implode(', ');
             if (! in_array('date', $groupBy, true)) {
                 $first['date'] = $g->min('date');
             }
@@ -331,6 +360,7 @@ class ExportService
         return match ($source) {
             'project.code' => $row['project']->code,
             'project.name' => $row['project']->name,
+            'service_notes' => trim(($row['service'] !== '' ? $row['service'].($row['notes'] !== '' ? ' — ' : '') : '').$row['notes']),
             'project.patient', 'project.plan', 'project.contract' => self::parseProject($row['project'])[substr($source, 8)],
             default => $row[$source] ?? '',
         };

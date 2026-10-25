@@ -12,7 +12,7 @@ class CompanyController extends Controller
     public function show(Request $request)
     {
         $c = $request->user()->company;
-        return response()->json(['name' => $c->name, 'timezone' => $c->timezone, 'invoice_prefix' => $c->invoice_prefix,
+        return response()->json(['name' => $c->name, 'timezone' => $c->timezone, 'invoice_prefix' => $c->invoice_prefix, 'locale' => $c->locale,
             'rules' => $c->rules()->all()]);
     }
 
@@ -22,6 +22,7 @@ class CompanyController extends Controller
         $v = $request->validate([
             'name' => 'sometimes|string|max:190',
             'timezone' => 'sometimes|timezone',
+            'locale' => 'sometimes|in:es,en',
             'invoice_prefix' => 'sometimes|string|max:20',
             'rules' => 'sometimes|array',
             'rules.weeks_back' => 'integer|between:0,52',

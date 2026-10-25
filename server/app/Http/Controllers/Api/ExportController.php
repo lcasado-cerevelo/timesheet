@@ -19,8 +19,10 @@ class ExportController extends Controller
     public function templates(Request $request)
     {
         $this->exports->ensureSystemTemplates($request->user()->company);
+        // Las del sistema se guardan en español y aquí salen en el idioma de quien pregunta (menos Consultorio 1500).
         return response()->json(
             ExportTemplate::where('company_id', $request->user()->company_id)->orderByDesc('is_system')->orderBy('name')->get()
+                ->map(fn ($t) => $this->exports->localize($t))->values()
         );
     }
 
@@ -29,7 +31,7 @@ class ExportController extends Controller
         $cid = $request->user()->company_id;
         if ($template) {
             abort_unless($template->company_id === $cid, 404);
-            abort_if($template->is_system, 422, 'Las plantillas del sistema no se editan; duplícala.');
+            abort_if($template->is_system, 422, __('Las plantillas del sistema no se editan; duplícala.'));
         }
         $v = $request->validate([
             'name' => 'required|string|max:120',
@@ -54,7 +56,7 @@ class ExportController extends Controller
     public function destroy(Request $request, ExportTemplate $template)
     {
         abort_unless($template->company_id === $request->user()->company_id, 404);
-        abort_if($template->is_system, 422, 'Las plantillas del sistema no se borran.');
+        abort_if($template->is_system, 422, __('Las plantillas del sistema no se borran.'));
         $template->delete();
         return response()->json(['ok' => true]);
     }

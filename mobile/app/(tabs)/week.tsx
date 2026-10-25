@@ -4,13 +4,16 @@ import { useRouter } from 'expo-router';
 import { addDays, dayLabel, fmtHours, to12h, today, weekDays, weekEnding } from '../../src/lib/time';
 import { dayTotals } from '../../src/lib/report';
 import { useAuth } from '../../src/store/auth';
+import { useT } from '../../src/i18n';
 import { useEntries } from '../../src/store/entries';
 import { useSettings } from '../../src/store/settings';
-import { Badge, Btn, C, Card, Msg, STATUS, useTheme } from '../../src/ui';
+import { Badge, Btn, C, Card, Msg, STATUS, useBottomPad, useTheme } from '../../src/ui';
 
 export default function Week() {
   const router = useRouter();
-  const t = useTheme();
+  const th = useTheme();
+  const { t } = useT();
+  const bottom = useBottomPad(12);
   const me = useAuth((s) => s.me)!;
   const decimal = useSettings((s) => s.decimal);
   const { entries, projects, selectedDate, setDate, sheets, fetchSheet, submitWeek } = useEntries();
@@ -32,7 +35,7 @@ export default function Week() {
     setMsg(null);
     try {
       await submitWeek(selectedDate);
-      setMsg({ kind: 'ok', text: 'Hoja enviada a aprobación.' });
+      setMsg({ kind: 'ok', text: t('week.sent') });
     } catch (e: any) {
       setMsg({ kind: 'err', text: e.message });
     } finally {
@@ -45,24 +48,24 @@ export default function Week() {
   const over = me.worker_type === 'employee' && me.weekly_hours != null && weekTotal > Number(me.weekly_hours);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 12 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 12, paddingBottom: bottom }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-        <Pressable testID="wprev" onPress={() => setDate(addDays(selectedDate, -7))} style={{ padding: 8 }}><Text style={{ fontSize: 22, color: t.primary }}>‹</Text></Pressable>
+        <Pressable testID="wprev" onPress={() => setDate(addDays(selectedDate, -7))} style={{ padding: 8 }}><Text style={{ fontSize: 22, color: th.primary }}>‹</Text></Pressable>
         <Text style={{ flex: 1, textAlign: 'center', fontWeight: '800', fontSize: 16 }}>{dayLabel(days[0])} – {dayLabel(days[6])}</Text>
-        <Pressable testID="wnext" onPress={() => setDate(addDays(selectedDate, 7))} style={{ padding: 8 }}><Text style={{ fontSize: 22, color: t.primary }}>›</Text></Pressable>
+        <Pressable testID="wnext" onPress={() => setDate(addDays(selectedDate, 7))} style={{ padding: 8 }}><Text style={{ fontSize: 22, color: th.primary }}>›</Text></Pressable>
       </View>
 
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          {st ? <Badge text={st.label} color={st.color} bg={st.bg} /> : <Badge text="Sin conexión: estado desconocido" />}
-          {sheet?.late ? <Badge text="Tarde" color={C.danger} bg="#fdecea" /> : null}
+          {st ? <Badge text={t(st.key)} color={st.color} bg={st.bg} /> : <Badge text={t('week.unknown')} />}
+          {sheet?.late ? <Badge text={t('week.late')} color={C.danger} bg="#fdecea" /> : null}
           <View style={{ flex: 1 }} />
           <Text testID="week-total" style={{ fontWeight: '800', fontSize: 16 }}>{fmtHours(weekTotal, decimal)} h</Text>
         </View>
-        {sheet?.status === 'returned' && sheet.return_comment ? <View style={{ marginTop: 10 }}><Msg kind="err" text={`Devuelta: ${sheet.return_comment}`} /></View> : null}
-        {sheet?.locked ? <View style={{ marginTop: 10 }}><Msg kind="ok" text="Aprobada: ya no se puede cambiar." /></View> : null}
-        {over ? <View style={{ marginTop: 10 }}><Msg kind="warn" text={`Pasa de ${Number(me.weekly_hours)} h por semana.`} /></View> : null}
-        {sheet?.status === 'submitted' ? <Text style={{ color: C.muted, marginTop: 8 }}>Esperando decisión. Si cambias algo, el aprobador recibe un aviso de que la hoja cambió.</Text> : null}
+        {sheet?.status === 'returned' && sheet.return_comment ? <View style={{ marginTop: 10 }}><Msg kind="err" text={t('week.returned', { comment: sheet.return_comment })} /></View> : null}
+        {sheet?.locked ? <View style={{ marginTop: 10 }}><Msg kind="ok" text={t('week.approved')} /></View> : null}
+        {over ? <View style={{ marginTop: 10 }}><Msg kind="warn" text={t('week.over', { n: Number(me.weekly_hours) })} /></View> : null}
+        {sheet?.status === 'submitted' ? <Text style={{ color: C.muted, marginTop: 8 }}>{t('week.waiting')}</Text> : null}
       </Card>
 
       <Card>
@@ -88,8 +91,8 @@ export default function Week() {
       </Card>
 
       {msg ? <Msg kind={msg.kind} text={msg.text} /> : null}
-      {canSubmit ? <Btn testID="submit-week" kind="pri" title={sheet!.status === 'returned' ? 'Corregida: enviar de nuevo' : 'Enviar a aprobación'} disabled={busy || weekTotal <= 0} onPress={submit} /> : null}
-      {!sheet ? <Text style={{ color: C.muted, marginTop: 8 }}>Para enviar la hoja hace falta conexión; tus entradas se guardan y se sincronizan al volver.</Text> : null}
+      {canSubmit ? <Btn testID="submit-week" kind="pri" title={sheet!.status === 'returned' ? t('week.resubmit') : t('week.submit')} disabled={busy || weekTotal <= 0} onPress={submit} /> : null}
+      {!sheet ? <Text style={{ color: C.muted, marginTop: 8 }}>{t('week.need_connection')}</Text> : null}
     </ScrollView>
   );
 }

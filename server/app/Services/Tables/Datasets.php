@@ -75,14 +75,14 @@ class Datasets
 
     private function txt(array $f): ?string
     {
-        return ! empty($f['q']) ? 'texto "'.$f['q'].'"' : null;
+        return ! empty($f['q']) ? __('texto ":q"', ['q' => $f['q']]) : null;
     }
 
     /** Texto que describe los filtros activos, para dejarlo escrito en el archivo. */
     private function describe(array $parts): string
     {
         $parts = array_filter($parts);
-        return $parts ? ' · Filtro: '.implode(', ', $parts) : '';
+        return $parts ? ' · '.__('Filtro: :filters', ['filters' => implode(', ', $parts)]) : '';
     }
 
     private function report(User $u, array $p): array
@@ -96,18 +96,19 @@ class Datasets
         $rows = $entries->groupBy(fn ($e) => match ($group) {
             'day' => $e->work_date->toDateString(),
             'week' => Week::ending($e->work_date),
-            'customer' => $e->project->customer?->name ?? '(sin cliente)',
+            'customer' => $e->project->customer?->name ?? __('(sin cliente)'),
             default => $e->project->code.' · '.$e->project->name,
         })->sortKeys()->map(fn ($g, $k) => [
             $k, round((float) $g->sum('hours'), 2), round((float) $g->where('billable', true)->sum('hours'), 2), round((float) $g->where('billable', false)->sum('hours'), 2),
         ])->values()->all();
-        $label = ['project' => 'Proyecto', 'day' => 'Día', 'week' => 'Semana que termina', 'customer' => 'Cliente'][$group];
+        $label = ['project' => __('Proyecto'), 'day' => __('Día'), 'week' => __('Semana que termina'), 'customer' => __('Cliente')][$group];
         return [
-            'title' => 'Reporte de horas',
-            'subtitle' => $u->name.' · '.$v['from'].' a '.$v['to'].' · por '.mb_strtolower($label).$this->describe([$projCode ? 'proyecto '.$projCode : null]),
-            'columns' => [['h' => $label, 't' => $group === 'day' || $group === 'week' ? 'date' : 'text'], ['h' => 'Horas', 't' => 'hours'], ['h' => 'Facturables', 't' => 'hours'], ['h' => 'No facturables', 't' => 'hours']],
+            'title' => __('Reporte de horas'),
+            'subtitle' => __(':name · :from a :to · por :group', ['name' => $u->name, 'from' => $v['from'], 'to' => $v['to'], 'group' => mb_strtolower($label)])
+                .$this->describe([$projCode ? __('proyecto :code', ['code' => $projCode]) : null]),
+            'columns' => [['h' => $label, 't' => $group === 'day' || $group === 'week' ? 'date' : 'text'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Facturables'), 't' => 'hours'], ['h' => __('No facturables'), 't' => 'hours']],
             'rows' => $rows,
-            'total' => ['Total', round((float) $entries->sum('hours'), 2), round((float) $entries->where('billable', true)->sum('hours'), 2), round((float) $entries->where('billable', false)->sum('hours'), 2)],
+            'total' => [__('Total'), round((float) $entries->sum('hours'), 2), round((float) $entries->where('billable', true)->sum('hours'), 2), round((float) $entries->where('billable', false)->sum('hours'), 2)],
         ];
     }
 
@@ -119,14 +120,14 @@ class Datasets
         $sheet = Timesheet::where('user_id', $u->id)->where('week_ending', $end)->first();
         $entries = TimeEntry::with('project')->where('user_id', $u->id)->where('running', false)
             ->whereBetween('work_date', [$start, $end])->orderBy('work_date')->orderBy('start_time')->get();
-        $status = ['draft' => 'Borrador', 'submitted' => 'Enviada', 'approved' => 'Aprobada', 'returned' => 'Devuelta'][$sheet->status ?? 'draft'] ?? 'Borrador';
+        $status = ['draft' => __('Borrador'), 'submitted' => __('Enviada'), 'approved' => __('Aprobada'), 'returned' => __('Devuelta')][$sheet->status ?? 'draft'] ?? __('Borrador');
         return [
-            'title' => 'Hoja de la semana',
-            'subtitle' => $u->name.' · semana '.$start.' a '.$end.' · '.$status,
-            'columns' => [['h' => 'Fecha', 't' => 'date'], ['h' => 'Proyecto', 't' => 'text'], ['h' => 'Desde', 't' => 'text'], ['h' => 'Hasta', 't' => 'text'], ['h' => 'Horas', 't' => 'hours'], ['h' => 'Nota', 't' => 'text']],
+            'title' => __('Hoja de la semana'),
+            'subtitle' => __(':name · semana :start a :end · :status', ['name' => $u->name, 'start' => $start, 'end' => $end, 'status' => $status]),
+            'columns' => [['h' => __('Fecha'), 't' => 'date'], ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Desde'), 't' => 'text'], ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Nota'), 't' => 'text']],
             'rows' => $entries->map(fn ($e) => [$e->work_date->toDateString(), $e->project->code.' · '.$e->project->name,
                 $e->start_time ? substr($e->start_time, 0, 5) : '', $e->end_time ? substr($e->end_time, 0, 5) : '', (float) $e->hours, (string) $e->note])->all(),
-            'total' => ['Total', '', '', '', round((float) $entries->sum('hours'), 2), ''],
+            'total' => [__('Total'), '', '', '', round((float) $entries->sum('hours'), 2), ''],
         ];
     }
 
@@ -144,16 +145,16 @@ class Datasets
             ->when(! empty($f['to']), fn ($x) => $x->where('issued_on', '<=', $f['to']));
         $list = $q->limit(2000)->get()->filter(fn ($i) => $this->matches($f['q'] ?? null, [$i->number, $i->user->name]))->values();
         return [
-            'title' => 'Facturas de consultores',
-            'subtitle' => ($u->isOwner() ? 'Todas las facturas de la compañía' : $u->name).$this->describe([
-                $this->txt($f), ! empty($f['status']) ? 'estado '.$f['status'] : null,
-                $u->isOwner() && ! empty($f['user_id']) ? 'consultor '.(User::find($f['user_id'])?->name ?? '#'.$f['user_id']) : null,
-                ! empty($f['from']) ? 'emitidas desde '.$f['from'] : null, ! empty($f['to']) ? 'hasta '.$f['to'] : null]),
-            'columns' => [['h' => 'Número', 't' => 'text'], ['h' => 'Consultor', 't' => 'text'], ['h' => 'Desde', 't' => 'date'], ['h' => 'Hasta', 't' => 'date'], ['h' => 'Bruto', 't' => 'money'],
-                ['h' => 'Retención', 't' => 'money'], ['h' => 'IVU', 't' => 'money'], ['h' => 'Neto', 't' => 'money'], ['h' => 'Estado', 't' => 'text'], ['h' => 'Accountisi', 't' => 'text']],
+            'title' => __('Facturas de consultores'),
+            'subtitle' => ($u->isOwner() ? __('Todas las facturas de la compañía') : $u->name).$this->describe([
+                $this->txt($f), ! empty($f['status']) ? __('estado :status', ['status' => $f['status']]) : null,
+                $u->isOwner() && ! empty($f['user_id']) ? __('consultor :name', ['name' => User::find($f['user_id'])?->name ?? '#'.$f['user_id']]) : null,
+                ! empty($f['from']) ? __('emitidas desde :date', ['date' => $f['from']]) : null, ! empty($f['to']) ? __('hasta :date', ['date' => $f['to']]) : null]),
+            'columns' => [['h' => __('Número'), 't' => 'text'], ['h' => __('Consultor'), 't' => 'text'], ['h' => __('Desde'), 't' => 'date'], ['h' => __('Hasta'), 't' => 'date'], ['h' => __('Bruto'), 't' => 'money'],
+                ['h' => __('Retención'), 't' => 'money'], ['h' => __('IVU'), 't' => 'money'], ['h' => __('Neto'), 't' => 'money'], ['h' => __('Estado'), 't' => 'text'], ['h' => 'Accountisi', 't' => 'text']],
             'rows' => $list->map(fn ($i) => [$i->number, $i->user->name, $i->period_from->toDateString(), $i->period_to->toDateString(), (float) $i->gross, (float) $i->retention,
                 (float) $i->ivu, (float) $i->net, $i->status, (string) $i->accountisi_status])->all(),
-            'total' => ['Total', '', '', '', round((float) $list->sum('gross'), 2), round((float) $list->sum('retention'), 2), round((float) $list->sum('ivu'), 2), round((float) $list->sum('net'), 2), '', ''],
+            'total' => [__('Total'), '', '', '', round((float) $list->sum('gross'), 2), round((float) $list->sum('retention'), 2), round((float) $list->sum('ivu'), 2), round((float) $list->sum('net'), 2), '', ''],
         ];
     }
 
@@ -167,12 +168,12 @@ class Datasets
             ->orderBy('submitted_at')->get()
             ->filter(fn ($s) => $this->matches($f['q'] ?? null, [$s->user->name]))->values();
         return [
-            'title' => 'Hojas pendientes de aprobar',
-            'subtitle' => $list->count().' hoja(s) esperando decisión'.$this->describe([$this->txt($f),
-                ! empty($f['user_id']) ? 'persona '.(User::find($f['user_id'])?->name ?? '#'.$f['user_id']) : null, $late === true ? 'solo enviadas tarde' : null]),
-            'columns' => [['h' => 'Persona', 't' => 'text'], ['h' => 'Semana que termina', 't' => 'date'], ['h' => 'Horas', 't' => 'hours'], ['h' => 'Aprobador', 't' => 'text'], ['h' => 'Enviada', 't' => 'date'], ['h' => 'Tarde', 't' => 'bool']],
+            'title' => __('Hojas pendientes de aprobar'),
+            'subtitle' => __(':count hoja(s) esperando decisión', ['count' => $list->count()]).$this->describe([$this->txt($f),
+                ! empty($f['user_id']) ? __('persona :name', ['name' => User::find($f['user_id'])?->name ?? '#'.$f['user_id']]) : null, $late === true ? __('solo enviadas tarde') : null]),
+            'columns' => [['h' => __('Persona'), 't' => 'text'], ['h' => __('Semana que termina'), 't' => 'date'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Aprobador'), 't' => 'text'], ['h' => __('Enviada'), 't' => 'date'], ['h' => __('Tarde'), 't' => 'bool']],
             'rows' => $list->map(fn ($s) => [$s->user->name, $s->week_ending->toDateString(), (float) $s->total_hours, $s->approver?->name ?? '', $s->submitted_at?->toDateString() ?? '', (bool) $s->late])->all(),
-            'total' => ['Total', '', round((float) $list->sum('total_hours'), 2), '', '', ''],
+            'total' => [__('Total'), '', round((float) $list->sum('total_hours'), 2), '', '', ''],
         ];
     }
 
@@ -187,13 +188,13 @@ class Datasets
             ->when(! empty($f['customer_id']), fn ($x) => $x->where('customer_id', $f['customer_id']))
             ->orderBy('code')->get()
             ->filter(fn ($x) => $this->matches($f['q'] ?? null, [$x->code, $x->name, $x->customer?->name]))->values();
-        $detail = ['hours_total' => 'Total', 'by_day' => 'Por día', 'with_times' => 'Con desde/hasta'];
+        $detail = ['hours_total' => __('Total'), 'by_day' => __('Por día'), 'with_times' => __('Con desde/hasta')];
         return [
-            'title' => 'Proyectos', 'subtitle' => $list->count().' proyecto(s)'.$this->describe([$this->txt($f),
-                $active === null ? null : ($active ? 'solo activos' : 'solo inactivos'), $billable === null ? null : ($billable ? 'solo facturables' : 'solo no facturables'),
-                ! empty($f['customer_id']) ? 'cliente '.(Customer::find($f['customer_id'])?->name ?? '#'.$f['customer_id']) : null]),
-            'columns' => [['h' => 'Código', 't' => 'text'], ['h' => 'Nombre', 't' => 'text'], ['h' => 'Cliente', 't' => 'text'], ['h' => 'Facturable', 't' => 'bool'], ['h' => 'Activo', 't' => 'bool'],
-                ['h' => 'Detalle de factura', 't' => 'text'], ['h' => 'Tarifa', 't' => 'money'], ['h' => 'Horas presupuestadas', 't' => 'hours'], ['h' => 'Aprobador', 't' => 'text']],
+            'title' => __('Proyectos'), 'subtitle' => __(':count proyecto(s)', ['count' => $list->count()]).$this->describe([$this->txt($f),
+                $active === null ? null : ($active ? __('solo activos') : __('solo inactivos')), $billable === null ? null : ($billable ? __('solo facturables') : __('solo no facturables')),
+                ! empty($f['customer_id']) ? __('cliente :name', ['name' => Customer::find($f['customer_id'])?->name ?? '#'.$f['customer_id']]) : null]),
+            'columns' => [['h' => __('Código'), 't' => 'text'], ['h' => __('Nombre'), 't' => 'text'], ['h' => __('Cliente'), 't' => 'text'], ['h' => __('Facturable'), 't' => 'bool'], ['h' => __('Activo'), 't' => 'bool'],
+                ['h' => __('Detalle de factura'), 't' => 'text'], ['h' => __('Tarifa'), 't' => 'money'], ['h' => __('Horas presupuestadas'), 't' => 'hours'], ['h' => __('Aprobador'), 't' => 'text']],
             'rows' => $list->map(fn ($p) => [$p->code, $p->name, $p->customer?->name ?? '', (bool) $p->billable, (bool) $p->active, $detail[$p->invoice_detail] ?? '',
                 $p->bill_rate !== null ? (float) $p->bill_rate : null, $p->budget_hours !== null ? (float) $p->budget_hours : null, $p->approver?->name ?? ''])->all(),
             'total' => null,
@@ -211,14 +212,14 @@ class Datasets
             ->orderBy('name')->get()
             ->filter(fn ($x) => $this->matches($f['q'] ?? null, [$x->name, $x->email]))->values();
         return [
-            'title' => 'Personas', 'subtitle' => $list->count().' persona(s)'.$this->describe([$this->txt($f),
-                $active === null ? null : ($active ? 'solo activas' : 'solo inactivas'),
-                ! empty($f['worker_type']) ? ($f['worker_type'] === 'employee' ? 'empleados' : 'consultores') : null,
-                ! empty($f['capture_mode']) ? ($f['capture_mode'] === 'full_day' ? 'día completo' : 'desde / hasta') : null]),
-            'columns' => [['h' => 'Nombre', 't' => 'text'], ['h' => 'Correo', 't' => 'text'], ['h' => 'Rol', 't' => 'text'], ['h' => 'Tipo', 't' => 'text'], ['h' => 'Modo de captura', 't' => 'text'],
-                ['h' => 'Horas por semana', 't' => 'hours'], ['h' => 'Aprobador', 't' => 'text'], ['h' => 'Activo', 't' => 'bool']],
-            'rows' => $list->map(fn ($x) => [$x->name, $x->email, $x->role === 'owner' ? 'Dueño' : 'Miembro', $x->worker_type === 'employee' ? 'Empleado' : 'Consultor',
-                $x->capture_mode === 'full_day' ? 'Día completo' : 'Desde / hasta', $x->weekly_hours !== null ? (float) $x->weekly_hours : null, $x->approver?->name ?? '', (bool) $x->active])->all(),
+            'title' => __('Personas'), 'subtitle' => __(':count persona(s)', ['count' => $list->count()]).$this->describe([$this->txt($f),
+                $active === null ? null : ($active ? __('solo activas') : __('solo inactivas')),
+                ! empty($f['worker_type']) ? ($f['worker_type'] === 'employee' ? __('empleados') : __('consultores')) : null,
+                ! empty($f['capture_mode']) ? ($f['capture_mode'] === 'full_day' ? __('día completo') : __('desde / hasta')) : null]),
+            'columns' => [['h' => __('Nombre'), 't' => 'text'], ['h' => __('Correo'), 't' => 'text'], ['h' => __('Rol'), 't' => 'text'], ['h' => __('Tipo'), 't' => 'text'], ['h' => __('Modo de captura'), 't' => 'text'],
+                ['h' => __('Horas por semana'), 't' => 'hours'], ['h' => __('Aprobador'), 't' => 'text'], ['h' => __('Activo'), 't' => 'bool']],
+            'rows' => $list->map(fn ($x) => [$x->name, $x->email, $x->role === 'owner' ? __('Dueño') : __('Miembro'), $x->worker_type === 'employee' ? __('Empleado') : __('Consultor'),
+                $x->capture_mode === 'full_day' ? __('Día completo') : __('Desde / hasta'), $x->weekly_hours !== null ? (float) $x->weekly_hours : null, $x->approver?->name ?? '', (bool) $x->active])->all(),
             'total' => null,
         ];
     }
@@ -230,8 +231,8 @@ class Datasets
         $list = Approver::where('company_id', $u->company_id)->when($active !== null, fn ($x) => $x->where('active', $active))->orderBy('name')->get()
             ->filter(fn ($a) => $this->matches($f['q'] ?? null, [$a->name, $a->email]))->values();
         return [
-            'title' => 'Aprobadores', 'subtitle' => $list->count().' aprobador(es)'.$this->describe([$this->txt($f), $active === null ? null : ($active ? 'solo activos' : 'solo inactivos')]),
-            'columns' => [['h' => 'Nombre', 't' => 'text'], ['h' => 'Correo', 't' => 'text'], ['h' => 'Pide código extra', 't' => 'bool'], ['h' => 'Activo', 't' => 'bool']],
+            'title' => __('Aprobadores'), 'subtitle' => __(':count aprobador(es)', ['count' => $list->count()]).$this->describe([$this->txt($f), $active === null ? null : ($active ? __('solo activos') : __('solo inactivos'))]),
+            'columns' => [['h' => __('Nombre'), 't' => 'text'], ['h' => __('Correo'), 't' => 'text'], ['h' => __('Pide código extra'), 't' => 'bool'], ['h' => __('Activo'), 't' => 'bool']],
             'rows' => $list->map(fn ($a) => [$a->name, $a->email, (bool) $a->require_code, (bool) $a->active])->all(),
             'total' => null,
         ];
@@ -247,9 +248,9 @@ class Datasets
             ->orderBy('name')->get()
             ->filter(fn ($c) => $this->matches($f['q'] ?? null, [$c->name, $c->email]))->values();
         return [
-            'title' => 'Clientes', 'subtitle' => $list->count().' cliente(s)'.$this->describe([$this->txt($f),
-                $active === null ? null : ($active ? 'solo activos' : 'solo inactivos'), $linked === null ? null : ($linked ? 'vinculados a Accountisi' : 'sin vincular')]),
-            'columns' => [['h' => 'Nombre', 't' => 'text'], ['h' => 'Correo', 't' => 'text'], ['h' => 'Id en Accountisi', 't' => 'text'], ['h' => 'Activo', 't' => 'bool']],
+            'title' => __('Clientes'), 'subtitle' => __(':count cliente(s)', ['count' => $list->count()]).$this->describe([$this->txt($f),
+                $active === null ? null : ($active ? __('solo activos') : __('solo inactivos')), $linked === null ? null : ($linked ? __('vinculados a Accountisi') : __('sin vincular'))]),
+            'columns' => [['h' => __('Nombre'), 't' => 'text'], ['h' => __('Correo'), 't' => 'text'], ['h' => __('Id en Accountisi'), 't' => 'text'], ['h' => __('Activo'), 't' => 'bool']],
             'rows' => $list->map(fn ($c) => [$c->name, (string) $c->email, (string) $c->accountisi_id, (bool) $c->active])->all(),
             'total' => null,
         ];

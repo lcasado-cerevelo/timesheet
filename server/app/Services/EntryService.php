@@ -2,13 +2,16 @@
 
 namespace App\Services;
 
+use App\Support\Lang;
 use App\Exceptions\SheetLockedException;
 use App\Models\Project;
+use App\Models\Service;
 use App\Models\TimeEntry;
 use App\Models\Timesheet;
 use App\Models\User;
 use App\Support\Week;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -28,24 +31,26 @@ class EntryService
             $project = Project::where('company_id', $user->company_id)->where('active', true)
                 ->find($data['project_id'] ?? null);
             if (! $project || (! $user->isOwner() && ! $user->projects()->whereKey($project->id)->exists())) {
-                $this->fail('project_id', 'Ese proyecto no existe o no está asignado a esta persona.');
+                $this->fail('project_id', __('Ese proyecto no existe o no está asignado a esta persona.'));
             }
 
             $date = $data['work_date'] ?? null;
             if (! $date || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || ! strtotime($date)) {
-                $this->fail('work_date', 'Fecha inválida.');
+                $this->fail('work_date', __('Fecha inválida.'));
             }
             $today = CarbonImmutable::now($company->timezone)->startOfDay();
             $d = CarbonImmutable::parse($date, $company->timezone);
             if ($d->gt($today)) {
-                $this->fail('work_date', 'No se pueden registrar horas en fechas futuras.');
+                $this->fail('work_date', __('No se pueden registrar horas en fechas futuras.'));
             }
             $oldestWeekEnd = $today->endOfWeek(CarbonImmutable::SUNDAY)->subWeeks((int) $rules->get('weeks_back'));
             if (Week::ending($date) < $oldestWeekEnd->toDateString()) {
-                $this->fail('work_date', 'Esa fecha queda más atrás de lo que se permite llenar.');
+                $this->fail('work_date', __('Esa fecha queda más atrás de lo que se permite llenar.'));
             }
 
-            $mode = $user->capture_mode;
+            // El servicio manda: si permite las dos formas, decide la preferencia de la persona (la fija la gerencia).
+            $service = $this->resolveService($project, $data['service_id'] ?? null, $entry);
+            $mode = $service->effectiveMode($user);
             $inc = (float) $rules->get('increment') ?: 0.25;
             $running = (bool) ($data['running'] ?? false);
             $start = $data['start_time'] ?? null;
@@ -54,47 +59,47 @@ class EntryService
 
             if ($mode === 'full_day') {
                 if ($start || $end || $running) {
-                    $this->fail('start_time', 'Este usuario registra el día completo; no lleva hora desde ni hasta.');
+                    $this->fail('start_time', __('Este servicio se registra con el total de horas del día; no lleva hora desde ni hasta.'));
                 }
                 if ($project->requiresTimes()) {
-                    $this->fail('project_id', 'Ese proyecto exige hora desde y hasta; este usuario registra el día completo.');
+                    $this->fail('project_id', __('Ese proyecto exige hora desde y hasta; este servicio se registra con el total del día.'));
                 }
                 if ($hours === null || $hours <= 0) {
-                    $this->fail('hours', 'Escribe las horas del día.');
+                    $this->fail('hours', __('Escribe las horas del día.'));
                 }
                 $hours = $this->roundTo($hours, $inc);
             } else { // from_to
                 if ($hours !== null && ! $start && ! $end) {
-                    $this->fail('start_time', 'A este usuario se le exige hora desde y hasta.');
+                    $this->fail('start_time', __('Este servicio se registra con hora desde y hasta.'));
                 }
                 if (! $this->validTime($start)) {
-                    $this->fail('start_time', 'Hora de inicio inválida (HH:MM).');
+                    $this->fail('start_time', __('Hora de inicio inválida (HH:MM).'));
                 }
                 if ($running) {
                     $end = null;
                     $hours = 0.0;
                     if (TimeEntry::where('user_id', $user->id)->where('running', true)
                         ->when($entry, fn ($q) => $q->where('id', '!=', $entry->id))->exists()) {
-                        $this->fail('running', 'Ya hay un reloj corriendo.');
+                        $this->fail('running', __('Ya hay un reloj corriendo.'));
                     }
                 } else {
                     if (! $this->validTime($end)) {
-                        $this->fail('end_time', 'Hora de fin inválida (HH:MM).');
+                        $this->fail('end_time', __('Hora de fin inválida (HH:MM).'));
                     }
                     $minutes = $this->minutes($end) - $this->minutes($start);
                     if ($minutes <= 0) {
-                        $this->fail('end_time', 'La hora de fin debe ser después de la de inicio.');
+                        $this->fail('end_time', __('La hora de fin debe ser después de la de inicio.'));
                     }
                     $hours = $this->roundTo($minutes / 60, $inc);
                     if ($hours <= 0) {
-                        $this->fail('end_time', 'La duración es demasiado corta.');
+                        $this->fail('end_time', __('La duración es demasiado corta.'));
                     }
                     $overlap = TimeEntry::where('user_id', $user->id)->where('work_date', $date)
                         ->where('running', false)
                         ->when($entry, fn ($q) => $q->where('id', '!=', $entry->id))
                         ->where('start_time', '<', $end.':00')->where('end_time', '>', $start.':00')->exists();
                     if ($overlap) {
-                        $this->fail('start_time', 'Se cruza con otra entrada del mismo día.');
+                        $this->fail('start_time', __('Se cruza con otra entrada del mismo día.'));
                     }
                 }
             }
@@ -102,7 +107,7 @@ class EntryService
             $others = (float) TimeEntry::where('user_id', $user->id)->where('work_date', $date)
                 ->when($entry, fn ($q) => $q->where('id', '!=', $entry->id))->sum('hours');
             if ($others + $hours > (float) $rules->get('max_day_hours')) {
-                $this->fail('hours', 'Pasa del máximo de horas por día ('.$rules->get('max_day_hours').').');
+                $this->fail('hours', __('Pasa del máximo de horas por día (:max).', ['max' => $rules->get('max_day_hours')]));
             }
 
             $newSheet = $this->sheets->forWeek($user, $date);
@@ -126,6 +131,7 @@ class EntryService
                 'company_id' => $user->company_id,
                 'user_id' => $user->id,
                 'project_id' => $project->id,
+                'service_id' => $service->id,
                 'timesheet_id' => $newSheet->id,
                 'work_date' => $date,
                 'start_time' => $start ? $start.':00' : null,
@@ -133,8 +139,13 @@ class EntryService
                 'running' => $running,
                 'hours' => $hours,
                 'note' => isset($data['note']) ? mb_substr((string) $data['note'], 0, 1000) : null,
-                'billable' => (bool) ($data['billable'] ?? $project->billable),
+                'billable' => (bool) ($data['billable'] ?? $service->billable),
             ];
+            // Las tarifas quedan guardadas en la entrada al crearla: cambiar la tarifa de un servicio solo afecta entradas nuevas.
+            if (! $entry || (int) $entry->service_id !== $service->id || $entry->bill_rate === null && $entry->pay_rate === null) {
+                $attrs['bill_rate'] = $service->effectiveRate();
+                $attrs['pay_rate'] = $user->terms?->rate !== null ? (float) $user->terms->rate : null;
+            }
 
             if ($entry) {
                 $entry->update($attrs);
@@ -142,15 +153,37 @@ class EntryService
                 $entry = TimeEntry::create($attrs + ['client_uuid' => $data['client_uuid'] ?? null]);
             }
 
-            $line = $before
-                ? 'Cambiada '.$before.' → '.$this->describe($entry)
-                : 'Añadida '.$this->describe($entry);
+            // Estas líneas se guardan y las lee el aprobador (persona externa): salen en el idioma de la compañía.
+            $line = Lang::with($company->lang(), fn () => $before
+                ? __('Cambiada :before → :after', ['before' => $before, 'after' => $this->describe($entry)])
+                : __('Añadida :entry', ['entry' => $this->describe($entry)]));
             $this->sheets->entriesChanged($newSheet->refresh(), $line, $user, $channel);
             if ($oldSheet && $oldSheet->id !== $newSheet->id) {
-                $this->sheets->entriesChanged($oldSheet->refresh(), 'Movida fuera de esta semana: '.$before, $user, $channel);
+                $this->sheets->entriesChanged($oldSheet->refresh(), Lang::with($company->lang(), fn () => __('Movida fuera de esta semana: :entry', ['entry' => $before])), $user, $channel);
             }
             return $entry->refresh();
         });
+    }
+
+    /** El servicio de la entrada: el indicado, el que ya tenía, o el único activo del proyecto. */
+    private function resolveService(Project $project, mixed $serviceId, ?TimeEntry $entry): Service
+    {
+        if ($serviceId) {
+            $s = Service::where('project_id', $project->id)->find($serviceId);
+            // Un servicio desactivado no se puede usar en entradas nuevas, pero una entrada vieja puede conservarlo.
+            if ($s && ($s->active || ($entry && (int) $entry->service_id === $s->id))) {
+                return $s;
+            }
+            $this->fail('service_id', __('Ese servicio no existe en este proyecto o está desactivado.'));
+        }
+        if ($entry && $entry->service_id && (int) $entry->project_id === $project->id) {
+            return Service::findOrFail($entry->service_id);
+        }
+        $active = Service::where('project_id', $project->id)->where('active', true)->orderBy('sort')->orderBy('id')->get();
+        if ($active->count() === 1) {
+            return $active->first();
+        }
+        $this->fail('service_id', $active->isEmpty() ? __('Ese proyecto no tiene servicios activos.') : __('Escoge el servicio.'));
     }
 
     public function delete(User $user, TimeEntry $entry, string $channel = 'app'): void
@@ -163,19 +196,20 @@ class EntryService
             if ($sheet->isLocked()) {
                 throw new SheetLockedException();
             }
-            $line = 'Borrada '.$this->describe($entry);
+            $line = Lang::with($user->company->lang(), fn () => __('Borrada :entry', ['entry' => $this->describe($entry)]));
             $entry->delete();
             $this->sheets->entriesChanged($sheet->refresh(), $line, $user, $channel);
         });
     }
 
     /** Reloj: empieza ahora. */
-    public function startClock(User $user, int $projectId, ?string $note = null, ?string $uuid = null, ?string $at = null): TimeEntry
+    public function startClock(User $user, int $projectId, ?string $note = null, ?string $uuid = null, ?string $at = null, ?int $serviceId = null): TimeEntry
     {
         $tz = $user->company->timezone;
         $now = $at ? CarbonImmutable::parse($at)->setTimezone($tz) : CarbonImmutable::now($tz);
         return $this->save($user, [
             'project_id' => $projectId,
+            'service_id' => $serviceId,
             'work_date' => $now->toDateString(),
             'start_time' => $now->format('H:i'),
             'running' => true,
@@ -189,15 +223,16 @@ class EntryService
     {
         $entry = TimeEntry::where('user_id', $user->id)->where('running', true)->first();
         if (! $entry) {
-            $this->fail('running', 'No hay un reloj corriendo.');
+            $this->fail('running', __('No hay un reloj corriendo.'));
         }
         $tz = $user->company->timezone;
         $now = $at ? CarbonImmutable::parse($at)->setTimezone($tz) : CarbonImmutable::now($tz);
         if ($now->toDateString() !== $entry->work_date->toDateString()) {
-            $this->fail('end_time', 'El reloj pasó de medianoche; corrige la hora de salida a mano.');
+            $this->fail('end_time', __('El reloj pasó de medianoche; corrige la hora de salida a mano.'));
         }
         return $this->save($user, [
             'project_id' => $entry->project_id,
+            'service_id' => $entry->service_id,
             'work_date' => $entry->work_date->toDateString(),
             'start_time' => substr($entry->start_time, 0, 5),
             'end_time' => $now->format('H:i'),

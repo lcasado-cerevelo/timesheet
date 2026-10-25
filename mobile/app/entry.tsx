@@ -1,38 +1,78 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useT } from '../src/i18n';
+import { ProjectSheet } from '../src/pickers';
 import { computeHours } from '../src/lib/rules';
+import { activeServices, needsService, resolveService, serviceMode } from '../src/lib/services';
 import { fmtHours, longDate, nowHM } from '../src/lib/time';
 import { useAuth } from '../src/store/auth';
 import { useEntries } from '../src/store/entries';
-import { Btn, C, Card, Field, Msg, TimeField, useTheme } from '../src/ui';
+import { computeCurrent, useSelection } from '../src/store/selection';
+import { Btn, C, Card, Chip, Field, Msg, TimeField, useBottomPad, useTheme } from '../src/ui';
 
-/** Agregar o editar una entrada. Lo que se pide depende del modo de captura que fijó el dueño para esta persona. */
+/**
+ * Agregar o editar una entrada. Muestra el proyecto actual y sus servicios; lo que se pide (desde/hasta con reloj,
+ * o las horas del día) lo decide el servicio escogido (y, si permite ambos, la preferencia de la persona).
+ */
 export default function EntryScreen() {
   const router = useRouter();
-  const t = useTheme();
+  const th = useTheme();
+  const { t } = useT();
+  const bottom = useBottomPad(24);
   const params = useLocalSearchParams<{ uuid?: string; date?: string }>();
   const me = useAuth((s) => s.me)!;
   const { entries, projects, selectedDate, save } = useEntries();
+  const sel = useSelection();
   const editing = params.uuid ? entries.find((e) => e.uuid === params.uuid) : undefined;
-  const fromTo = me.capture_mode === 'from_to';
+  const current = computeCurrent(projects, sel.projectId, sel.services, me.capture_mode);
 
-  const [projectId, setProjectId] = useState<number | null>(editing?.project_id ?? projects.find((p) => p.active)?.id ?? null);
+  const [projectId, setProjectId] = useState<number | null>(editing?.project_id ?? current.project?.id ?? null);
+  const [serviceId, setServiceId] = useState<number | null>(editing ? editing.service_id ?? null : current.service?.id ?? null);
+  const [pickProject, setPickProject] = useState(false);
   const [date] = useState(editing?.work_date ?? params.date ?? selectedDate);
-  const [start, setStart] = useState<string | null>(editing?.start_time ?? (fromTo ? nowHM() : null));
+  const [start, setStart] = useState<string | null>(editing?.start_time ?? nowHM());
   const [end, setEnd] = useState<string | null>(editing?.end_time ?? null);
   const [hours, setHours] = useState(editing && !editing.start_time ? String(editing.hours) : '');
   const [note, setNote] = useState(editing?.note ?? '');
   const [errors, setErrors] = useState<string[]>([]);
 
+  const project = projects.find((p) => p.id === projectId);
+  const choices = useMemo(() => {
+    const list = activeServices(project);
+    const keep = editing && editing.project_id === projectId && editing.service_id ? project?.services?.find((s) => s.id === editing.service_id) : undefined;
+    return keep && !list.some((s) => s.id === keep.id) ? [...list, keep] : list;
+  }, [project, editing, projectId]);
+  // Con un solo servicio no se pide escoger; con varios hay que escoger uno.
+  const service = resolveService(project, serviceId, editing?.service_id);
+  const mustChoose = needsService(project) && !service;
+  const mode = service ? serviceMode(service, me.capture_mode) : me.capture_mode;
+  const fromTo = mode === 'from_to';
+
   const calc = useMemo(
-    () => computeHours({ project_id: projectId, work_date: date, start_time: start, end_time: end, hours: Number(hours.replace(',', '.')) || 0 }, me.capture_mode, me.rules.increment),
-    [projectId, date, start, end, hours, me],
+    () => computeHours({ project_id: projectId, work_date: date, start_time: start, end_time: end, hours: Number(hours.replace(',', '.')) || 0 }, mode, me.rules.increment),
+    [projectId, date, start, end, hours, mode, me],
   );
+
+  const chooseProject = (id: number) => {
+    setPickProject(false);
+    setProjectId(id);
+    sel.setProject(id);
+    const next = computeCurrent(projects, id, sel.services, me.capture_mode);
+    setServiceId(next.service?.id ?? null);
+  };
+
+  const chooseService = (id: number) => {
+    setServiceId(id);
+    if (projectId) sel.setService(projectId, id);
+  };
 
   const submit = () => {
     const r = save(
-      { project_id: projectId, work_date: date, start_time: fromTo ? start : null, end_time: fromTo ? end : null, hours: fromTo ? null : Number(hours.replace(',', '.')) || 0, note },
+      {
+        project_id: projectId, service_id: service?.id ?? serviceId, work_date: date,
+        start_time: fromTo ? start : null, end_time: fromTo ? end : null, hours: fromTo ? null : Number(hours.replace(',', '.')) || 0, note,
+      },
       editing?.uuid,
     );
     if (r.errors.length) return setErrors(r.errors);
@@ -40,34 +80,47 @@ export default function EntryScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 14 }} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 14, paddingBottom: bottom }} keyboardShouldPersistTaps="handled">
       <Card>
-        <Text style={{ fontWeight: '700', marginBottom: 10 }}>{editing ? 'Editar entrada' : 'Agregar entrada'} · {longDate(date)}</Text>
+        <Text style={{ fontWeight: '700', marginBottom: 10 }}>{editing ? t('entry.edit') : fromTo ? t('day.add_entry_title') : t('day.add_hours_title')} · {longDate(date)}</Text>
         {errors.map((e) => <Msg key={e} kind="err" text={e} />)}
         {editing?.sync === 'rejected' && editing.reject_reason ? <Msg kind="warn" text={editing.reject_reason} /> : null}
-        <Text style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>Proyecto</Text>
-        <View style={{ marginBottom: 12 }}>
-          {projects.filter((p) => p.active).map((p) => (
-            <Pressable key={p.id} testID={`proj-${p.code}`} onPress={() => setProjectId(p.id)} style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8, marginBottom: 6, borderWidth: 1, borderColor: projectId === p.id ? t.accent : '#d1d5db', backgroundColor: projectId === p.id ? '#eef7f1' : '#fff' }}>
-              <Text style={{ fontWeight: projectId === p.id ? '700' : '400' }}>{p.code} · {p.name}</Text>
-            </Pressable>
-          ))}
-        </View>
-        {fromTo ? (
+
+        <Text style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>{t('entry.project')}</Text>
+        <Pressable testID="entry-project" onPress={() => setPickProject(true)} style={{ paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: th.accent, backgroundColor: '#eef7f1', flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ flex: 1, fontWeight: '700' }}>{project ? `${project.code} · ${project.name}` : t('entry.no_project')}</Text>
+          <Text style={{ color: th.primary, fontWeight: '700' }}>{t('entry.change')}</Text>
+        </Pressable>
+
+        {choices.length > 1 ? (
+          <>
+            <Text style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>{t('entry.service')}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 8, marginBottom: 12 }}>
+              {choices.map((s) => <Chip key={s.id} testID={`svc-${s.id}`} label={s.name} on={service?.id === s.id} onPress={() => chooseService(s.id)} />)}
+            </View>
+          </>
+        ) : choices.length === 1 ? (
+          <Text testID="svc-single" style={{ color: C.muted, marginBottom: 12 }}>{t('entry.service')}: {choices[0].name}</Text>
+        ) : null}
+
+        {mustChoose ? (
+          <Text style={{ color: C.muted, marginBottom: 12 }}>{t('entry.pick_service')}</Text>
+        ) : fromTo ? (
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TimeField testID="start" label="Desde" value={start} onChange={setStart} />
-            <TimeField testID="end" label="Hasta" value={end} onChange={setEnd} />
+            <TimeField testID="start" label={t('entry.from')} value={start} onChange={setStart} />
+            <TimeField testID="end" label={t('entry.to')} value={end} onChange={setEnd} />
           </View>
         ) : (
-          <Field testID="hours" label="Horas del día" value={hours} onChangeText={setHours} keyboardType="decimal-pad" placeholder="8" />
+          <Field testID="hours" label={t('entry.hours_of_day')} value={hours} onChangeText={setHours} keyboardType="decimal-pad" placeholder="8" />
         )}
-        <Text style={{ color: C.muted, marginBottom: 10 }}>Total: <Text style={{ fontWeight: '800', color: C.text }}>{fmtHours(calc, true)} h</Text></Text>
-        <Field testID="note" label="Nota" value={note} onChangeText={setNote} multiline autoCapitalize="sentences" />
+        <Text style={{ color: C.muted, marginBottom: 10 }}>{t('entry.total')}: <Text style={{ fontWeight: '800', color: C.text }}>{fmtHours(calc, true)} h</Text></Text>
+        <Field testID="note" label={t('entry.note')} value={note} onChangeText={setNote} multiline autoCapitalize="sentences" />
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Btn testID="save" title="Guardar" kind="pri" onPress={submit} />
-          <Btn title="Cancelar" kind="ghost" onPress={() => router.back()} />
+          <Btn testID="save" title={t('common.save')} kind="pri" onPress={submit} />
+          <Btn title={t('common.cancel')} kind="ghost" onPress={() => router.back()} />
         </View>
       </Card>
+      <ProjectSheet visible={pickProject} currentId={projectId} onPick={chooseProject} onClose={() => setPickProject(false)} />
     </ScrollView>
   );
 }

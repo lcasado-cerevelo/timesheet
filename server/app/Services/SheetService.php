@@ -78,7 +78,7 @@ class SheetService
             $id = $projectApprovers->first();
         } elseif ($projectApprovers->count() > 1 && ! $user->approver_id) {
             throw ValidationException::withMessages([
-                'approver' => 'La hoja tiene proyectos con aprobadores distintos y la persona no tiene un aprobador por omisión.',
+                'approver' => __('La hoja tiene proyectos con aprobadores distintos y la persona no tiene un aprobador por omisión.'),
             ]);
         } else {
             $id = $user->approver_id;
@@ -86,7 +86,7 @@ class SheetService
 
         $approver = $id ? Approver::where('company_id', $user->company_id)->where('active', true)->find($id) : null;
         if (! $approver && ! $user->isOwner()) {
-            throw ValidationException::withMessages(['approver' => 'No hay un aprobador asignado a esta hoja.']);
+            throw ValidationException::withMessages(['approver' => __('No hay un aprobador asignado a esta hoja.')]);
         }
         return $approver;
     }
@@ -94,17 +94,17 @@ class SheetService
     public function submit(Timesheet $sheet, User $actor, string $channel = 'app'): Timesheet
     {
         if ($sheet->user_id !== $actor->id) {
-            throw new \DomainException('Solo la persona dueña de la hoja puede enviarla.');
+            throw new \DomainException(__('Solo la persona dueña de la hoja puede enviarla.'));
         }
         if (! in_array($sheet->status, [Timesheet::DRAFT, Timesheet::RETURNED], true)) {
-            throw ValidationException::withMessages(['status' => 'Esta hoja ya fue enviada o aprobada.']);
+            throw ValidationException::withMessages(['status' => __('Esta hoja ya fue enviada o aprobada.')]);
         }
         $sheet->recalcTotal();
         if ((float) $sheet->total_hours <= 0) {
-            throw ValidationException::withMessages(['status' => 'La hoja no tiene horas.']);
+            throw ValidationException::withMessages(['status' => __('La hoja no tiene horas.')]);
         }
         if ($sheet->entries()->where('running', true)->exists()) {
-            throw ValidationException::withMessages(['status' => 'Hay un reloj corriendo; páralo antes de enviar.']);
+            throw ValidationException::withMessages(['status' => __('Hay un reloj corriendo; páralo antes de enviar.')]);
         }
 
         $approver = $this->resolveApprover($sheet);
@@ -146,13 +146,20 @@ class SheetService
     {
         $sheet->refresh();
         if ($sheet->status !== Timesheet::SUBMITTED) {
-            throw ValidationException::withMessages(['status' => 'Esta hoja ya no está pendiente de aprobación.']);
+            throw ValidationException::withMessages(['status' => __('Esta hoja ya no está pendiente de aprobación.')]);
         }
         if ($expectedVersion !== null && $expectedVersion !== (int) $sheet->version) {
-            throw ValidationException::withMessages(['version' => 'La hoja cambió después de enviarse; revisa la versión nueva.']);
+            throw ValidationException::withMessages(['version' => __('La hoja cambió después de enviarse; revisa la versión nueva.')]);
         }
         if ($user && $user->id === $sheet->user_id && $via !== 'self') {
-            throw ValidationException::withMessages(['status' => 'No puedes aprobar tu propia hoja.']);
+            throw ValidationException::withMessages(['status' => __('No puedes aprobar tu propia hoja.')]);
+        }
+
+        // Las tarifas quedan guardadas en cada entrada antes de cerrar la hoja (las entradas nuevas ya las traen al crearse).
+        foreach ($sheet->entries()->with('project', 'service', 'user.terms')->get() as $e) {
+            if ($e->bill_rate === null || $e->pay_rate === null) {
+                $e->forceFill(['bill_rate' => $e->bill_rate ?? $e->saleRate(), 'pay_rate' => $e->pay_rate ?? ($e->user?->terms?->rate !== null ? (float) $e->user->terms->rate : null)])->saveQuietly();
+            }
         }
 
         $sheet->fill([
@@ -177,14 +184,14 @@ class SheetService
     {
         $comment = trim($comment);
         if (mb_strlen($comment) < 3) {
-            throw ValidationException::withMessages(['comment' => 'Para devolver una hoja hay que escribir un comentario.']);
+            throw ValidationException::withMessages(['comment' => __('Para devolver una hoja hay que escribir un comentario.')]);
         }
         $sheet->refresh();
         if ($sheet->status !== Timesheet::SUBMITTED) {
-            throw ValidationException::withMessages(['status' => 'Esta hoja ya no está pendiente de aprobación.']);
+            throw ValidationException::withMessages(['status' => __('Esta hoja ya no está pendiente de aprobación.')]);
         }
         if ($expectedVersion !== null && $expectedVersion !== (int) $sheet->version) {
-            throw ValidationException::withMessages(['version' => 'La hoja cambió después de enviarse; revisa la versión nueva.']);
+            throw ValidationException::withMessages(['version' => __('La hoja cambió después de enviarse; revisa la versión nueva.')]);
         }
 
         $sheet->fill([

@@ -410,3 +410,16 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
   (`scripts/backup.sh`, `scripts/restore.sh`); la misma `APP_KEY` es obligatoria para poder leer lo cifrado.
 - Probado en local: la pila completa (Caddy con certificado interno, migraciones, login, cookies seguras, cron externo) y un ciclo de desastre y
   restauración. No probado: la emisión real de Let's Encrypt (necesita un dominio público), el envío real con Brevo y Turnstile con llaves reales.
+
+---
+
+# Adenda v1.5 (2026-10-25) — servicios, tarifas guardadas, dos idiomas y diseño del mockup
+
+- **Servicios dentro del proyecto** (como en Time Recording). Cada proyecto tiene siempre al menos un servicio activo; al crear un proyecto se crea "General". En la entrada la persona escoge proyecto y servicio; si el proyecto tiene un solo servicio activo, se escoge solo y el servicio es obligatorio. Los servicios no se borran, se desactivan.
+- **El servicio define** la tarifa de venta (vacía = la del proyecto), si es facturable, cómo se entran las horas (`detail` = desde/hasta y reloj, `total` = total de horas del día, `both` = lo decide la preferencia de la persona) y el artículo de Accountisi (`accountisi_item_id`, que usa la factura de venta; si no tiene, el artículo por omisión de la integración).
+- **Preferencia de entrada de la persona** (`users.capture_mode`, antes "modo de captura"): solo se usa cuando el servicio permite ambas formas. La fija la gerencia; la persona no la cambia. Modo efectivo: servicio `detail` → desde/hasta; `total` → total del día; `both` → la preferencia.
+- **Tarifas guardadas en la entrada**: al crearla, cada entrada guarda `bill_rate` (venta) y `pay_rate` (consultor). Cambiar la tarifa o el modo de un servicio solo afecta entradas nuevas. Al aprobar una hoja se completan las que falten (datos viejos). Las facturas del consultor, las de venta, la hoja para el cliente y las exportaciones usan esas tarifas guardadas.
+- **Migración**: cada proyecto existente recibe el servicio "General" en modo `both` y sus entradas se enlazan a él; las tarifas de las entradas existentes se llenan con las que había.
+- **Dos idiomas, español e inglés**, en web, servidor y móvil. Cada persona escoge el suyo (`users.locale`; botón en el encabezado de la web y ajuste en el móvil); si no, vale el de la compañía (`companies.locale`, por omisión inglés, se cambia en Reglas). Los correos y documentos salen en el idioma de quien los recibe (los externos y la hoja para el cliente, en el de la compañía). Los encabezados de la plantilla Consultorio 1500 se quedan en español porque ese programa solo los reconoce así.
+- **Web**: encabezado y contenido a todo el ancho, seis pestañas con pastillas dentro de la página, pantalla "Todas las semanas", aprobaciones en dos paneles, reglas agrupadas, estados en pastillas y el mismo tipo de letra y estilos del mockup (IBM Plex Sans y Mono). El marco de cada pantalla aparece al instante y los datos llegan después.
+- **Móvil**: pantalla Día con proyecto y servicios debajo del día, "Entrar ahora / Salir ahora" con reloj, "Agregar entrada" (desde/hasta) o "Agregar horas" (total) según el servicio, y margen inferior para la barra de navegación del teléfono.

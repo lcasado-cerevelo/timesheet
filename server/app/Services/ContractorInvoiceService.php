@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\Lang;
 use App\Mail\BrandedMail;
 use App\Models\ContractorInvoice;
 use App\Models\Integration;
@@ -11,6 +12,7 @@ use App\Services\Accountisi\AccountisiClient;
 use App\Services\Accountisi\AccountisiException;
 use Dompdf\Dompdf;
 use Dompdf\Options;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -25,28 +27,30 @@ class ContractorInvoiceService
     public function create(User $worker, string $from, string $to): ContractorInvoice
     {
         if ($worker->worker_type !== 'consultant') {
-            throw ValidationException::withMessages(['user' => 'Solo los consultores generan factura; los empleados no.']);
+            throw ValidationException::withMessages(['user' => __('Solo los consultores generan factura; los empleados no.')]);
         }
         $terms = $worker->terms;
         if (! $terms || (float) $terms->rate <= 0) {
-            throw ValidationException::withMessages(['terms' => 'Falta la tarifa del consultor.']);
+            throw ValidationException::withMessages(['terms' => __('Falta la tarifa del consultor.')]);
         }
 
         $company = $worker->company;
-        $sheets = Timesheet::with('entries.project')->where('user_id', $worker->id)->where('status', Timesheet::APPROVED)
+        $sheets = Timesheet::with('entries.project.services', 'entries.service', 'entries.user.terms')->where('user_id', $worker->id)->where('status', Timesheet::APPROVED)
             ->whereNull('contractor_invoice_id')->whereBetween('week_ending', [$from, $to])->orderBy('week_ending')->get();
         if ($sheets->isEmpty()) {
-            throw ValidationException::withMessages(['from' => 'No hay semanas aprobadas sin facturar en ese período.']);
+            throw ValidationException::withMessages(['from' => __('No hay semanas aprobadas sin facturar en ese período.')]);
         }
 
-        $rate = (float) $terms->rate;
-        $lines = $sheets->flatMap->entries->where('billable', true)->groupBy('project_id')->map(function ($rows) use ($rate) {
+        // Cada entrada trae la tarifa que tenía al crearse; un cambio de tarifa posterior no toca horas ya registradas.
+        $lines = $sheets->flatMap->entries->where('billable', true)->groupBy(fn ($e) => $e->project_id.'|'.$e->service_id.'|'.number_format($e->payRate(), 2, '.', ''))->map(function ($rows) {
+            $e = $rows->first();
+            $rate = $e->payRate();
             $hours = round((float) $rows->sum('hours'), 2);
-            return ['description' => $rows->first()->project->code.' · '.$rows->first()->project->name, 'hours' => $hours,
-                'rate' => $rate, 'amount' => round($hours * $rate, 2)];
+            $title = $e->project->code.' · '.$e->project->name.($e->project->services->count() > 1 && $e->service ? ' · '.$e->service->name : '');
+            return ['description' => $title, 'hours' => $hours, 'rate' => $rate, 'amount' => round($hours * $rate, 2)];
         })->values()->all();
         if (! $lines) {
-            throw ValidationException::withMessages(['from' => 'Las horas de ese período no son facturables.']);
+            throw ValidationException::withMessages(['from' => __('Las horas de ese período no son facturables.')]);
         }
 
         $gross = round(array_sum(array_column($lines, 'amount')), 2);
@@ -77,6 +81,12 @@ class ContractorInvoiceService
     public function renderPdf(ContractorInvoice $inv): string
     {
         $inv->loadMissing('user.terms', 'user.company');
+        // La factura es un documento de la compañía: sale en el idioma de la compañía.
+        return Lang::with($inv->user->company->lang(), fn () => $this->renderPdfNow($inv));
+    }
+
+    private function renderPdfNow(ContractorInvoice $inv): string
+    {
         $company = $inv->user->company;
         $brand = $company->brand();
         $logo = null;
@@ -105,11 +115,14 @@ class ContractorInvoiceService
             return;
         }
         foreach ($owners as $o) {
-            Mail::to($o->email, $o->name)->send(new BrandedMail(
-                $company, 'Factura '.$inv->number.' de '.$inv->user->name, 'mail.contractor-invoice',
-                ['inv' => $inv, 'worker' => $inv->user->name],
-                [['path' => Storage::disk('local')->path($inv->pdf_path), 'name' => $inv->number.'.pdf', 'mime' => 'application/pdf']]
-            ));
+            // Cada dueño recibe el correo en su propio idioma.
+            Lang::with($o->lang(), function () use ($o, $company, $inv) {
+                Mail::to($o->email, $o->name)->locale($o->lang())->send(new BrandedMail(
+                    $company, __('Factura :number de :name', ['number' => $inv->number, 'name' => $inv->user->name]), 'mail.contractor-invoice',
+                    ['inv' => $inv, 'worker' => $inv->user->name],
+                    [['path' => Storage::disk('local')->path($inv->pdf_path), 'name' => $inv->number.'.pdf', 'mime' => 'application/pdf']]
+                ));
+            });
         }
         $inv->update(['status' => 'sent']);
     }
@@ -130,7 +143,8 @@ class ContractorInvoiceService
         }
         $cfg = Integration::accountisiConfig($company);
         try {
-            $note = 'Factura '.$inv->number.' de '.$inv->user->name.' ('.$inv->period_from->toDateString().' a '.$inv->period_to->toDateString().')';
+            $note = Lang::with($company->lang(), fn () => __('Factura :number de :name (:from a :to)', ['number' => $inv->number, 'name' => $inv->user->name,
+                'from' => $inv->period_from->toDateString(), 'to' => $inv->period_to->toDateString()]));
             $billId = $client->createBill($vendor, $inv->issued_on->toDateString(), $inv->number, $note);
             foreach ($inv->lines as $l) {
                 $client->addBillLine($billId, [

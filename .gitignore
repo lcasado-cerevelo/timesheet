@@ -15,3 +15,6 @@ Thumbs.db
 .env.prod
 .env.*.local
 backups/
+
+# Configuración local de desarrollo con claves
+docker-compose.override.yml

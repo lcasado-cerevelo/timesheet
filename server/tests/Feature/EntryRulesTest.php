@@ -124,7 +124,7 @@ class EntryRulesTest extends TestCase
     {
         $this->world();
         $this->postJson('/api/login', [])->assertStatus(422);
-        $c2 = \App\Models\Company::create(['name' => 'Otra', 'slug' => 'otra']);
+        $c2 = \App\Models\Company::create(['name' => 'Otra', 'slug' => 'otra', 'locale' => 'es']);
         $u2 = \App\Models\User::create(['company_id' => $c2->id, 'name' => 'Otro', 'email' => 'o@o.test', 'password' => 'secret-password', 'role' => 'owner']);
         $e = TimeEntry::create(['company_id' => $this->company->id, 'user_id' => $this->worker->id, 'project_id' => $this->project->id,
             'timesheet_id' => app(\App\Services\SheetService::class)->forWeek($this->worker, '2026-10-20')->id,

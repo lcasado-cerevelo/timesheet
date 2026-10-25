@@ -189,7 +189,7 @@ class ClientTimesheetTest extends TestCase
         $this->postJson('/api/client-timesheet/preview', $q)->assertForbidden();
         $this->postJson('/api/client-timesheet/email', $q)->assertForbidden();
 
-        $c2 = \App\Models\Company::create(['name' => 'Otra', 'slug' => 'otra']);
+        $c2 = \App\Models\Company::create(['name' => 'Otra', 'slug' => 'otra', 'locale' => 'es']);
         $u2 = User::create(['company_id' => $c2->id, 'name' => 'Otro', 'email' => 'o@o.test', 'password' => 'secret-password', 'role' => 'owner']);
         Sanctum::actingAs($u2);
         $this->postJson('/api/client-timesheet/preview', $q)->assertNotFound();

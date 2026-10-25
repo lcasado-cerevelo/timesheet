@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
 <meta charset="utf-8">
 <style>
@@ -23,46 +23,46 @@ td{padding:5px 6px;border-bottom:1px solid #ddd;vertical-align:top;word-wrap:bre
 <div class="head">
 <table class="meta"><tr>
 <td style="width:55%">@if($logo)<img src="{{ $logo }}">@else<h1>{{ $brand['name'] }}</h1>@endif</td>
-<td class="r"><h1>Hoja de tiempo</h1></td>
+<td class="r"><h1>{{ __('Hoja de tiempo') }}</h1></td>
 </tr></table>
 </div>
 
 <table class="meta">
-<tr><td style="width:14%"><b>Cliente</b></td><td>{{ $d['customer'] }}</td></tr>
-<tr><td><b>Período</b></td><td>{{ $d['from'] }} a {{ $d['to'] }}</td></tr>
-<tr><td><b>Emitida</b></td><td>{{ $d['generated_on'] }} por {{ $d['company'] }}</td></tr>
+<tr><td style="width:14%"><b>{{ __('Cliente') }}</b></td><td>{{ $d['customer'] }}</td></tr>
+<tr><td><b>{{ __('Período') }}</b></td><td>{{ __(':from a :to', ['from' => $d['from'], 'to' => $d['to']]) }}</td></tr>
+<tr><td><b>{{ __('Emitida') }}</b></td><td>{{ __(':date por :company', ['date' => $d['generated_on'], 'company' => $d['company']]) }}</td></tr>
 </table>
 
 @if(empty($d['projects']))
-<p class="muted" style="margin-top:20px">No hay horas para este cliente en el período.</p>
+<p class="muted" style="margin-top:20px">{{ __('No hay horas para este cliente en el período.') }}</p>
 @endif
 
 @foreach($d['projects'] as $p)
 <h2>{{ $p['code'] }} · {{ $p['name'] }}</h2>
 <table>
 <colgroup><col style="width:11%"><col style="width:17%"><col style="width:13%"><col style="width:8%"><col>@if($d['show_amounts'])<col style="width:11%">@endif</colgroup>
-<tr><th>Fecha</th><th>Persona</th><th>Horario</th><th class="r">Horas</th><th>Descripción</th>@if($d['show_amounts'])<th class="r">Importe</th>@endif</tr>
+<tr><th>{{ __('Fecha') }}</th><th>{{ __('Persona') }}</th><th>{{ __('Horario') }}</th><th class="r">{{ __('Horas') }}</th><th>{{ __('Descripción') }}</th>@if($d['show_amounts'])<th class="r">{{ __('Importe') }}</th>@endif</tr>
 @foreach($p['lines'] as $l)
 <tr>
 <td>{{ $l['date'] }}</td>
 <td>{{ $l['worker'] }}</td>
-<td>{{ $l['start'] ? $l['start'].'–'.$l['end'] : 'Día completo' }}</td>
+<td>{{ $l['start'] ? $l['start'].'–'.$l['end'] : __('Día completo') }}</td>
 <td class="r">{{ number_format($l['hours'], 2) }}</td>
-<td>{!! nl2br(e($l['description'])) !!}@unless($l['approved']) <span class="warn">(sin aprobar)</span>@endunless</td>
+<td>{!! nl2br(e($l['description'])) !!}@unless($l['approved']) <span class="warn">({{ __('sin aprobar') }})</span>@endunless</td>
 @if($d['show_amounts'])<td class="r">${{ number_format($l['amount'], 2) }}</td>@endif
 </tr>
 @endforeach
-<tr class="sub"><td colspan="3">Subtotal {{ $p['code'] }}@if(count($p['by_worker']) > 1) — @foreach($p['by_worker'] as $w){{ $w['worker'] }}: {{ number_format($w['hours'], 2) }} h{{ $loop->last ? '' : ' · ' }}@endforeach @endif</td>
+<tr class="sub"><td colspan="3">{{ __('Subtotal :code', ['code' => $p['code']]) }}@if(count($p['by_worker']) > 1) — @foreach($p['by_worker'] as $w){{ $w['worker'] }}: {{ number_format($w['hours'], 2) }} h{{ $loop->last ? '' : ' · ' }}@endforeach @endif</td>
 <td class="r">{{ number_format($p['hours'], 2) }}</td><td></td>@if($d['show_amounts'])<td class="r">${{ number_format($p['amount'], 2) }}</td>@endif</tr>
 </table>
 @endforeach
 
 @if(! empty($d['projects']))
-<table style="margin-top:12px"><tr class="tot"><td style="width:50%">TOTAL DE HORAS</td><td class="r">{{ number_format($d['total_hours'], 2) }} h</td>@if($d['show_amounts'])<td class="r">${{ number_format($d['total_amount'], 2) }}</td>@endif</tr></table>
+<table style="margin-top:12px"><tr class="tot"><td style="width:50%">{{ __('TOTAL DE HORAS') }}</td><td class="r">{{ number_format($d['total_hours'], 2) }} h</td>@if($d['show_amounts'])<td class="r">${{ number_format($d['total_amount'], 2) }}</td>@endif</tr></table>
 @endif
 
 <p class="foot">
-@if($d['has_pending'])<span class="warn">Incluye horas aún sin aprobar, marcadas como tales.</span><br>@else Todas las horas listadas están aprobadas.@if(count($d['approved_by'])) Aprobadas por: {{ implode(', ', $d['approved_by']) }}.@endif<br>@endif
+@if($d['has_pending'])<span class="warn">{{ __('Incluye horas aún sin aprobar, marcadas como tales.') }}</span><br>@else {{ __('Todas las horas listadas están aprobadas.') }}@if(count($d['approved_by'])) {{ __('Aprobadas por: :names.', ['names' => implode(', ', $d['approved_by'])]) }}@endif<br>@endif
 {{ $brand['email_footer'] }}
 </p>
 </body>

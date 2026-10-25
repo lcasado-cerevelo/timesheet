@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\ExportController;
 use App\Http\Controllers\Api\IntegrationController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\SheetController;
 use App\Http\Controllers\Api\SimpleCrudController;
 use App\Http\Controllers\Api\TableExportController;
@@ -48,6 +49,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::match(['get', 'post'], '/tables/{dataset}/export', [TableExportController::class, 'export']);
     Route::get('/brand', [BrandController::class, 'show']);
 
+    Route::put('/me/locale', [AuthController::class, 'setLocale']);
     Route::get('/export-templates', [ExportController::class, 'templates']);
     Route::get('/export/patients', [ExportController::class, 'patients']);
     Route::match(['get', 'post'], '/export', [ExportController::class, 'export']);
@@ -98,6 +100,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/brand', [BrandController::class, 'update']);
         Route::get('/brand/history', [BrandController::class, 'history']);
         Route::post('/brand/history/{history}/revert', [BrandController::class, 'revert']);
+
+        Route::post('/projects/{project}/services', [ServiceController::class, 'store']);
+        Route::put('/services/{service}', [ServiceController::class, 'update']);
 
         Route::get('/sheets-pending', [SheetController::class, 'pending']);
         Route::post('/sheets/{sheet}/approve', [SheetController::class, 'approve']);

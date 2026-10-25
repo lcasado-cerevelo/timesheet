@@ -5,14 +5,17 @@ import * as Sharing from 'expo-sharing';
 import { api, apiUrl, authHeaders } from '../../src/lib/api';
 import { Group, summarize } from '../../src/lib/report';
 import { addDays, fmtHours, today, weekStarting } from '../../src/lib/time';
+import { useT } from '../../src/i18n';
 import { useEntries } from '../../src/store/entries';
 import { useSettings } from '../../src/store/settings';
-import { Btn, C, Card, Msg, useTheme } from '../../src/ui';
+import { Btn, C, Card, Msg, useBottomPad, useTheme } from '../../src/ui';
 
 interface Tpl { id: number; name: string; format: 'xlsx' | 'csv' }
 
 export default function Reports() {
-  const t = useTheme();
+  const th = useTheme();
+  const { t } = useT();
+  const bottom = useBottomPad(12);
   const decimal = useSettings((s) => s.decimal);
   const { entries, projects } = useEntries();
   const [range, setRange] = useState<'week' | 'month' | '30'>('month');
@@ -40,7 +43,7 @@ export default function Reports() {
       const name = `${chosen.name.replace(/[^a-z0-9]+/gi, '-')}-${from}_${to}.${chosen.format}`;
       if (Platform.OS === 'web') {
         const res = await fetch(url, { headers: { ...authHeaders(), Accept: 'application/json' } });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? 'No se pudo generar el archivo.');
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? t('reports.fail'));
         const a = document.createElement('a');
         a.href = URL.createObjectURL(await res.blob());
         a.download = name;
@@ -48,10 +51,10 @@ export default function Reports() {
       } else {
         const file = (FileSystem.cacheDirectory ?? '') + name;
         const res = await FileSystem.downloadAsync(url, file, { headers: { ...authHeaders(), Accept: 'application/json' } });
-        if (res.status !== 200) throw new Error('El servidor no pudo generar el archivo (¿hay conexión? ¿hay horas aprobadas en el período?).');
+        if (res.status !== 200) throw new Error(t('reports.fail_native'));
         if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(res.uri, { dialogTitle: name });
       }
-      setMsg({ kind: 'ok', text: 'Archivo listo: ' + name });
+      setMsg({ kind: 'ok', text: t('reports.ready', { name }) });
     } catch (e: any) {
       setMsg({ kind: 'err', text: e.message });
     } finally {
@@ -60,39 +63,39 @@ export default function Reports() {
   };
 
   const chip = (label: string, on: boolean, f: () => void, id: string) => (
-    <Pressable key={label} testID={id} onPress={f} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99, backgroundColor: on ? t.primary : '#fff', marginRight: 6, marginBottom: 6 }}>
+    <Pressable key={label} testID={id} onPress={f} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99, backgroundColor: on ? th.primary : '#fff', marginRight: 6, marginBottom: 6 }}>
       <Text style={{ color: on ? '#fff' : C.text, fontWeight: '700' }}>{label}</Text>
     </Pressable>
   );
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 12 }}>
-      <View style={{ alignItems: 'center', paddingVertical: 8, marginBottom: 8, borderBottomWidth: 3, borderColor: t.primary }}>
-        {t.brand.logo_url ? <Image source={{ uri: t.brand.logo_url }} style={{ width: 180, height: 44 }} resizeMode="contain" /> : <Text style={{ fontSize: 20, fontWeight: '800', color: t.primary }}>{t.brand.name}</Text>}
+    <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 12, paddingBottom: bottom }}>
+      <View style={{ alignItems: 'center', paddingVertical: 8, marginBottom: 8, borderBottomWidth: 3, borderColor: th.primary }}>
+        {th.brand.logo_url ? <Image source={{ uri: th.brand.logo_url }} style={{ width: 180, height: 44 }} resizeMode="contain" /> : <Text style={{ fontSize: 20, fontWeight: '800', color: th.primary }}>{th.brand.name}</Text>}
       </View>
       <Card>
-        <Text style={{ fontWeight: '700', marginBottom: 8 }}>Período</Text>
+        <Text style={{ fontWeight: '700', marginBottom: 8 }}>{t('reports.period')}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-          {chip('Esta semana', range === 'week', () => setRange('week'), 'r-week')}
-          {chip('Este mes', range === 'month', () => setRange('month'), 'r-month')}
-          {chip('30 días', range === '30', () => setRange('30'), 'r-30')}
+          {chip(t('reports.this_week'), range === 'week', () => setRange('week'), 'r-week')}
+          {chip(t('reports.this_month'), range === 'month', () => setRange('month'), 'r-month')}
+          {chip(t('reports.30'), range === '30', () => setRange('30'), 'r-30')}
         </View>
-        <Text style={{ fontWeight: '700', marginVertical: 8 }}>Agrupar por</Text>
+        <Text style={{ fontWeight: '700', marginVertical: 8 }}>{t('reports.group_by')}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-          {chip('Proyecto', group === 'project', () => setGroup('project'), 'g-project')}
-          {chip('Día', group === 'day', () => setGroup('day'), 'g-day')}
-          {chip('Semana', group === 'week', () => setGroup('week'), 'g-week')}
+          {chip(t('reports.project'), group === 'project', () => setGroup('project'), 'g-project')}
+          {chip(t('reports.day'), group === 'day', () => setGroup('day'), 'g-day')}
+          {chip(t('reports.week'), group === 'week', () => setGroup('week'), 'g-week')}
         </View>
-        <Text style={{ color: C.muted }}>{from} a {to}</Text>
+        <Text style={{ color: C.muted }}>{t('reports.range', { from, to })}</Text>
       </Card>
 
       <Card>
         <View style={{ flexDirection: 'row', paddingBottom: 6 }}>
           <Text style={{ flex: 1, fontWeight: '700' }} />
-          <Text style={{ width: 70, textAlign: 'right', fontWeight: '700' }}>Horas</Text>
-          <Text style={{ width: 90, textAlign: 'right', fontWeight: '700' }}>Facturables</Text>
+          <Text style={{ width: 70, textAlign: 'right', fontWeight: '700' }}>{t('reports.hours')}</Text>
+          <Text style={{ width: 90, textAlign: 'right', fontWeight: '700' }}>{t('reports.billable')}</Text>
         </View>
-        {r.rows.length === 0 ? <Text style={{ color: C.muted }}>Sin horas en este período.</Text> : null}
+        {r.rows.length === 0 ? <Text style={{ color: C.muted }}>{t('reports.empty')}</Text> : null}
         {r.rows.map((x) => (
           <View key={x.label} style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderColor: '#eee' }}>
             <Text style={{ flex: 1 }}>{x.label}</Text>
@@ -101,20 +104,20 @@ export default function Reports() {
           </View>
         ))}
         <View style={{ flexDirection: 'row', paddingTop: 8, borderTopWidth: 2, borderColor: '#ddd' }}>
-          <Text style={{ flex: 1, fontWeight: '800' }}>Total</Text>
+          <Text style={{ flex: 1, fontWeight: '800' }}>{t('reports.total')}</Text>
           <Text testID="report-total" style={{ width: 70, textAlign: 'right', fontWeight: '800' }}>{fmtHours(r.total, decimal)}</Text>
           <Text style={{ width: 90, textAlign: 'right', fontWeight: '800' }}>{fmtHours(r.billable, decimal)}</Text>
         </View>
       </Card>
 
       <Card>
-        <Text style={{ fontWeight: '700', marginBottom: 6 }}>Exportar</Text>
-        <Text style={{ color: C.muted, marginBottom: 8 }}>Genera el archivo en el servidor con las horas aprobadas del período. Necesita conexión.</Text>
+        <Text style={{ fontWeight: '700', marginBottom: 6 }}>{t('reports.export')}</Text>
+        <Text style={{ color: C.muted, marginBottom: 8 }}>{t('reports.export_hint')}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
           {tpls.map((x) => chip(`${x.name} (${x.format})`, tpl === x.id, () => setTpl(x.id), `tpl-${x.id}`))}
         </View>
         {msg ? <Msg kind={msg.kind} text={msg.text} /> : null}
-        <Btn testID="export" kind="pri" title={busy ? 'Generando…' : 'Exportar y compartir'} disabled={busy || !tpl} onPress={exportFile} />
+        <Btn testID="export" kind="pri" title={busy ? t('reports.generating') : t('reports.export_share')} disabled={busy || !tpl} onPress={exportFile} />
       </Card>
     </ScrollView>
   );

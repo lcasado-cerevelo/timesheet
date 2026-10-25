@@ -41,10 +41,10 @@ class BrandController extends Controller
         foreach (['color_primary', 'color_accent'] as $f) {
             if (isset($data[$f])) {
                 if (! Color::isHex($data[$f])) {
-                    throw ValidationException::withMessages([$f => 'El color debe ser hexadecimal, por ejemplo #1f4e79.']);
+                    throw ValidationException::withMessages([$f => __('El color debe ser hexadecimal, por ejemplo #1f4e79.')]);
                 }
                 if (Color::contrastWithWhite($data[$f]) < 4.5) {
-                    throw ValidationException::withMessages([$f => 'El texto blanco no se lee bien sobre ese color. Usa uno más oscuro.']);
+                    throw ValidationException::withMessages([$f => __('El texto blanco no se lee bien sobre ese color. Usa uno más oscuro.')]);
                 }
             }
         }

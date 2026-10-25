@@ -1,0 +1,58 @@
+<?php
+
+/** Mensajes de validación de Laravel en español. Los de inglés vienen con el framework. */
+return [
+    'accepted' => 'Debes aceptar :attribute.',
+    'array' => ':Attribute debe ser una lista.',
+    'between' => [
+        'array' => ':Attribute debe tener entre :min y :max elementos.',
+        'file' => ':Attribute debe pesar entre :min y :max kilobytes.',
+        'numeric' => ':Attribute debe estar entre :min y :max.',
+        'string' => ':Attribute debe tener entre :min y :max caracteres.',
+    ],
+    'boolean' => ':Attribute debe ser verdadero o falso.',
+    'confirmed' => 'La confirmación de :attribute no coincide.',
+    'date' => ':Attribute no es una fecha válida.',
+    'date_format' => ':Attribute no tiene el formato :format.',
+    'email' => ':Attribute debe ser un correo válido.',
+    'exists' => ':Attribute seleccionado no es válido.',
+    'file' => ':Attribute debe ser un archivo.',
+    'image' => ':Attribute debe ser una imagen.',
+    'in' => ':Attribute seleccionado no es válido.',
+    'integer' => ':Attribute debe ser un número entero.',
+    'max' => [
+        'array' => ':Attribute no debe tener más de :max elementos.',
+        'file' => ':Attribute no debe pesar más de :max kilobytes.',
+        'numeric' => ':Attribute no debe ser mayor que :max.',
+        'string' => ':Attribute no debe tener más de :max caracteres.',
+    ],
+    'mimes' => ':Attribute debe ser un archivo de tipo: :values.',
+    'min' => [
+        'array' => ':Attribute debe tener al menos :min elementos.',
+        'file' => ':Attribute debe pesar al menos :min kilobytes.',
+        'numeric' => ':Attribute debe ser al menos :min.',
+        'string' => ':Attribute debe tener al menos :min caracteres.',
+    ],
+    'nullable' => ':Attribute puede quedar vacío.',
+    'numeric' => ':Attribute debe ser un número.',
+    'required' => 'Falta :attribute.',
+    'string' => ':Attribute debe ser texto.',
+    'timezone' => ':Attribute debe ser una zona horaria válida.',
+    'unique' => 'Ya existe :attribute con ese valor.',
+    'uuid' => ':Attribute debe ser un UUID válido.',
+    'after_or_equal' => ':Attribute debe ser una fecha igual o posterior a :date.',
+    'before_or_equal' => ':Attribute debe ser una fecha igual o anterior a :date.',
+    'regex' => 'El formato de :attribute no es válido.',
+    'size' => [
+        'array' => ':Attribute debe tener :size elementos.',
+        'file' => ':Attribute debe pesar :size kilobytes.',
+        'numeric' => ':Attribute debe ser :size.',
+        'string' => ':Attribute debe tener :size caracteres.',
+    ],
+    'attributes' => [
+        'email' => 'el correo', 'password' => 'la contraseña', 'name' => 'el nombre', 'project_id' => 'el proyecto',
+        'service_id' => 'el servicio', 'work_date' => 'la fecha', 'start_time' => 'la hora desde', 'end_time' => 'la hora hasta',
+        'hours' => 'las horas', 'from' => 'la fecha desde', 'to' => 'la fecha hasta', 'code' => 'el código',
+        'comment' => 'el comentario', 'locale' => 'el idioma',
+    ],
+];

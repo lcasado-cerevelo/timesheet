@@ -54,6 +54,12 @@ class User extends Authenticatable
         return $this->hasMany(Timesheet::class);
     }
 
+    /** Idioma de esta persona: el suyo, si no el de su compañía. Es el de los correos que recibe. */
+    public function lang(): string
+    {
+        return in_array($this->locale, ['es', 'en'], true) ? $this->locale : $this->company->lang();
+    }
+
     public function isOwner(): bool
     {
         return $this->role === 'owner';

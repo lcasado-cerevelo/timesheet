@@ -33,7 +33,7 @@ class LoginProtectionTest extends TestCase
             $this->postJson('/api/login', ['email' => 'ana@cerevelo.test', 'password' => 'mala'])->assertStatus(422);
         }
         // Ya bloqueada: ni la clave correcta pasa mientras dure el bloqueo.
-        $r = $this->postJson('/api/login', self::OK)->assertStatus(429)->assertJsonPath('code', 'locked');
+        $r = $this->postJson('/api/login', self::OK, ['X-Locale' => 'es'])->assertStatus(429)->assertJsonPath('code', 'locked');
         $this->assertStringContainsString('minuto', $r->json('message'));
     }
 

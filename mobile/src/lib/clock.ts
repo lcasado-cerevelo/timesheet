@@ -4,6 +4,8 @@ import { fmtDate, hoursBetween, nowHM, pad, roundTo } from './time';
 export interface ClockState {
   entry_uuid: string;
   project_id: number;
+  /** Servicio del tramo (las relojes viejos no lo tienen). */
+  service_id?: number | null;
   /** ISO con zona; de aquí se calcula todo. */
   started_at: string;
   note: string;

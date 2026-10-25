@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Support\Lang;
 use App\Mail\BrandedMail;
 use App\Models\ApprovalToken;
 use App\Models\Approver;
 use App\Models\Timesheet;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
@@ -80,47 +82,58 @@ class ApprovalService
         }
         $plain = $this->issueSheetToken($sheet);
         $company = $sheet->company;
-        $subject = match ($kind) {
-            'changed' => 'Esta hoja cambió: '.$sheet->user->name.', semana '.$sheet->week_ending->toDateString(),
-            'resubmitted' => 'Hoja corregida para aprobar: '.$sheet->user->name.', semana '.$sheet->week_ending->toDateString(),
-            default => 'Hoja para aprobar: '.$sheet->user->name.', semana '.$sheet->week_ending->toDateString(),
-        };
-        Mail::to($sheet->approver->email, $sheet->approver->name)->send(new BrandedMail(
-            $company, $subject, 'mail.approval-request',
-            [
-                'kind' => $kind,
-                'summary' => $this->sheetSummary($sheet),
-                'changes' => $kind === 'changed' ? array_filter(explode("\n", (string) $sheet->change_summary)) : [],
-                'url' => url('/a/'.$plain),
-                'days' => (int) $company->rules()->get('token_days'),
-            ]
-        ));
+        // El aprobador es una persona externa sin cuenta: recibe el correo en el idioma de la compañía.
+        Lang::with($company->lang(), function () use ($sheet, $kind, $plain, $company) {
+            $p = ['name' => $sheet->user->name, 'week' => $sheet->week_ending->toDateString()];
+            $subject = match ($kind) {
+                'changed' => __('Esta hoja cambió: :name, semana :week', $p),
+                'resubmitted' => __('Hoja corregida para aprobar: :name, semana :week', $p),
+                default => __('Hoja para aprobar: :name, semana :week', $p),
+            };
+            Mail::to($sheet->approver->email, $sheet->approver->name)->locale($company->lang())->send(new BrandedMail(
+                $company, $subject, 'mail.approval-request',
+                [
+                    'kind' => $kind,
+                    'summary' => $this->sheetSummary($sheet),
+                    'changes' => $kind === 'changed' ? array_filter(explode("\n", (string) $sheet->change_summary)) : [],
+                    'url' => url('/a/'.$plain),
+                    'days' => (int) $company->rules()->get('token_days'),
+                ]
+            ));
+        });
     }
 
     /** Recordatorio con una sola pantalla de todo lo pendiente del aprobador. */
     public function sendDigest(Approver $approver, int $count): void
     {
         $plain = $this->issueBatchToken($approver);
-        Mail::to($approver->email, $approver->name)->send(new BrandedMail(
-            $approver->company,
-            'Tienes '.$count.' '.($count === 1 ? 'hoja pendiente' : 'hojas pendientes').' de aprobar',
-            'mail.pending-digest',
-            ['count' => $count, 'url' => url('/b/'.$plain), 'name' => $approver->name]
-        ));
+        Lang::with($approver->company->lang(), function () use ($approver, $count, $plain) {
+            Mail::to($approver->email, $approver->name)->locale($approver->company->lang())->send(new BrandedMail(
+                $approver->company,
+                $count === 1 ? __('Tienes 1 hoja pendiente de aprobar') : __('Tienes :count hojas pendientes de aprobar', ['count' => $count]),
+                'mail.pending-digest',
+                ['count' => $count, 'url' => url('/b/'.$plain), 'name' => $approver->name]
+            ));
+        });
     }
 
     public function notifyWorkerDecision(Timesheet $sheet, string $decision): void
     {
         $sheet->loadMissing('user', 'company');
-        Mail::to($sheet->user->email, $sheet->user->name)->send(new BrandedMail(
-            $sheet->company,
-            $decision === 'approved'
-                ? 'Hoja aprobada: semana '.$sheet->week_ending->toDateString()
-                : 'Hoja devuelta para corregir: semana '.$sheet->week_ending->toDateString(),
-            'mail.sheet-decision',
-            ['decision' => $decision, 'week' => $sheet->week_ending->toDateString(), 'comment' => $sheet->return_comment,
-             'name' => $sheet->user->name]
-        ));
+        // La persona que trabaja recibe el correo en su propio idioma.
+        $lang = $sheet->user->lang();
+        Lang::with($lang, function () use ($sheet, $decision, $lang) {
+            $week = $sheet->week_ending->toDateString();
+            Mail::to($sheet->user->email, $sheet->user->name)->locale($lang)->send(new BrandedMail(
+                $sheet->company,
+                $decision === 'approved'
+                    ? __('Hoja aprobada: semana :week', ['week' => $week])
+                    : __('Hoja devuelta para corregir: semana :week', ['week' => $week]),
+                'mail.sheet-decision',
+                ['decision' => $decision, 'week' => $week, 'comment' => $sheet->return_comment,
+                 'name' => $sheet->user->name]
+            ));
+        });
     }
 
     public function sendCode(ApprovalToken $token): void
@@ -133,10 +146,12 @@ class ApprovalService
             'code_attempts' => 0,
             'code_verified_at' => null,
         ])->save();
-        Mail::to($approver->email, $approver->name)->send(new BrandedMail(
-            $approver->company, 'Tu código de verificación: '.$code, 'mail.approval-code',
-            ['code' => $code, 'minutes' => (int) $approver->company->rules()->get('code_minutes')]
-        ));
+        Lang::with($approver->company->lang(), function () use ($approver, $code) {
+            Mail::to($approver->email, $approver->name)->locale($approver->company->lang())->send(new BrandedMail(
+                $approver->company, __('Tu código de verificación: :code', ['code' => $code]), 'mail.approval-code',
+                ['code' => $code, 'minutes' => (int) $approver->company->rules()->get('code_minutes')]
+            ));
+        });
     }
 
     public function verifyCode(ApprovalToken $token, string $code): bool

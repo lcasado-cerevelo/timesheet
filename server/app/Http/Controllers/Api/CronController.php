@@ -22,7 +22,7 @@ class CronController extends Controller
         $key = (string) config('tiempo.cron_key');
         // Sin clave configurada (o demasiado corta) el acceso no existe.
         abort_if(strlen($key) < 32, 404);
-        abort_unless(hash_equals($key, (string) $request->header('X-Cron-Key')), 403, 'Clave no válida.');
+        abort_unless(hash_equals($key, (string) $request->header('X-Cron-Key')), 403, __('Clave no válida.'));
 
         $ran = [];
         Artisan::call('approvals:notify-changes');

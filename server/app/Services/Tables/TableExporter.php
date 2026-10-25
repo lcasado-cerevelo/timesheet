@@ -50,7 +50,7 @@ class TableExporter
             'hours' => number_format((float) $v, 2),
             'money' => '$'.number_format((float) $v, 2),
             'int' => (string) (int) $v,
-            'bool' => $v ? 'Sí' : 'No',
+            'bool' => $v ? __('Sí') : __('No'),
             default => (string) $v,
         };
     }
@@ -72,7 +72,7 @@ class TableExporter
                 $v = $r[$i] ?? null;
                 $line[] = $this->csvSafe(match ($c['t']) {
                     'hours', 'money' => $v === null || $v === '' ? '' : number_format((float) $v, 2, '.', ''),
-                    'bool' => $v === null || $v === '' ? '' : ($v ? 'Sí' : 'No'),
+                    'bool' => $v === null || $v === '' ? '' : ($v ? __('Sí') : __('No')),
                     default => (string) ($v ?? ''),
                 });
             }
@@ -97,7 +97,7 @@ class TableExporter
         $primary = ltrim($company->color_primary ?: '#1f4e79', '#');
         $book = new Spreadsheet();
         $s = $book->getActiveSheet();
-        $s->setTitle(mb_substr(preg_replace('/[\\\\\/\?\*\[\]:]/', ' ', $t['title']), 0, 31) ?: 'Tabla');
+        $s->setTitle(mb_substr(preg_replace('/[\\\\\/\?\*\[\]:]/', ' ', $t['title']), 0, 31) ?: __('Tabla'));
         $ncols = count($t['columns']);
         $lastCol = Coordinate::stringFromColumnIndex(max($ncols, 1));
 
@@ -166,7 +166,7 @@ class TableExporter
                         $s->setCellValue($coord, (int) $v);
                         break;
                     case 'bool':
-                        $s->setCellValue($coord, $v ? 'Sí' : 'No');
+                        $s->setCellValue($coord, $v ? __('Sí') : __('No'));
                         break;
                     default:
                         // Texto explícito: una celda que empiece con "=" no se evalúa como fórmula.

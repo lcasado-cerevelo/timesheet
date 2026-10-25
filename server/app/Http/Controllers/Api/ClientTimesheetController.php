@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\Lang;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Services\ClientTimesheetService;
@@ -27,13 +28,15 @@ class ClientTimesheetController extends Controller
         [$customer, $v] = $this->input($request);
         $company = $request->user()->company;
         $data = $this->service->build($company, $customer, $v['from'], $v['to'], $v);
-        $base = 'hoja-de-tiempo-'.\Illuminate\Support\Str::slug($customer->name).'-'.$v['from'].'_'.$v['to'];
+        $lang = $company->lang();
+        $base = \Illuminate\Support\Str::slug(Lang::with($lang, fn () => __('Hoja de tiempo'))).'-'.\Illuminate\Support\Str::slug($customer->name).'-'.$v['from'].'_'.$v['to'];
         if (($v['format'] ?? 'pdf') === 'csv') {
-            $f = $this->tables->render($company, $this->service->asTable($data), 'csv');
+            // CSV y Excel son para entregar al cliente: salen en el idioma de la compañía.
+            $f = Lang::with($lang, fn () => $this->tables->render($company, $this->service->asTable($data), 'csv'));
             return response($f['body'], 200, ['Content-Type' => $f['mime'], 'Content-Disposition' => 'attachment; filename="'.$base.'.csv"']);
         }
         if (($v['format'] ?? 'pdf') === 'xlsx') {
-            $path = $this->service->xlsx($data);
+            $path = Lang::with($lang, fn () => $this->service->xlsx($data));
             return response()->download($path, $base.'.xlsx', ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])->deleteFileAfterSend(true);
         }
         return response($this->service->pdf($company, $data), 200, [
@@ -48,12 +51,12 @@ class ClientTimesheetController extends Controller
         $request->validate(['email_to' => 'nullable|email|max:190', 'message' => 'nullable|string|max:1000']);
         $to = $request->input('email_to') ?: $customer->email;
         if (! $to) {
-            return response()->json(['message' => 'Escribe el correo al que se envía; este cliente no tiene uno guardado.', 'errors' => ['email_to' => ['Falta el correo.']]], 422);
+            return response()->json(['message' => __('Escribe el correo al que se envía; este cliente no tiene uno guardado.'), 'errors' => ['email_to' => [__('Falta el correo.')]]], 422);
         }
         $company = $request->user()->company;
         $data = $this->service->build($company, $customer, $v['from'], $v['to'], $v);
         if (! $data['entry_count']) {
-            return response()->json(['message' => 'No hay horas para enviar en ese período.', 'errors' => ['from' => ['No hay horas.']]], 422);
+            return response()->json(['message' => __('No hay horas para enviar en ese período.'), 'errors' => ['from' => [__('No hay horas.')]]], 422);
         }
         $this->service->email($company, $data, $to, $request->input('message'), $this->service->pdf($company, $data));
         return response()->json(['ok' => true, 'sent_to' => $to, 'total_hours' => $data['total_hours']]);

@@ -2,26 +2,30 @@ import React, { useState } from 'react';
 import { ScrollView, Switch, Text, View } from 'react-native';
 import { ensureNotificationPermission, setWeeklyReminder } from '../../src/lib/notify';
 import { startWatching, stopWatching } from '../../src/lib/geofence';
+import { useT } from '../../src/i18n';
 import { useAuth } from '../../src/store/auth';
 import { useEntries } from '../../src/store/entries';
 import { useSettings } from '../../src/store/settings';
-import { Btn, C, Card, Msg, useTheme } from '../../src/ui';
+import { Btn, C, Card, Chip, Msg, useBottomPad, useTheme } from '../../src/ui';
 
 function Row(props: { label: string; hint?: string; value: boolean; onChange: (v: boolean) => void; testID?: string }) {
-  const t = useTheme();
+  const th = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}>
       <View style={{ flex: 1, paddingRight: 10 }}>
         <Text style={{ fontWeight: '600' }}>{props.label}</Text>
         {props.hint ? <Text style={{ color: C.muted, fontSize: 12 }}>{props.hint}</Text> : null}
       </View>
-      <Switch testID={props.testID} value={props.value} onValueChange={props.onChange} trackColor={{ true: t.accent }} />
+      <Switch testID={props.testID} value={props.value} onValueChange={props.onChange} trackColor={{ true: th.accent }} />
     </View>
   );
 }
 
 export default function Settings() {
   const me = useAuth((s) => s.me)!;
+  const { t, locale } = useT();
+  const bottom = useBottomPad(12);
+  const setLanguage = useAuth((s) => s.setLanguage);
   const baseUrl = useAuth((s) => s.baseUrl);
   const logout = useAuth((s) => s.logout);
   const { decimal, arriveAlerts, weeklyReminder, set } = useSettings();
@@ -37,48 +41,56 @@ export default function Settings() {
       await stopWatching();
       return set({ arriveAlerts: false });
     }
-    if (!(await ensureNotificationPermission())) return setNote({ kind: 'warn', text: 'Permite las notificaciones para recibir el aviso.' });
+    if (!(await ensureNotificationPermission())) return setNote({ kind: 'warn', text: t('settings.allow_notifications') });
     const r = await startWatching(projects);
-    if (!r.ok) return setNote({ kind: 'warn', text: r.message ?? 'No se pudo activar.' });
+    if (!r.ok) return setNote({ kind: 'warn', text: r.message ?? t('settings.arrive_fail') });
     set({ arriveAlerts: true });
-    setNote({ kind: 'ok', text: `Vigilando ${r.count} lugar(es) de trabajo.` });
+    setNote({ kind: 'ok', text: t('settings.watching', { n: r.count }) });
   };
 
   const toggleReminder = async (on: boolean) => {
-    if (on && !(await ensureNotificationPermission())) return setNote({ kind: 'warn', text: 'Permite las notificaciones para recibir el recordatorio.' });
+    if (on && !(await ensureNotificationPermission())) return setNote({ kind: 'warn', text: t('settings.allow_notifications_reminder') });
     await setWeeklyReminder(on);
     set({ weeklyReminder: on });
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 12 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 12, paddingBottom: bottom }}>
       <Card>
         <Text style={{ fontWeight: '800', fontSize: 16 }}>{me.name}</Text>
         <Text style={{ color: C.muted }}>{me.email} · {me.company.name}</Text>
-        <Text style={{ marginTop: 6 }}>{me.worker_type === 'employee' ? `Empleado (${Number(me.weekly_hours ?? 40)} h por semana)` : 'Consultor'} · {me.capture_mode === 'full_day' ? 'Registras el día completo' : 'Registras desde / hasta'}</Text>
-        <Text style={{ color: C.muted, fontSize: 12, marginTop: 4 }}>El modo de captura lo fija el dueño de la compañía.</Text>
+        <Text style={{ marginTop: 6 }}>{me.worker_type === 'employee' ? t('settings.employee', { n: Number(me.weekly_hours ?? 40) }) : t('settings.consultant')}</Text>
+        <Text style={{ color: C.muted, fontSize: 12, marginTop: 4 }}>
+          {t('settings.pref', { mode: me.capture_mode === 'full_day' ? t('settings.pref_total') : t('settings.pref_detail') })} {t('settings.pref_note')}
+        </Text>
+      </Card>
+
+      <Card>
+        <Text style={{ fontWeight: '700', marginBottom: 8 }}>{t('settings.language')}</Text>
+        <View style={{ flexDirection: 'row' }}>
+          <Chip testID="lang-es" label="Español" on={locale === 'es'} onPress={() => void setLanguage('es')} />
+          <Chip testID="lang-en" label="English" on={locale === 'en'} onPress={() => void setLanguage('en')} />
+        </View>
       </Card>
 
       <Card>
         {note ? <Msg kind={note.kind} text={note.text} /> : null}
-        <Row testID="decimal" label="Horas en decimal" hint="8.50 en vez de 08:30" value={decimal} onChange={(v) => set({ decimal: v })} />
-        {me.capture_mode === 'from_to' && (
-          <Row testID="arrive" label="Avisarme al llegar a un lugar de trabajo" hint={withPlace ? `${withPlace} proyecto(s) con lugar definido. Pide ubicación “Siempre”.` : 'Ningún proyecto tiene lugar definido todavía.'} value={arriveAlerts} onChange={toggleArrive} />
-        )}
-        <Row testID="weekly" label="Recordatorio semanal" hint="Viernes 4:00 p. m.: revisar y enviar la hoja" value={weeklyReminder} onChange={toggleReminder} />
+        <Row testID="decimal" label={t('settings.decimal')} hint={t('settings.decimal_hint')} value={decimal} onChange={(v) => set({ decimal: v })} />
+        <Row testID="arrive" label={t('settings.arrive')} hint={withPlace ? t('settings.arrive_hint', { n: withPlace }) : t('settings.arrive_none')} value={arriveAlerts} onChange={toggleArrive} />
+        <Row testID="weekly" label={t('settings.weekly')} hint={t('settings.weekly_hint')} value={weeklyReminder} onChange={toggleReminder} />
       </Card>
 
       <Card>
-        <Text style={{ fontWeight: '700', marginBottom: 4 }}>Sincronización</Text>
-        <Text testID="pending">{pending === 0 ? 'Todo sincronizado.' : `${pending} cambio(s) por enviar.`}{rejected ? ` ${rejected} rechazado(s).` : ''}</Text>
+        <Text style={{ fontWeight: '700', marginBottom: 4 }}>{t('settings.sync')}</Text>
+        <Text testID="pending">{pending === 0 ? t('settings.all_synced') : t('settings.pending', { n: pending })}{rejected ? ' ' + t('settings.rejected', { n: rejected }) : ''}</Text>
         <Text style={{ color: C.muted, fontSize: 12, marginVertical: 4 }}>
-          {lastSync ? `Última vez: ${new Date(lastSync).toLocaleString()}` : 'Aún no se ha sincronizado.'} · {baseUrl}
+          {lastSync ? t('settings.last_sync', { when: new Date(lastSync).toLocaleString(locale) }) : t('settings.never_synced')} · {baseUrl}
         </Text>
         {lastError && !syncing ? <Msg kind="warn" text={lastError} /> : null}
-        <Btn testID="sync" kind="ghost" title={syncing ? 'Sincronizando…' : 'Sincronizar ahora'} disabled={syncing} onPress={() => void sync()} />
+        <Btn testID="sync" kind="ghost" title={syncing ? t('settings.syncing') : t('settings.sync_now')} disabled={syncing} onPress={() => void sync()} />
       </Card>
 
-      <Btn testID="logout" kind="danger" title="Salir" onPress={() => void logout()} />
+      <Btn testID="logout" kind="danger" title={t('settings.logout')} onPress={() => void logout()} />
     </ScrollView>
   );
 }

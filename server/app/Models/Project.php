@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Project extends Model
 {
@@ -34,6 +35,22 @@ class Project extends Model
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class);
+    }
+
+    public function services(): HasMany
+    {
+        return $this->hasMany(Service::class)->orderBy('sort')->orderBy('id');
+    }
+
+    /** Todo proyecto tiene siempre al menos un servicio; el primero se crea solo y se comporta como antes. */
+    protected static function booted(): void
+    {
+        static::created(function (Project $p) {
+            if (! $p->services()->exists()) {
+                $p->services()->create(['company_id' => $p->company_id, 'name' => 'General', 'bill_rate' => null,
+                    'billable' => (bool) ($p->billable ?? true), 'capture_mode' => 'both', 'active' => true]);
+            }
+        });
     }
 
     public function requiresTimes(): bool

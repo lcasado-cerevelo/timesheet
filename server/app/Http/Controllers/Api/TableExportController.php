@@ -20,10 +20,10 @@ class TableExportController extends Controller
     public function export(Request $request, string $dataset)
     {
         $user = $request->user();
-        abort_unless(isset(Datasets::ACCESS[$dataset]), 404, 'Esa tabla no existe.');
-        abort_unless($this->datasets->allowed($dataset, $user), 403, 'Solo el dueño de la compañía puede exportar esta tabla.');
+        abort_unless(isset(Datasets::ACCESS[$dataset]), 404, __('Esa tabla no existe.'));
+        abort_unless($this->datasets->allowed($dataset, $user), 403, __('Solo el dueño de la compañía puede exportar esta tabla.'));
         $format = $request->input('format', 'pdf');
-        abort_unless(in_array($format, ['csv', 'xlsx', 'pdf'], true), 422, 'Formato no válido: csv, xlsx o pdf.');
+        abort_unless(in_array($format, ['csv', 'xlsx', 'pdf'], true), 422, __('Formato no válido: csv, xlsx o pdf.'));
 
         $table = $this->datasets->build($dataset, $user, $request->except('format'));
         $file = $this->exporter->render($user->company, $table, $format);

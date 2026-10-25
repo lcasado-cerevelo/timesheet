@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
 <meta charset="utf-8">
 <style>
@@ -30,7 +30,7 @@ tr.alt td{background:#f6f7f9}
 @if(! empty($t['subtitle']))<div class="sub">{{ $t['subtitle'] }}</div>@endif
 
 @if(empty($t['rows']))
-<p class="empty">No hay datos para mostrar.</p>
+<p class="empty">{{ __('No hay datos para mostrar.') }}</p>
 @else
 <table>
 <tr>@foreach($t['columns'] as $c)<th class="{{ in_array($c['t'], ['hours','money','int']) ? 'r' : '' }}">{{ $c['h'] }}</th>@endforeach</tr>
@@ -42,6 +42,6 @@ tr.alt td{background:#f6f7f9}
 @endif
 </table>
 @endif
-<p class="foot">{{ $brand['name'] }} · generado el {{ $when }}@if($brand['email_footer']) · {{ $brand['email_footer'] }}@endif</p>
+<p class="foot">{{ $brand['name'] }} · {{ __('generado el :when', ['when' => $when]) }}@if($brand['email_footer']) · {{ $brand['email_footer'] }}@endif</p>
 </body>
 </html>

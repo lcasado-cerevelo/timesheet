@@ -17,7 +17,7 @@ class InstallCompany extends Command
     public function handle(ExportService $exports): int
     {
         if (User::where('email', $this->argument('correo'))->exists()) {
-            $this->error('Ya existe un usuario con ese correo.');
+            $this->error(__('Ya existe un usuario con ese correo.'));
             return self::FAILURE;
         }
         $slug = Str::slug($this->argument('compania'));
@@ -32,10 +32,10 @@ class InstallCompany extends Command
             'password' => $password, 'role' => 'owner', 'worker_type' => 'consultant', 'capture_mode' => 'from_to',
         ]);
         $exports->ensureSystemTemplates($company);
-        $this->info('Compañía creada: '.$company->name);
-        $this->line('Correo: '.$this->argument('correo'));
+        $this->info(__('Compañía creada: :name', ['name' => $company->name]));
+        $this->line(__('Correo: :email', ['email' => $this->argument('correo')]));
         if (! $this->option('clave')) {
-            $this->line('Contraseña generada: '.$password.'  (cámbiala al entrar)');
+            $this->line(__('Contraseña generada: :password  (cámbiala al entrar)', ['password' => $password]));
         }
         return self::SUCCESS;
     }

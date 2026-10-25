@@ -177,6 +177,7 @@ class IntegrationTest extends TestCase
         $this->approvedHours();
         $this->configure();
         $this->project->update(['bill_rate' => null]);
+        \App\Models\TimeEntry::query()->update(['bill_rate' => null]);   // la tarifa también se guarda en cada entrada
         $this->postJson('/api/integrations/accountisi/sales-invoice', ['customer_id' => $this->customer->id, 'from' => '2026-10-01', 'to' => '2026-10-31'])
             ->assertStatus(422)->assertJsonValidationErrors('project_ids');
         $this->customer->update(['accountisi_id' => null]);
@@ -243,7 +244,7 @@ class IntegrationTest extends TestCase
         $this->approvedHours();
         Sanctum::actingAs($this->worker);
         $inv = $this->postJson('/api/contractor-invoices', ['from' => '2026-10-01', 'to' => '2026-10-31'])->assertCreated()->json();
-        $c2 = \App\Models\Company::create(['name' => 'Otra', 'slug' => 'otra']);
+        $c2 = \App\Models\Company::create(['name' => 'Otra', 'slug' => 'otra', 'locale' => 'es']);
         $u2 = \App\Models\User::create(['company_id' => $c2->id, 'name' => 'Otro', 'email' => 'o@o.test', 'password' => 'secret-password', 'role' => 'owner']);
         Sanctum::actingAs($u2);
         $this->get('/api/contractor-invoices/'.$inv['id'].'/pdf')->assertForbidden();

@@ -26,7 +26,7 @@ class ReportController extends Controller
             return match ($group) {
                 'day' => $e->work_date->toDateString(),
                 'week' => \App\Support\Week::ending($e->work_date),
-                'customer' => $e->project->customer?->name ?? '(sin cliente)',
+                'customer' => $e->project->customer?->name ?? __('(sin cliente)'),
                 default => $e->project->code.' · '.$e->project->name,
             };
         })->map(fn ($g, $k) => [

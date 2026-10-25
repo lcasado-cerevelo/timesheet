@@ -20,7 +20,7 @@ trait BuildsWorld
     protected function world(array $workerOverrides = []): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-21 10:00:00', 'America/Puerto_Rico'));
-        $this->company = Company::create(['name' => 'Cerevelo', 'slug' => 'cerevelo']);
+        $this->company = Company::create(['name' => 'Cerevelo', 'slug' => 'cerevelo', 'locale' => 'es']);
         $this->approver = Approver::create(['company_id' => $this->company->id, 'name' => 'Jorge Ramos', 'email' => 'jorge@cliente.test']);
         $this->owner = User::create([
             'company_id' => $this->company->id, 'name' => 'Luis', 'email' => 'luis@cerevelo.test',

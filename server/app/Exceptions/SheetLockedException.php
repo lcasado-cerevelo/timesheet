@@ -7,9 +7,9 @@ use Illuminate\Http\JsonResponse;
 /** Una hoja aprobada no se cambia. Se responde 423 (bloqueada). */
 class SheetLockedException extends \DomainException
 {
-    public function __construct(string $message = 'Esta hoja ya fue aprobada y no se puede cambiar.')
+    public function __construct(?string $message = null)
     {
-        parent::__construct($message);
+        parent::__construct($message ?? __('Esta hoja ya fue aprobada y no se puede cambiar.'));
     }
 
     public function render(): JsonResponse

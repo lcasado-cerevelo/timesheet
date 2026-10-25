@@ -1,3 +1,5 @@
+import { getLocale, t } from '../i18n';
+
 export class ApiError extends Error {
   constructor(message: string, public status: number, public errors?: Record<string, string[]>) {
     super(message);
@@ -6,7 +8,7 @@ export class ApiError extends Error {
 
 export class NetworkError extends Error {
   constructor() {
-    super('Sin conexión con el servidor.');
+    super(t('api.network'));
   }
 }
 
@@ -35,7 +37,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   try {
     res = await fetch(apiUrl(path), {
       method: opts.method ?? 'GET',
-      headers: { Accept: 'application/json', ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...authHeaders() },
+      headers: { Accept: 'application/json', 'X-Locale': getLocale(), ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...authHeaders() },
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     });
   } catch {
@@ -48,15 +50,15 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
-    if (res.ok) throw new ApiError('El servidor respondió algo inesperado. Revisa la dirección del servidor.', res.status);
+    if (res.ok) throw new ApiError(t('api.unexpected'), res.status);
   }
   if (res.status === 401 && cfg.token) {
     cfg.onUnauthorized?.();
-    throw new ApiError('La sesión venció. Entra de nuevo.', 401);
+    throw new ApiError(t('api.expired'), 401);
   }
   if (!res.ok) {
     const first = data?.errors ? (Object.values(data.errors).flat() as string[])[0] : undefined;
-    throw new ApiError(first ?? data?.message ?? `Error ${res.status}`, res.status, data?.errors);
+    throw new ApiError(first ?? data?.message ?? t('api.error', { n: res.status }), res.status, data?.errors);
   }
   return data as T;
 }

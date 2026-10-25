@@ -80,7 +80,9 @@ return [
 
     'locale' => env('APP_LOCALE', 'en'),
 
-    'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
+    // Los textos del código están en español y lang/en.json trae el inglés. El respaldo DEBE ser 'es': con 'en', al pedir
+    // español Laravel buscaría la clave en en.json y devolvería la traducción inglesa. (No se lee de .env a propósito.)
+    'fallback_locale' => 'es',
 
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
 

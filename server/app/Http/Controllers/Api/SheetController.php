@@ -17,7 +17,7 @@ class SheetController extends Controller
     /** Hojas de la persona (recientes primero). */
     public function index(Request $request)
     {
-        $rows = Timesheet::where('user_id', $request->user()->id)->orderByDesc('week_ending')->limit(60)->get();
+        $rows = Timesheet::with('decidedByApprover:id,name', 'decidedByUser:id,name', 'invoice:id,number')->where('user_id', $request->user()->id)->orderByDesc('week_ending')->limit(60)->get();
         return response()->json($rows->map(fn ($s) => $this->payload($s)));
     }
 
@@ -95,6 +95,8 @@ class SheetController extends Controller
             'return_comment' => $s->return_comment,
             'submitted_at' => $s->submitted_at,
             'decided_at' => $s->decided_at,
+            'approved_by' => $s->status === Timesheet::APPROVED ? ($s->decidedByApprover?->name ?? $s->decidedByUser?->name) : null,
+            'invoice_number' => $s->invoice?->number,
             'warnings' => $s->warnings(),
         ];
         if ($withEntries) {

@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type { Entry, ServerEntry, SyncResult } from './types';
 
 /** Lo que se manda al servidor: entradas por enviar y borradas, con su client_uuid (reenviar es seguro). */
@@ -10,6 +11,8 @@ export function buildSyncPayload(local: Entry[]): Record<string, unknown>[] {
         : {
             client_uuid: e.uuid,
             project_id: e.project_id,
+            // Las entradas viejas no tienen servicio: se omite y el servidor lo asigna si el proyecto tiene uno solo.
+            service_id: e.service_id ?? undefined,
             work_date: e.work_date,
             start_time: e.start_time,
             end_time: e.end_time,
@@ -34,7 +37,7 @@ export function applySyncResults(local: Entry[], results: SyncResult[]): Entry[]
       if (e.sync === 'deleted') continue; // ya se borró en el servidor
       out.push({ ...e, id: r.id ?? e.id, sync: 'synced', reject_reason: undefined });
     } else {
-      const reason = r.status === 'locked' ? 'La hoja de esa semana ya fue aprobada.' : firstError(r) ?? 'El servidor no aceptó esta entrada.';
+      const reason = r.status === 'locked' ? t('sync.locked') : firstError(r) ?? t('sync.rejected');
       out.push({ ...e, sync: 'rejected', reject_reason: reason });
     }
   }
@@ -62,6 +65,7 @@ export function mergeServer(local: Entry[], server: ServerEntry[], from: string,
       uuid: s.client_uuid ?? `srv-${s.id}`,
       id: s.id,
       project_id: s.project_id,
+      service_id: s.service_id ?? s.service?.id ?? null,
       work_date: s.work_date,
       start_time: s.start_time,
       end_time: s.end_time,

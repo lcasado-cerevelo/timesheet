@@ -1,3 +1,5 @@
+import { getLocale } from '../i18n';
+
 /** Fechas y horas. Las fechas son 'YYYY-MM-DD' (hora local del dispositivo), las horas 'HH:MM'. */
 
 export function pad(n: number): string {
@@ -53,22 +55,34 @@ export function monthGrid(s: string): (string | null)[][] {
   return rows;
 }
 
-const DOW = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const DOW = {
+  es: ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'],
+  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+};
+const MONTHS = {
+  es: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+  en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+};
 
+/** 'lun 21/10' en español, 'Mon 10/21' en inglés. */
 export function dayLabel(s: string): string {
   const d = parseDate(s);
-  return `${DOW[d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+  const l = getLocale();
+  const md = l === 'es' ? `${pad(d.getDate())}/${pad(d.getMonth() + 1)}` : `${pad(d.getMonth() + 1)}/${pad(d.getDate())}`;
+  return `${DOW[l][d.getDay()]} ${md}`;
 }
 
+/** 'mié 21 de octubre de 2026' / 'Wed, October 21, 2026'. */
 export function longDate(s: string): string {
   const d = parseDate(s);
-  return `${DOW[d.getDay()]} ${d.getDate()} de ${MONTHS[d.getMonth()]} de ${d.getFullYear()}`;
+  const l = getLocale();
+  if (l === 'es') return `${DOW.es[d.getDay()]} ${d.getDate()} de ${MONTHS.es[d.getMonth()]} de ${d.getFullYear()}`;
+  return `${DOW.en[d.getDay()]}, ${MONTHS.en[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
 export function monthLabel(s: string): string {
   const d = parseDate(s);
-  return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  return `${MONTHS[getLocale()][d.getMonth()]} ${d.getFullYear()}`;
 }
 
 export function isValidHM(t: string | null | undefined): t is string {

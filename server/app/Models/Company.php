@@ -26,6 +26,12 @@ class Company extends Model
         return Rules::make($this->rules);
     }
 
+    /** Idioma de la compañía (es o en); el de la aplicación si falta o no es válido. */
+    public function lang(): string
+    {
+        return in_array($this->locale, ['es', 'en'], true) ? $this->locale : (string) config('app.locale');
+    }
+
     public function displayName(): string
     {
         return $this->brand_name ?: $this->name;

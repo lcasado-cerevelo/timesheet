@@ -2,6 +2,7 @@ import { kv } from '../lib/storage';
 import { cancelClockNotification } from '../lib/notify';
 import { useClock } from './clock';
 import { useEntries } from './entries';
+import { useSelection } from './selection';
 
 /**
  * Los datos guardados en el teléfono pertenecen a una persona. Si entra otra (o la misma sesión venció y
@@ -15,7 +16,7 @@ export async function reconcileOwner(meId: number): Promise<boolean> {
     useClock.setState({ clock: null });
     await kv.del('clock.v1');
     await kv.del('daynotes.v1');
-    await kv.del('lastProject.v1');
+    useSelection.getState().reset();
     await cancelClockNotification();
     await kv.set('owner.v1', meId);
     return true;

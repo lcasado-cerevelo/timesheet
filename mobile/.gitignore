@@ -11,3 +11,7 @@ expo-env.d.ts
 .env
 .env.*
 !.env.example
+
+# Proyectos nativos que genera "expo run:android" / "expo run:ios"; se vuelven a crear solos
+android/
+ios/

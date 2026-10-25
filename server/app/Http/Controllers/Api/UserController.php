@@ -43,7 +43,7 @@ class UserController extends Controller
     public function destroy(Request $request, User $user)
     {
         abort_unless($user->company_id === $request->user()->company_id, 404);
-        abort_if($user->id === $request->user()->id, 422, 'No puedes desactivarte a ti mismo.');
+        abort_if($user->id === $request->user()->id, 422, __('No puedes desactivarte a ti mismo.'));
         $user->update(['active' => false]);
         $user->tokens()->delete();
         return response()->json(['ok' => true]);

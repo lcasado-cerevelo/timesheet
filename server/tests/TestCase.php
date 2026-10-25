@@ -14,7 +14,7 @@ abstract class TestCase extends BaseTestCase
      */
     private const FIXED_ENV = [
         'APP_ENV' => 'testing', 'APP_MAINTENANCE_DRIVER' => 'file', 'BCRYPT_ROUNDS' => '4', 'BROADCAST_CONNECTION' => 'null',
-        'CACHE_STORE' => 'array', 'MAIL_MAILER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'SESSION_DRIVER' => 'array',
+        'CACHE_STORE' => 'array', 'MAIL_MAILER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'SESSION_DRIVER' => 'array', 'TURNSTILE_SITE_KEY' => '', 'TURNSTILE_SECRET' => '',
     ];
 
     /**

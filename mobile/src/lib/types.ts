@@ -1,4 +1,7 @@
 export type CaptureMode = 'full_day' | 'from_to';
+/** Cómo permite el servicio entrar las horas: detalle (desde/hasta), total del día, o ambos (manda la preferencia de la persona). */
+export type ServiceCapture = 'detail' | 'total' | 'both';
+export type Locale = 'es' | 'en';
 export type WorkerType = 'consultant' | 'employee';
 export type SheetStatus = 'draft' | 'submitted' | 'approved' | 'returned';
 
@@ -26,10 +29,25 @@ export interface Me {
   role: 'owner' | 'member';
   worker_type: WorkerType;
   capture_mode: CaptureMode;
+  /** Idioma en uso (el de la persona o, si no tiene, el de la compañía). */
+  locale?: Locale;
+  company_locale?: Locale;
   weekly_hours: string | null;
   company: { id: number; name: string; timezone: string };
   brand: Brand;
   rules: Rules;
+}
+
+export interface Service {
+  id: number;
+  project_id: number;
+  name: string;
+  billable: boolean;
+  capture_mode: ServiceCapture;
+  active: boolean;
+  sort: number;
+  /** Cómo entra las horas ESTA persona en este servicio, calculado por el servidor. */
+  mode?: CaptureMode;
 }
 
 export interface Project {
@@ -42,6 +60,8 @@ export interface Project {
   geo_lat: string | number | null;
   geo_lng: string | number | null;
   geo_radius_m: number | null;
+  /** Servicios del proyecto (sin tarifas). Proyectos guardados antes de que existieran los servicios no lo traen. */
+  services?: Service[];
 }
 
 /** 'synced' = igual que el servidor; 'dirty' = por enviar; 'deleted' = borrada localmente, por enviar;
@@ -52,6 +72,8 @@ export interface Entry {
   uuid: string;
   id?: number;
   project_id: number;
+  /** Las entradas viejas no lo tienen. */
+  service_id?: number | null;
   work_date: string;
   start_time: string | null;
   end_time: string | null;
@@ -67,6 +89,8 @@ export interface ServerEntry {
   id: number;
   client_uuid: string | null;
   project_id: number;
+  service_id?: number | null;
+  service?: { id: number; name: string } | null;
   work_date: string;
   start_time: string | null;
   end_time: string | null;

@@ -54,11 +54,11 @@ class AccountisiClient
                     'CompanyId' => $this->cfg['company_id'] ?? null,
                 ], fn ($v) => $v !== null));
             if (! $r->successful()) {
-                throw new AccountisiException('Accountisi rechazó el inicio de sesión ('.$r->status().').');
+                throw new AccountisiException(__('Accountisi rechazó el inicio de sesión (:status).', ['status' => $r->status()]));
             }
             $t = $this->pick($r->json(), ['token', 'Token']);
             if (! $t) {
-                throw new AccountisiException('Accountisi no devolvió un token de sesión.');
+                throw new AccountisiException(__('Accountisi no devolvió un token de sesión.'));
             }
             return (string) $t;
         });
@@ -79,15 +79,15 @@ class AccountisiClient
         try {
             $r = $this->http()->send($method, $path, $method === 'GET' ? ['query' => $data] : ['json' => $data]);
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            throw new AccountisiException('No se pudo conectar con Accountisi en '.($this->cfg['base_url'] ?? '?').'.');
+            throw new AccountisiException(__('No se pudo conectar con Accountisi en :url.', ['url' => $this->cfg['base_url'] ?? '?']));
         }
         if ($r->status() === 401) {
             Cache::forget('accountisi-token-'.md5(($this->cfg['base_url'] ?? '').($this->cfg['login'] ?? '').($this->cfg['company_id'] ?? '')));
-            throw new AccountisiException('Accountisi no aceptó la credencial (401).');
+            throw new AccountisiException(__('Accountisi no aceptó la credencial (401).'));
         }
         if (! $r->successful()) {
             $msg = $r->json('message') ?? $r->json('detail') ?? $r->json('title') ?? mb_substr($r->body(), 0, 200);
-            throw new AccountisiException('Accountisi respondió '.$r->status().': '.$msg);
+            throw new AccountisiException(__('Accountisi respondió :status: :msg', ['status' => $r->status(), 'msg' => $msg]));
         }
         return $r->json();
     }
@@ -204,7 +204,7 @@ class AccountisiClient
             $id = $r;
         }
         if ($id === null) {
-            throw new AccountisiException('Accountisi no devolvió el id del documento creado.');
+            throw new AccountisiException(__('Accountisi no devolvió el id del documento creado.'));
         }
         return (string) $id;
     }

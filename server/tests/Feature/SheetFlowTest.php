@@ -292,7 +292,7 @@ class SheetFlowTest extends TestCase
     public function test_other_company_cannot_touch_the_sheet(): void
     {
         [$sheet] = $this->submitted();
-        $c2 = \App\Models\Company::create(['name' => 'Otra', 'slug' => 'otra']);
+        $c2 = \App\Models\Company::create(['name' => 'Otra', 'slug' => 'otra', 'locale' => 'es']);
         $u2 = User::create(['company_id' => $c2->id, 'name' => 'Otro', 'email' => 'o@o.test', 'password' => 'secret-password', 'role' => 'owner']);
         Sanctum::actingAs($u2);
         $this->postJson('/api/sheets/'.$sheet->id.'/approve')->assertNotFound();

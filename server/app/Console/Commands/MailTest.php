@@ -14,17 +14,17 @@ class MailTest extends Command
     public function handle(): int
     {
         $cfg = config('mail.mailers.'.config('mail.default'));
-        $this->line('Servicio: '.config('mail.default').' · servidor: '.($cfg['host'] ?? '-').':'.($cfg['port'] ?? '-').' · remitente: '.config('mail.from.address'));
+        $this->line(__('Servicio: :service · servidor: :host:port · remitente: :from', ['service' => config('mail.default'), 'host' => $cfg['host'] ?? '-', 'port' => ':'.($cfg['port'] ?? '-'), 'from' => config('mail.from.address')]));
         try {
-            Mail::raw('Si lees esto, el correo de Tiempo funciona. Enviado el '.now()->toDateTimeString().'.', function ($m) {
-                $m->to($this->argument('destino'))->subject('Prueba de correo de Tiempo');
+            Mail::raw(__('Si lees esto, el correo de Tiempo funciona. Enviado el :date.', ['date' => now()->toDateTimeString()]), function ($m) {
+                $m->to($this->argument('destino'))->subject(__('Prueba de correo de Tiempo'));
             });
         } catch (\Throwable $e) {
-            $this->error('No se pudo enviar: '.$e->getMessage());
-            $this->line('Revisa usuario y clave SMTP, que el remitente (MAIL_FROM_ADDRESS) esté verificado en el proveedor y el puerto (587 con STARTTLS).');
+            $this->error(__('No se pudo enviar: :error', ['error' => $e->getMessage()]));
+            $this->line(__('Revisa usuario y clave SMTP, que el remitente (MAIL_FROM_ADDRESS) esté verificado en el proveedor y el puerto (587 con STARTTLS).'));
             return self::FAILURE;
         }
-        $this->info('Enviado a '.$this->argument('destino').'. Revisa la bandeja (y el correo no deseado).');
+        $this->info(__('Enviado a :to. Revisa la bandeja (y el correo no deseado).', ['to' => $this->argument('destino')]));
         return self::SUCCESS;
     }
 }

@@ -1,27 +1,34 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useT } from '../../src/i18n';
 import { useTheme } from '../../src/ui';
 
 const icon = (glyph: string) => ({ color }: { color: string }) => <Text style={{ fontSize: 18, color }}>{glyph}</Text>;
 
 export default function TabsLayout() {
-  const t = useTheme();
+  const th = useTheme();
+  const { t } = useT();
+  const insets = useSafeAreaInsets();
+  // La barra de pestañas se levanta lo que ocupa la barra de navegación del teléfono (gestos o botones).
+  const bottom = Math.max(insets.bottom, 6);
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: t.primary },
+        headerStyle: { backgroundColor: th.primary },
         headerTintColor: '#fff',
         headerTitleStyle: { fontWeight: '700' },
-        tabBarActiveTintColor: t.primary,
+        tabBarActiveTintColor: th.primary,
         tabBarLabelStyle: { fontWeight: '700', fontSize: 11 },
+        tabBarStyle: { height: 52 + bottom, paddingBottom: bottom, paddingTop: 4 },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Día', tabBarIcon: icon('▤') }} />
-      <Tabs.Screen name="week" options={{ title: 'Semana', tabBarIcon: icon('▥') }} />
-      <Tabs.Screen name="month" options={{ title: 'Mes', tabBarIcon: icon('▦') }} />
-      <Tabs.Screen name="reports" options={{ title: 'Reportes', tabBarIcon: icon('≣') }} />
-      <Tabs.Screen name="settings" options={{ title: 'Ajustes', tabBarIcon: icon('⚙') }} />
+      <Tabs.Screen name="index" options={{ title: t('tabs.day'), tabBarIcon: icon('▤') }} />
+      <Tabs.Screen name="week" options={{ title: t('tabs.week'), tabBarIcon: icon('▥') }} />
+      <Tabs.Screen name="month" options={{ title: t('tabs.month'), tabBarIcon: icon('▦') }} />
+      <Tabs.Screen name="reports" options={{ title: t('tabs.reports'), tabBarIcon: icon('≣') }} />
+      <Tabs.Screen name="settings" options={{ title: t('tabs.settings'), tabBarIcon: icon('⚙') }} />
     </Tabs>
   );
 }

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
+import { t } from '../i18n';
 import { api, ApiError, NetworkError } from '../lib/api';
 import { computeHours, EntryInput, validateEntry } from '../lib/rules';
+import { effectiveMode, resolveService } from '../lib/services';
 import { kv } from '../lib/storage';
 import { applySyncResults, buildSyncPayload, mergeServer, pendingCount } from '../lib/sync';
 import { addDays, today, weekEnding, weekStarting } from '../lib/time';
@@ -66,27 +68,33 @@ export const useEntries = create<EntriesState>((set, get) => {
 
     save(input, uuidToEdit) {
       const me = useAuth.getState().me;
-      if (!me) return { errors: ['Entra primero.'] };
+      if (!me) return { errors: [t('common.sign_in_first')] };
       const { entries, projects, lockedWeeks } = get();
       const project = projects.find((p) => p.id === input.project_id);
+      const prev = uuidToEdit ? entries.find((e) => e.uuid === uuidToEdit) : undefined;
       const sameDay = entries.filter((e) => e.work_date === input.work_date && e.uuid !== uuidToEdit);
-      const errors = validateEntry(input, {
-        mode: me.capture_mode, project, rules: me.rules, sameDay, today: today(), lockedWeeks: new Set(lockedWeeks),
+      // El servicio indicado; si no se indicó, el que ya tenía la entrada; y si el proyecto tiene uno solo, ese.
+      const keep = prev && prev.project_id === input.project_id ? prev.service_id ?? null : null;
+      const service = resolveService(project, input.service_id ?? keep, keep);
+      const withService: EntryInput = { ...input, service_id: service?.id ?? input.service_id ?? null };
+      const errors = validateEntry(withService, {
+        pref: me.capture_mode, keepServiceId: keep, project, rules: me.rules, sameDay, today: today(), lockedWeeks: new Set(lockedWeeks),
       });
       if (errors.length) return { errors };
 
-      const hours = computeHours(input, me.capture_mode, me.rules.increment);
-      const prev = uuidToEdit ? entries.find((e) => e.uuid === uuidToEdit) : undefined;
+      const mode = effectiveMode(project, service?.id ?? null, me.capture_mode);
+      const hours = computeHours(input, mode, me.rules.increment);
       const entry: Entry = {
         uuid: prev?.uuid ?? uuid(),
         id: prev?.id,
         project_id: input.project_id as number,
+        service_id: service?.id ?? null,
         work_date: input.work_date,
-        start_time: me.capture_mode === 'full_day' ? null : input.start_time ?? null,
-        end_time: me.capture_mode === 'full_day' || input.running ? null : input.end_time ?? null,
+        start_time: mode === 'full_day' ? null : input.start_time ?? null,
+        end_time: mode === 'full_day' || input.running ? null : input.end_time ?? null,
         hours,
         note: input.note ?? prev?.note ?? '',
-        billable: input.billable ?? prev?.billable ?? project?.billable ?? true,
+        billable: input.billable ?? prev?.billable ?? service?.billable ?? project?.billable ?? true,
         running: !!input.running,
         sync: 'dirty',
       };
@@ -136,7 +144,7 @@ export const useEntries = create<EntriesState>((set, get) => {
         ]);
         update({ entries: mergeServer(get().entries, server.entries, from, to), projects, lastSync: new Date().toISOString() });
       } catch (e) {
-        set({ lastError: e instanceof NetworkError ? 'Sin conexión: se sincroniza al volver.' : (e as Error).message });
+        set({ lastError: e instanceof NetworkError ? t('entries.offline') : (e as Error).message });
         persist();
       } finally {
         set({ syncing: false });
@@ -161,7 +169,7 @@ export const useEntries = create<EntriesState>((set, get) => {
       const end = weekEnding(date);
       const start = weekStarting(date);
       const bad = get().entries.filter((e) => e.work_date >= start && e.work_date <= end && (e.sync === 'rejected' || e.sync === 'dirty' || e.sync === 'deleted'));
-      if (bad.length) throw new ApiError(bad.some((e) => e.sync === 'rejected') ? 'Hay entradas rechazadas: corrígelas o descártalas antes de enviar.' : 'Hay cambios sin sincronizar; revisa la conexión.', 422);
+      if (bad.length) throw new ApiError(bad.some((e) => e.sync === 'rejected') ? t('entries.has_rejected') : t('entries.has_unsynced'), 422);
       const sheet = await get().fetchSheet(date);
       if (!sheet) throw new NetworkError();
       const s = await api<Sheet>(`/sheets/${sheet.id}/submit`, { method: 'POST' });

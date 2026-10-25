@@ -21,7 +21,7 @@ class DemoData extends Command
     public function handle(ExportService $exports): int
     {
         if (Company::where('slug', 'cerevelo-demo')->exists()) {
-            $this->warn('La compañía demo ya existe.');
+            $this->warn(__('La compañía demo ya existe.'));
             return self::SUCCESS;
         }
         $c = Company::create(['name' => 'Cerevelo (demo)', 'slug' => 'cerevelo-demo', 'brand_name' => 'Cerevelo', 'invoice_prefix' => 'CER',
@@ -42,7 +42,7 @@ class DemoData extends Command
             $u->projects()->sync([$p1->id, $p2->id, $pac->id]);
         }
         $exports->ensureSystemTemplates($c);
-        $this->info('Demo lista. Dueño: luis@demo.test · Consultora: ana@demo.test · Empleado: marcos@demo.test · clave demo-password-123');
+        $this->info(__('Demo lista. Dueño: :owner · Consultora: :consultant · Empleado: :employee · clave :password', ['owner' => 'luis@demo.test', 'consultant' => 'ana@demo.test', 'employee' => 'marcos@demo.test', 'password' => 'demo-password-123']));
         return self::SUCCESS;
     }
 }

@@ -38,6 +38,21 @@ class Timesheet extends Model
         return $this->belongsTo(Approver::class);
     }
 
+    public function decidedByApprover(): BelongsTo
+    {
+        return $this->belongsTo(Approver::class, 'decided_by_approver_id');
+    }
+
+    public function decidedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'decided_by_user_id');
+    }
+
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(ContractorInvoice::class, 'contractor_invoice_id');
+    }
+
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
@@ -77,8 +92,8 @@ class Timesheet extends Model
         $user = $this->user;
         if ($user && $user->isEmployee() && $user->weekly_hours !== null
             && (float) $this->total_hours > (float) $user->weekly_hours) {
-            $w[] = ['code' => 'over_weekly_hours', 'message' => sprintf(
-                'Pasa de %s h por semana (%s h).', rtrim(rtrim((string) $user->weekly_hours, '0'), '.'), (float) $this->total_hours
+            $w[] = ['code' => 'over_weekly_hours', 'message' => __(
+                'Pasa de :limit h por semana (:hours h).', ['limit' => rtrim(rtrim((string) $user->weekly_hours, '0'), '.'), 'hours' => (float) $this->total_hours]
             )];
         }
         return $w;

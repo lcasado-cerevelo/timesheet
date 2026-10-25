@@ -184,7 +184,7 @@ class ExportTest extends TestCase
         $this->assertSame('2', $res->headers->get('X-Export-Rows'));
 
         // Una oficina de otra compañía no existe para nosotros.
-        $other = Customer::create(['company_id' => Company::create(['name' => 'Otra', 'slug' => 'otra'])->id, 'name' => 'Ajena']);
+        $other = Customer::create(['company_id' => Company::create(['name' => 'Otra', 'slug' => 'otra', 'locale' => 'es'])->id, 'name' => 'Ajena']);
         $this->postJson('/api/export', $range + ['template_id' => $tpl['id'], 'customer_id' => $other->id])->assertNotFound();
         $this->getJson('/api/export/patients?'.http_build_query($range + ['customer_id' => $other->id]))->assertNotFound();
     }

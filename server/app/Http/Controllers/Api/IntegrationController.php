@@ -70,7 +70,7 @@ class IntegrationController extends Controller
     public function test(Request $request)
     {
         $i = Integration::where('company_id', $request->user()->company_id)->where('type', 'accountisi')->first();
-        abort_unless($i, 404, 'Primero guarda la configuración.');
+        abort_unless($i, 404, __('Primero guarda la configuración.'));
         try {
             $me = (new AccountisiClient($i->config, $i->id))->ping();
             $i->update(['last_ok_at' => now(), 'last_error' => null]);
@@ -141,7 +141,7 @@ class IntegrationController extends Controller
     {
         $c = AccountisiClient::forCompany($request->user()->company);
         if (! $c) {
-            throw ValidationException::withMessages(['integration' => 'La integración con Accountisi no está activada.']);
+            throw ValidationException::withMessages(['integration' => __('La integración con Accountisi no está activada.')]);
         }
         return $c;
     }

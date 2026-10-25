@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { t } from '../i18n';
 import { to12h } from './time';
 import { nowHM } from './time';
 
@@ -19,18 +20,18 @@ export async function setupNotifications(): Promise<void> {
   });
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(CHANNEL, {
-      name: 'Reloj de trabajo',
+      name: t('notify.channel_clock'),
       importance: Notifications.AndroidImportance.LOW, // fija y sin sonido
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
-    await Notifications.setNotificationChannelAsync('avisos', { name: 'Avisos', importance: Notifications.AndroidImportance.DEFAULT });
+    await Notifications.setNotificationChannelAsync('avisos', { name: t('notify.channel_alerts'), importance: Notifications.AndroidImportance.DEFAULT });
   }
   await Notifications.setNotificationCategoryAsync('clock', [
-    { identifier: 'stop', buttonTitle: 'Parar', options: { opensAppToForeground: false } },
+    { identifier: 'stop', buttonTitle: t('notify.stop'), options: { opensAppToForeground: false } },
   ]);
   await Notifications.setNotificationCategoryAsync('arrive', [
-    { identifier: 'start', buttonTitle: 'Prender reloj', options: { opensAppToForeground: true } },
-    { identifier: 'dismiss', buttonTitle: 'Ahora no', options: { opensAppToForeground: false } },
+    { identifier: 'start', buttonTitle: t('notify.start_clock'), options: { opensAppToForeground: true } },
+    { identifier: 'dismiss', buttonTitle: t('notify.not_now'), options: { opensAppToForeground: false } },
   ]);
 }
 
@@ -49,8 +50,8 @@ export async function showClockNotification(projectLabel: string, startedAt: Dat
     await Notifications.scheduleNotificationAsync({
       identifier: CLOCK_ID,
       content: {
-        title: 'Reloj corriendo',
-        body: `${projectLabel} · desde ${to12h(nowHM(startedAt))}`,
+        title: t('notify.running'),
+        body: t('notify.running_body', { project: projectLabel, time: to12h(nowHM(startedAt)) }),
         categoryIdentifier: 'clock',
         sticky: true,
         autoDismiss: false,
@@ -78,8 +79,8 @@ export async function showArrivePrompt(projectId: number, label: string): Promis
   if (Platform.OS === 'web') return;
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: `Estás en ${label}`,
-      body: '¿Prendo el reloj para empezar a contar?',
+      title: t('notify.arrived', { place: label }),
+      body: t('notify.arrived_body'),
       categoryIdentifier: 'arrive',
       data: { kind: 'arrive', project_id: projectId },
     },
@@ -94,7 +95,7 @@ export async function setWeeklyReminder(on: boolean): Promise<void> {
   if (!on) return;
   await Notifications.scheduleNotificationAsync({
     identifier: 'weekly-reminder',
-    content: { title: 'Hora de enviar tu hoja', body: 'Revisa tus horas de la semana y envíala a aprobación.', data: { kind: 'weekly' } },
+    content: { title: t('notify.weekly_title'), body: t('notify.weekly_body'), data: { kind: 'weekly' } },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 6, hour: 16, minute: 0, channelId: 'avisos' },
   });
 }

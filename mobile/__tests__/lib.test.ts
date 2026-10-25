@@ -1,3 +1,4 @@
+import { setLocaleValue } from '../src/i18n';
 import { elapsedMs, fmtElapsed, segmentsFor, ClockState } from '../src/lib/clock';
 import { pickRegions } from '../src/lib/geo';
 import { dayTotals, summarize } from '../src/lib/report';
@@ -6,6 +7,8 @@ import { applySyncResults, buildSyncPayload, mergeServer, pendingCount } from '.
 import { addDays, hoursBetween, hoursToHM, monthGrid, roundTo, to12h, weekDays, weekEnding, weekStarting } from '../src/lib/time';
 import type { Entry, Project, ServerEntry } from '../src/lib/types';
 import { uuid } from '../src/lib/uuid';
+
+beforeAll(() => setLocaleValue('es'));
 
 const project = (over: Partial<Project> = {}): Project => ({
   id: 1, code: 'P-1', name: 'Planta A', billable: true, active: true, invoice_detail: 'hours_total',
@@ -45,7 +48,7 @@ describe('tiempo', () => {
 
 describe('reglas de captura (las mismas del servidor)', () => {
   const ctx = (over: Partial<RuleContext> = {}): RuleContext => ({
-    mode: 'from_to', project: project(), rules: { increment: 0.25, max_day_hours: 16, weeks_back: 8 },
+    pref: 'from_to', project: project(), rules: { increment: 0.25, max_day_hours: 16, weeks_back: 8 },
     sameDay: [], today: '2026-10-21', ...over,
   });
 
@@ -56,10 +59,10 @@ describe('reglas de captura (las mismas del servidor)', () => {
     expect(validateEntry({ project_id: 1, work_date: '2026-10-20', start_time: '10:00', end_time: '09:00' }, ctx()).join()).toMatch(/después/);
   });
   test('día completo no admite horas desde/hasta ni proyectos que las exigen', () => {
-    const c = ctx({ mode: 'full_day' });
+    const c = ctx({ pref: 'full_day' });
     expect(validateEntry({ project_id: 1, work_date: '2026-10-20', hours: 8 }, c)).toEqual([]);
-    expect(validateEntry({ project_id: 1, work_date: '2026-10-20', hours: 8, start_time: '08:00' }, c).join()).toMatch(/día completo/);
-    expect(validateEntry({ project_id: 1, work_date: '2026-10-20', hours: 8 }, ctx({ mode: 'full_day', project: project({ invoice_detail: 'with_times' }) })).join()).toMatch(/exige hora/);
+    expect(validateEntry({ project_id: 1, work_date: '2026-10-20', hours: 8, start_time: '08:00' }, c).join()).toMatch(/total de horas del día/);
+    expect(validateEntry({ project_id: 1, work_date: '2026-10-20', hours: 8 }, ctx({ pref: 'full_day', project: project({ invoice_detail: 'with_times' }) })).join()).toMatch(/exige hora/);
     expect(validateEntry({ project_id: 1, work_date: '2026-10-20' }, c).join()).toMatch(/Escribe las horas/);
   });
   test('futuro, muy atrás, semana aprobada, cruce y máximo del día', () => {

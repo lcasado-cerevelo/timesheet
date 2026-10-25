@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Project;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -13,11 +14,11 @@ class ProjectController extends Controller
     public function index(Request $request)
     {
         $u = $request->user();
-        $q = Project::with('customer:id,name', 'users:id,name')->where('company_id', $u->company_id)->orderBy('code');
+        $q = Project::with('customer:id,name', 'users:id,name', 'services')->where('company_id', $u->company_id)->orderBy('code');
         if (! $u->isOwner()) {
             $q->where('active', true)->whereHas('users', fn ($x) => $x->where('users.id', $u->id));
         }
-        return response()->json($q->get()->map(fn ($p) => $this->payload($p, $u->isOwner())));
+        return response()->json($q->get()->map(fn ($p) => $this->payload($p, $u->isOwner(), $u)));
     }
 
     public function store(Request $request)
@@ -28,7 +29,7 @@ class ProjectController extends Controller
         if (isset($data['user_ids'])) {
             $project->users()->sync($this->ownUsers($request, $data['user_ids']));
         }
-        return response()->json($this->payload($project->fresh(['customer', 'users']), true), 201);
+        return response()->json($this->payload($project->fresh(['customer', 'users', 'services']), true, $request->user()), 201);
     }
 
     public function update(Request $request, Project $project)
@@ -39,7 +40,7 @@ class ProjectController extends Controller
         if (isset($data['user_ids'])) {
             $project->users()->sync($this->ownUsers($request, $data['user_ids']));
         }
-        return response()->json($this->payload($project->fresh(['customer', 'users']), true));
+        return response()->json($this->payload($project->fresh(['customer', 'users', 'services']), true, $request->user()));
     }
 
     /** Un proyecto con horas no se borra; se desactiva. */
@@ -80,11 +81,14 @@ class ProjectController extends Controller
         return \App\Models\User::where('company_id', $request->user()->company_id)->whereIn('id', $ids)->pluck('id')->all();
     }
 
-    private function payload(Project $p, bool $owner): array
+    private function payload(Project $p, bool $owner, ?User $for = null): array
     {
         $out = $p->only(['id', 'code', 'name', 'customer_id', 'billable', 'active', 'invoice_detail', 'meta',
             'geo_lat', 'geo_lng', 'geo_radius_m', 'budget_hours']);
         $out['customer'] = $p->customer?->only(['id', 'name']);
+        // Servicios del proyecto: el dueño ve todos (también los desactivados); los demás solo los activos.
+        $out['services'] = $p->services->when(! $owner, fn ($c) => $c->where('active', true))->values()
+            ->map(fn ($s) => ServiceController::payload($s, $owner, $for))->all();
         if ($owner) {
             $out += ['bill_rate' => $p->bill_rate, 'approver_id' => $p->approver_id, 'user_ids' => $p->users->pluck('id'),
                 'accountisi_id' => $p->accountisi_id];

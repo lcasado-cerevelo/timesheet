@@ -26,7 +26,7 @@ class AuthController extends Controller
     public function loginWeb(Request $request)
     {
         if (Turnstile::enabled() && ! Turnstile::verify($request->input('turnstile_token'), $request->ip())) {
-            throw ValidationException::withMessages(['turnstile' => 'No pudimos comprobar que eres una persona. Vuelve a intentarlo.']);
+            throw ValidationException::withMessages(['turnstile' => __('No pudimos comprobar que eres una persona. Vuelve a intentarlo.')]);
         }
         return $this->attempt($request);
     }
@@ -49,7 +49,7 @@ class AuthController extends Controller
         $key = 'login:'.mb_strtolower($data['email']).'|'.$request->ip();
         if (RateLimiter::tooManyAttempts($key, self::MAX_FAILURES)) {
             $min = (int) ceil(RateLimiter::availableIn($key) / 60);
-            return response()->json(['message' => "Demasiados intentos fallidos. Espera $min minuto(s) y vuelve a intentarlo.", 'code' => 'locked'], 429);
+            return response()->json(['message' => __('Demasiados intentos fallidos. Espera :min minuto(s) y vuelve a intentarlo.', ['min' => $min]), 'code' => 'locked'], 429);
         }
 
         $user = User::where('email', $data['email'])->first();
@@ -57,7 +57,7 @@ class AuthController extends Controller
         $ok = Hash::check($data['password'], $user?->password ?? Hash::make(\Illuminate\Support\Str::random(24)));
         if (! $user || ! $user->active || ! $ok) {
             RateLimiter::hit($key, self::LOCK_MINUTES * 60);
-            throw ValidationException::withMessages(['email' => 'Correo o contraseña incorrectos.']);
+            throw ValidationException::withMessages(['email' => __('Correo o contraseña incorrectos.')]);
         }
 
         RateLimiter::clear($key);
@@ -68,6 +68,14 @@ class AuthController extends Controller
     public function me(Request $request)
     {
         return response()->json($this->userPayload($request->user()));
+    }
+
+    /** Cada persona escoge su idioma (es o en). */
+    public function setLocale(Request $request)
+    {
+        $v = $request->validate(['locale' => 'required|in:es,en']);
+        $request->user()->update(['locale' => $v['locale']]);
+        return response()->json($this->userPayload($request->user()->fresh()));
     }
 
     public function logout(Request $request)
@@ -86,6 +94,8 @@ class AuthController extends Controller
             'role' => $user->role,
             'worker_type' => $user->worker_type,
             'capture_mode' => $user->capture_mode,
+            'locale' => $user->locale ?: $company->locale,   // idioma en uso (es o en)
+            'company_locale' => $company->locale,
             'weekly_hours' => $user->weekly_hours,
             'company' => ['id' => $company->id, 'name' => $company->name, 'timezone' => $company->timezone],
             // La app móvil lee la marca aquí: cambiarla en el servidor no requiere publicar la app.

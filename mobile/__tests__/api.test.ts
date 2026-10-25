@@ -1,3 +1,7 @@
+import { setLocaleValue } from '../src/i18n';
+
+beforeAll(() => setLocaleValue('es'));
+
 describe('respuestas del servidor', () => {
   const { api, ApiError } = require('../src/lib/api');
   const realFetch = globalThis.fetch;
