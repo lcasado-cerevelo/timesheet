@@ -317,7 +317,11 @@ function doFinish(string $web, array $c): never
     $log[] = t('Compañía y dueño creados.', 'Company and owner created.');
 
     try {
-        Illuminate\Support\Facades\DB::table('companies')->orderBy('id')->limit(1)->update(['domain' => strtolower((string) $c['host'])]);
+        // El dominio de la compañía solo se guarda si es un nombre de sitio real (no localhost ni una IP): la pantalla de reglas lo valida.
+        $host = strtolower((string) $c['host']);
+        if (str_contains($host, '.') && ! filter_var($host, FILTER_VALIDATE_IP) && filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME)) {
+            Illuminate\Support\Facades\DB::table('companies')->orderBy('id')->limit(1)->update(['domain' => $host]);
+        }
     } catch (Throwable $e) {
         $log[] = t('Aviso: no se pudo guardar el dominio de la compañía (se puede poner en Settings → Rules).', 'Notice: the company domain could not be saved (set it in Settings → Rules).');
     }

@@ -44,6 +44,7 @@ class CompanyController extends Controller
             'rules.code_minutes' => 'integer|between:5,60',
             'rules.remember_days' => 'integer|between:0,365',
             'rules.second_approval_hours' => 'nullable|numeric|min:1',
+            'rules.partial_submission' => 'boolean',
         ]);
         if (isset($v['rules'])) {
             $v['rules'] = array_intersect_key(array_replace($c->rules ?? [], $v['rules']), Rules::DEFAULTS);

@@ -22,7 +22,7 @@ class Service extends Model
 
     protected function casts(): array
     {
-        return ['billable' => 'boolean', 'active' => 'boolean', 'bill_rate' => 'decimal:2'];
+        return ['billable' => 'boolean', 'active' => 'boolean', 'bill_rate' => 'decimal:2', 'require_note' => 'boolean'];
     }
 
     public function needsInternal(): bool

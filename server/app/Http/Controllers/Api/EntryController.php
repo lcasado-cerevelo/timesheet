@@ -155,6 +155,7 @@ class EntryController extends Controller
             'running' => $e->running,
             'hours' => (float) $e->hours,
             'note' => $e->note,
+            'note_from_submission' => (bool) $e->note_from_submission,
             'billable' => $e->billable,
             'hour_type' => $e->hour_type ?: 'reg',
         ];

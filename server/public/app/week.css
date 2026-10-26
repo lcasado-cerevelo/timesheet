@@ -78,3 +78,21 @@
 .wkpop .poperr{color:var(--danger);font-size:13px;font-weight:600}.wkpop .poperr[hidden]{display:none}
 .wkint .wkk{display:inline-block;min-width:64px;margin-right:8px;font-size:11px;letter-spacing:.05em;text-transform:uppercase}
 .wkint.in{margin:8px 0}
+
+/* ===== notes per line and day, and sending a week in parts ===== */
+.wkcw{position:relative}
+.wkcw .inp{padding-right:20px}
+.nbtn{position:absolute;right:2px;bottom:2px;width:20px;height:20px;border:0;background:transparent;color:var(--muted);border-radius:4px;display:grid;place-items:center;cursor:pointer;padding:0;opacity:.5}
+.nbtn:hover,.nbtn:focus-visible{opacity:1;color:var(--primary)}
+.nbtn.on{opacity:1;color:var(--primary);background:var(--tint)}
+.wkc.lk{background:#F1F3F5;color:var(--muted)}
+.th.sel{background:var(--tint);border-radius:6px}
+.dtail{display:flex;flex-direction:column;align-items:center;gap:2px;margin-top:2px;min-height:22px}
+.dstat{font-size:10px;letter-spacing:.02em;text-transform:none;font-weight:600;padding:1px 6px;border-radius:999px;background:#E8ECEF;color:var(--muted)}
+.dstat.blue{background:#E1EEF8;color:#085A88}.dstat.green{background:#DDF1E5;color:#14603B}.dstat.red{background:#FBE3E0;color:#9B1C14}
+.thmark{width:20px;height:20px;border-radius:50%;border:2px solid var(--field);background:#fff;cursor:pointer;padding:0;margin:0}
+.thmark:hover,.thmark:focus-visible{border-color:var(--primary)}
+.thmark.on{border-color:var(--primary);background:var(--primary);box-shadow:inset 0 0 0 3px #fff}
+.wkparts{display:flex;flex-direction:column;gap:8px}
+.wkpart{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center}
+.wksnote{width:100%;resize:vertical}

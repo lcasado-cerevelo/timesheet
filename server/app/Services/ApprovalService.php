@@ -72,7 +72,7 @@ class ApprovalService
         ])->values()->all();
         return [
             'worker' => $sheet->user->name,
-            'week_ending' => $sheet->week_ending->toDateString(),
+            'week_ending' => $sheet->weekLabel(),
             'total_hours' => round((float) $entries->sum('hours'), 2),
             'projects' => $byPart,
             'late' => (bool) $sheet->late,
@@ -92,7 +92,7 @@ class ApprovalService
         $company = $sheet->company;
         // El aprobador es una persona externa sin cuenta: recibe el correo en el idioma de la compañía.
         Lang::with($company->lang(), function () use ($sheet, $kind, $plain, $company, $approver, $entries) {
-            $p = ['name' => $sheet->user->name, 'week' => $sheet->week_ending->toDateString()];
+            $p = ['name' => $sheet->user->name, 'week' => $sheet->weekLabel()];
             $subject = match ($kind) {
                 'changed' => __('Esta hoja cambió: :name, semana :week', $p),
                 'resubmitted' => __('Hoja corregida para aprobar: :name, semana :week', $p),
@@ -131,7 +131,7 @@ class ApprovalService
         // La persona que trabaja recibe el correo en su propio idioma.
         $lang = $sheet->user->lang();
         Lang::with($lang, function () use ($sheet, $decision, $lang, $by) {
-            $week = $sheet->week_ending->toDateString();
+            $week = $sheet->weekLabel();
             Mail::to($sheet->user->email, $sheet->user->name)->locale($lang)->send(new BrandedMail(
                 $sheet->company,
                 $decision === 'approved'

@@ -113,3 +113,23 @@ Pendiente: aprobación interna en el móvil (no pedida), ver el móvil en teléf
 - Una hoja puede tener varios aprobadores externos (servicios de distintos clientes): cada uno recibe solo sus horas; la hoja se completa cuando todas las partes estén aprobadas.
 - Por omisión (sin respuesta de Luis): el "aprobador" de la persona deja de mandar y queda solo como respaldo de servicios viejos sin configurar; un aprobador sin clientes no sale en ningún servicio; con varios externos basta uno.
 - Selección múltiple (Luis, 2026-10-26): las listas pueden ser grandes, así que NADA de casillas sueltas. Un solo componente reutilizable: casilla de búsqueda que filtra mientras escribes, lista desplegable con scroll (máx. unas 8 filas visibles) y los escogidos como fichas con ✕ arriba. Se usa en: supervisores internos y aprobadores externos del servicio, clientes de un aprobador, personas asignadas y proyectos asignados. Lo de editar en ventana emergente se queda como está.
+
+## Envío por partes y notas (decidido con Luis el 2026-10-26; CONSTRUIDO y probado, sin subir a git)
+- `week_ending` se queda como la fecha de la semana. Una semana puede tener varias hojas (parte 1, 2, 3); cada una se aprueba, se devuelve y se factura aparte.
+- No se guardan "desde/hasta": se calculan de la línea más vieja y la más nueva de cada hoja (servidor; web y móvil leen eso).
+- Se envían días corridos (incluye fin de semana; los días sin horas entran solos con 0). Los días enviados quedan bloqueados.
+- Opción de la compañía "Permitir enviar por partes", apagada por defecto.
+- Pantalla: marca "enviar hasta aquí" en el encabezado de cada día (marca los anteriores solos) y un botón con el resumen ("Enviar lun–mié · 3 días · 24 h"). Días enviados con candado y estado.
+- Notas: ícono de nota por celda (servicio + día; usa time_entries.note) y una nota del ENVÍO. Al enviar se copia a las celdas sin nota (marcadas "viene del envío"). Casilla "Exigir nota" por servicio, apagada por defecto.
+- CASO A RESOLVER (Luis): se enviaron lun, mar y mié por separado; el jueves el aprobador devuelve el martes. Hay que poder reenviar el martes (misma hoja, versión+1) y enviar el jueves (hoja nueva), aunque el miércoles (ya enviado) quede en medio.
+  Solución propuesta: "enviar hasta aquí" toma los días ABIERTOS (borrador o devueltos) hasta ese día, en orden, y crea una hoja por cada bloque seguido de días abiertos; un día devuelto se reenvía en su propia hoja. No se puede enviar un día si queda antes un día abierto sin enviar.
+- Aprobación por día en sí queda cubierta por esto (cada parte es una hoja). Parcial por servicio y estado por línea: descartados por ahora.
+- Accountisi por IP: descartado (IP del hosting compartido cambia). Posible proxy con IP fija si más adelante se necesita.
+
+### Cómo quedó (2026-10-26)
+- Servidor: migración 2026_11_02 (timesheets.part/period_start/period_end/submission_note, time_entries.note_from_submission, services.require_note, regla partial_submission). El borrador no tiene número de parte (null) y lo toma al enviarse, así las partes salen 1, 2, 3 sin huecos. Se guardan period_start/period_end porque los días sin horas también pertenecen a una hoja.
+- `POST /api/sheets/submit-days {through, note}`; `GET /api/sheets/week` ahora trae `parts`, `days` (estado de cada día) y las líneas de todas las partes. Una hoja en borrador de una semana que ya tiene partes envía los bloques abiertos hasta hoy.
+- Web: ícono de nota por celda, nota del envío, "enviar hasta aquí" en el encabezado de cada día, tarjeta "Enviada por partes" (con el motivo de una devolución), regla "Permitir enviar la semana por partes" y casilla "Exigir una nota en cada línea" en el servicio.
+- Pruebas: PartialSubmissionTest (13, incluye el caso del martes devuelto) y CompanyBaseUrlTest.
+- LÍMITE CONOCIDO (móvil): la app móvil no conoce las partes. Si una línea cae en un día ya aprobado, el servidor la rechaza (423) y el móvil marca toda la semana como bloqueada hasta reinstalar/limpiar. Hacerlo por día en el móvil queda pendiente.
+- Pendiente: mostrar la nota por línea en los PDF/Excel de la factura si Luis lo quiere distinto; revisar el correo al aprobador con "parte N" en un cliente real.

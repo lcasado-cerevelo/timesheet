@@ -346,8 +346,8 @@ async function approverView() {
   let detail = '';
   if (sel) {
     const d = await api('/approver/sheets/' + sel.id);
-    const start = sel.week_starting || d.week_starting;
-    const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
+    const start = d.period_starting || sel.period_starting || sel.week_starting || d.week_starting;
+    const days = Array.from({ length: wkSpan(start, d.period_ending || sel.period_ending) }, (_, i) => addDays(start, i));
     const svcs = new Map(); for (const e of d.entries || []) { if (!svcs.has(e.project_id)) svcs.set(e.project_id, new Set()); svcs.get(e.project_id).add(e.service_id); }
     const lines = new Map();
     for (const e of d.entries || []) { const multi = (svcs.get(e.project_id)?.size || 0) > 1; const k = e.project_id + '|' + (multi ? e.service_id : ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi ? e.service : null, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
@@ -364,7 +364,7 @@ async function approverView() {
       <p class="row" style="margin-bottom:0"><button class="btn" data-act="apr-approve" data-id="${sel.id}" data-v="${sel.version}">Approve</button>
       <button class="btn danger" data-act="apr-return" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></p>`
       : `<p class="muted" style="margin:10px 0 0">${sel.decided_at ? `Decided on ${esc(String(sel.decided_at).slice(0, 10))}.` : ''}</p>`;
-    detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}</span></div><span class="spacer"></span>${pill(label, color)}${sel.late ? ' ' + pill('Late', 'red') : ''}</div>
+    detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}${sel.is_part ? ` · ${T('Part')} ${sel.part} (${nice(sel.period_starting)}${sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)})` : ''}</span></div><span class="spacer"></span>${pill(label, color)}${sel.late ? ' ' + pill('Late', 'red') : ''}</div>
       ${wkParts(d.internal || d.external ? d : sel, 'in')}${(sel.warnings || []).map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${ret}
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
       ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
@@ -398,7 +398,7 @@ async function weeksView() {
   const mine = await api('/sheets');
   const cur = weekEnd(today());
   const back = Number(S.me.rules?.weeks_back ?? 8);
-  const byEnd = Object.fromEntries(mine.map(s => [s.week_ending, s]));
+  const byEnd = weekAgg(mine);
   const first = S.me.member_since ? weekEnd(S.me.member_since) : null;
   const ends = new Set([...Array.from({ length: back + 1 }, (_, i) => addDays(cur, -7 * i)).filter(w => !first || w >= first), ...mine.map(s => s.week_ending)]);
   const rows = [...ends].sort().reverse().map(end => {
@@ -443,11 +443,11 @@ async function approvalsView() {
   let detail = '';
   if (sel) {
     const d = await api('/sheets/' + sel.id);
-    const days = Array.from({ length: 7 }, (_, i) => addDays(d.week_starting, i));
+    const days = Array.from({ length: wkSpan(d.period_starting || d.week_starting, d.period_ending) }, (_, i) => addDays(d.period_starting || d.week_starting, i));
     const lines = new Map();
     const multi = id => (S.cache.allProjects?.find(p => p.id === id)?.services || []).length > 1;
     for (const e of d.entries) { const k = e.project_id + '|' + (multi(e.project_id) ? e.service_id : ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi(e.project_id) ? e.service : null, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
-    detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}</span></div><span class="spacer"></span><span class="badge submitted">Pending</span>${sel.late ? ' <span class="badge returned">Late</span>' : ''}</div>
+    detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}${sel.is_part ? ` · ${T('Part')} ${sel.part} (${nice(sel.period_starting)}${sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)})` : ''}</span></div><span class="spacer"></span><span class="badge submitted">Pending</span>${sel.late ? ' <span class="badge returned">Late</span>' : ''}</div>
       ${sel.warnings.map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
       ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
@@ -616,7 +616,8 @@ async function rulesView() {
     ${row('Deadline time', 'Applies on the deadline day.', `<input name="deadline_time" type="time" value="${esc(r.deadline_time)}">`)}
     ${row('Hour increment', 'Applies to every hour cell.', `<select name="increment">${[0.25, 0.5, 1, 0.1].map(v => `<option ${Number(r.increment) === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`)}
     ${row('Maximum hours per day', 'Days above this show a validation warning.', `<input name="max_day_hours" type="number" step="0.5" value="${r.max_day_hours}">`)}
-    ${row('Flag late weeks to the approver', 'Shows a Late badge in the approval queue.', `<input type="checkbox" name="flag_late" ${r.flag_late ? 'checked' : ''}>`, 'chkrow')}</div>
+    ${row('Flag late weeks to the approver', 'Shows a Late badge in the approval queue.', `<input type="checkbox" name="flag_late" ${r.flag_late ? 'checked' : ''}>`, 'chkrow')}
+    ${row('Allow sending a week in parts', 'People can send the days that are done (in order, with no day skipped) before the week ends. Each part is its own timesheet: it is approved, returned and invoiced apart.', `<input type="checkbox" name="partial_submission" ${r.partial_submission ? 'checked' : ''}>`, 'chkrow')}</div>
     <div class="card"><h2>Approvals</h2><p class="muted" style="margin-top:-6px">Who signs off and how reminders work.</p>
     ${row('Days without a decision before the first reminder', 'The approver gets an email.', `<input name="approval_remind_days" type="number" min="1" value="${r.approval_remind_days}">`)}
     ${row('Repeat the reminder every (days)', 'Until a decision is made.', `<input name="remind_every_days" type="number" min="1" value="${r.remind_every_days}">`)}
@@ -887,9 +888,9 @@ const forms = {
     await api('/brand', { method: 'POST', body: fd }); S.me = null; flash('Branding saved.'); render();
   },
   async rules(f) {
-    const o = formObj(f); const { name, invoice_prefix, flag_late, locale, domain } = o; delete o.name; delete o.invoice_prefix; delete o.locale; delete o.domain;
+    const o = formObj(f); const { name, invoice_prefix, flag_late, locale, domain, partial_submission } = o; delete o.partial_submission; delete o.name; delete o.invoice_prefix; delete o.locale; delete o.domain;
     const rules = {}; for (const [k, v] of Object.entries(o)) rules[k] = v;
-    rules.flag_late = !!flag_late; rules.increment = Number(rules.increment); rules.remember_days = Number(rules.remember_days ?? 30);
+    rules.flag_late = !!flag_late; rules.partial_submission = !!partial_submission; rules.increment = Number(rules.increment); rules.remember_days = Number(rules.remember_days ?? 30);
     await api('/company', { method: 'PUT', body: { name, invoice_prefix, locale, domain: domain ? String(domain).trim().toLowerCase() : null, rules } }); S.me = null; flash('Rules saved.'); render();
   },
   async accountisi(f) {
@@ -970,7 +971,7 @@ async function reviewScreen() {
   let detail = '<div class="card r"><div class="empty">No timesheet selected.</div></div>';
   if (sel) {
     let d = null; try { d = await api((ap ? '/approver/sheets/' : inn ? '/internal/sheets/' : '/sheets/') + sel.id); } catch (e) { if (e.message === 'Session expired') throw e; }
-    const days = Array.from({ length: 7 }, (_, i) => addDays(addDays(sel.week_ending, -6), i));
+    const days = Array.from({ length: wkSpan(d?.period_starting || addDays(sel.week_ending, -6), d?.period_ending || sel.week_ending) }, (_, i) => addDays(d?.period_starting || addDays(sel.week_ending, -6), i));
     const lines = new Map();
     for (const e of (d?.entries || [])) { const k = e.project_id + '|' + (e.service_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: e.service, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
     const open = sel.status === 'submitted' || sel.status === 'pending';
@@ -1283,9 +1284,10 @@ async function openServiceModal(pid, sid) {
       <div data-sv-ext><label>External approvers</label>${msel({ name: 'external_approver_ids', ef: 'external_approver_ids', label: 'External approvers', placeholder: 'Search by name', empty: 'This client has no approvers yet.', selected: s?.external_approver_ids, options: (opt.external || []).map(u => ({ id: u.id, label: u.name, sub: u.email })) })}<small class="help" data-sv-exthelp></small>
         <div class="msg err" data-sv-warn role="alert" hidden style="margin:8px 0 0"></div></div>
       <div><label>Accountisi item id</label><input name="accountisi_item_id" maxlength="40" value="${esc(s?.accountisi_item_id)}"></div>
-      <label class="chk"><input type="checkbox" name="billable" ${s ? (s.billable ? 'checked' : '') : 'checked'}> Billable</label>`,
+      <label class="chk"><input type="checkbox" name="billable" ${s ? (s.billable ? 'checked' : '') : 'checked'}> Billable</label>
+      <label class="chk"><input type="checkbox" name="require_note" ${s?.require_note ? 'checked' : ''}> Require a note on every line</label>`,
     async onSubmit(mm) {
-      const o = formObj(mm.form); o.billable = !!o.billable; const need = svcNeeds(mm);
+      const o = formObj(mm.form); o.billable = !!o.billable; o.require_note = !!o.require_note; const need = svcNeeds(mm);
       o.internal_approver_ids = need.int ? (o.internal_approver_ids || []) : []; o.external_approver_ids = need.ext ? (o.external_approver_ids || []) : [];
       try {
         if (need.int && !o.internal_approver_ids.length) throw needErr('internal_approver_ids', 'Choose at least one internal approver.');
@@ -1333,7 +1335,20 @@ Object.assign(actions, {
 });
 /* ================= Week screen (WEB-HOJA): editable weekly grid, clock icon and toasts ================= */
 const HOUR_TYPES = [['reg', 'REG'], ['ot', 'OT'], ['hol', 'HOL'], ['sick', 'Sick'], ['vac', 'VAC'], ['nb', 'NB']];
-const WK = () => ((S.cache.wkst ??= {})[S.weekDate] ??= { extra: [], edits: {}, pend: {}, n: 0, cert: false });
+/* A week can have several sheets (parts). For the lists by week: hours added up and the status that needs attention first. */
+/* number of days from a to b (7 when there is no period: the whole week) */
+const wkSpan = (a, b) => (b ? Math.max(1, Math.round((parse(b) - parse(a)) / 86400000) + 1) : 7);
+const weekAgg = list => {
+  const rank = { returned: 4, submitted: 3, draft: 2, approved: 1 }; const o = {};
+  for (const x of list) {
+    if (x.status === 'draft' && !Number(x.total_hours) && list.some(y => y !== x && y.week_ending === x.week_ending)) continue;   // an empty working draft next to real parts
+    const a = o[x.week_ending] ??= { ...x, total_hours: 0, parts: 0 };
+    a.total_hours += Number(x.total_hours || 0); a.parts++;
+    if ((rank[x.status] || 0) > (rank[a.status] || 0)) a.status = x.status;
+  }
+  return o;
+};
+const WK = () => ((S.cache.wkst ??= {})[S.weekDate] ??= { extra: [], edits: {}, pend: {}, pnote: {}, n: 0, cert: false, through: null, snote: null });
 const wkSvcs = p => (p?.services || []).filter(s => s.active);
 const wkMode = (p, sid) => { const s = (p?.services || []).find(x => x.id === Number(sid)); return (s && s.mode) || (S.me.capture_mode === 'from_to' ? 'from_to' : 'full_day'); };
 /* "Submitted · waiting for Ana" (internal stage) or "Submitted · waiting for client approval" (external stage). */
@@ -1383,6 +1398,37 @@ function toast(text, kind = 'ok') {
   box.appendChild(t); run();
 }
 
+const wkNote = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>`;
+const DAY_STATE = { submitted: ['Sent', 'blue'], approved: ['Approved', 'green'], returned: ['Returned', 'red'] };
+/* header of one day: name and date; with partial sending on, its state (sent / approved / returned) or the "send through here" mark */
+function wkDayHead(d, info, PART, st) {
+  const base = `${dow(parse(d).getDay())}<br><span class="dd">${parse(d).toLocaleDateString(LOC(), { month: 'short', day: 'numeric' })}</span>`;
+  if (!PART) return `<div class="th c">${base}</div>`;
+  const state = info && !info.open ? DAY_STATE[info.status] : null;
+  const sendable = !state || info.status === 'returned';   // open days and returned days can go; sent / approved days are already in
+  const sel = st.through && sendable && d <= st.through;
+  let tail = '';
+  if (state && info.status !== 'returned') tail = `<span class="dstat ${state[1]}">${T(state[0])}</span>`;
+  else {
+    if (state) tail = `<span class="dstat ${state[1]}">${T(state[0])}</span>`;
+    if (d <= today()) tail += `<button type="button" class="thmark ${st.through === d ? 'on' : ''}" data-act="wk-through" data-d="${d}" aria-pressed="${st.through === d}" title="${esc(T('Send through this day'))}" aria-label="${esc(T('Send through this day'))}"></button>`;
+  }
+  return `<div class="th c ${sel ? 'sel' : ''}">${base}<div class="dtail">${tail}</div></div>`;
+}
+/* what "send through here" will send: the open (and returned) days up to the marked one, with their hours */
+function wkThrough(sheet, days, tot, through) {
+  const sel = (sheet.days || []).filter(x => (x.open || x.status === 'returned') && x.date <= through);
+  if (!sel.length) return null;
+  const h = sel.reduce((a, x) => a + (tot.day[days.indexOf(x.date)] || 0), 0);
+  const a = sel[0].date, b = sel[sel.length - 1].date;
+  return { label: `${dow(parse(a).getDay())}${a === b ? '' : '–' + dow(parse(b).getDay())} · ${sel.length} ${T(sel.length === 1 ? 'day' : 'days')} · ${h1(h)} h` };
+}
+/* the sheets (parts) of this week, with the reason when one came back */
+function wkPeriods(sheet) {
+  const ps = (sheet.parts || []).filter(p => p.is_part); if (!ps.length) return '';
+  const color = { draft: 'gray', submitted: 'blue', approved: 'green', returned: 'red' };
+  return `<div class="card wkparts"><div class="lbl">${T('Sent in parts')}</div>${ps.map(p => `<div class="wkpart"><span class="mono">${T('Part')} ${p.part}</span><span>${nice(p.period_starting)}${p.period_starting === p.period_ending ? '' : ' – ' + nice(p.period_ending)}</span><span class="mono">${h1(p.total_hours)} h</span><span class="bd ${color[p.status] || 'gray'}">${T(STATUS[p.status] || p.status)}</span></div>${p.status === 'returned' && p.return_comment ? `<div class="msg err" role="alert"><b>${T('Returned for correction:')}</b> ${esc(p.return_comment)}</div>` : ''}`).join('')}</div>`;
+}
 async function weekView() {
   wkPopClose(); wkModalClose();
   const end = weekEnd(S.weekDate), start = addDays(end, -6), cur = weekEnd(today());
@@ -1393,6 +1439,7 @@ async function weekView() {
   const R = S.me.rules || {}; const inc = Number(R.increment) || 0.25; const maxDay = Number(R.max_day_hours) || 24;
   const emp = (sheet.worker?.worker_type || S.me.worker_type) === 'employee';
   const locked = !!sheet.locked; const st = WK();
+  const PART = !!sheet.partial_submission; const dInfo = Object.fromEntries((sheet.days || []).map(x => [x.date, x])); const dayLocked = d => !!dInfo[d]?.locked;
   S.cache.wkRunning = recent.entries.find(e => e.running) || ents.entries.find(e => e.running) || null;
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const list = ents.entries.filter(e => !e.running);
@@ -1407,7 +1454,7 @@ async function weekView() {
   if (!locked && !map.size && !st.extra.length) { const p = projects.find(x => x.active && wkSvcs(x).length); if (p) st.extra.push({ lid: 'n' + (++st.n), project_id: p.id, service_id: wkSvcs(p)[0].id, hour_type: 'reg' }); }
   for (const x of st.extra) if (!map.has(x.lid)) map.set(x.lid, { ...x, ents: [] });
   const lines = [...map.values()].map(l => ({ ...l, ...(st.edits[l.lid] || {}), ents: l.ents }));
-  S.cache.wkLines = lines; S.cache.wkCtx = { days, emp, inc, maxDay, locked };
+  S.cache.wkLines = lines; S.cache.wkCtx = { days, emp, inc, maxDay, locked, dayLocked };
 
   // A. title, deadline, status, clock icon
   const dl = R.deadline_dow != null ? ` · <span>Deadline: ${esc(new Date(2024, 0, 7 + Number(R.deadline_dow)).toLocaleDateString(LOC(), { weekday: 'long' }))} ${esc(R.deadline_time || '')} after the week ends</span>` : '';
@@ -1418,7 +1465,7 @@ async function weekView() {
     <span class="bd ${pillColor}">${stageLabel(sheet)}</span>${sheet.late ? '<span class="bd red">Late</span>' : ''}</div></div>`;
 
   // B. week selector
-  const stateOf = Object.fromEntries(mine.map(s => [s.week_ending, STATUS[s.status] || s.status]));
+  const stateOf = Object.fromEntries(Object.values(weekAgg(mine)).map(s => [s.week_ending, STATUS[s.status] || s.status]));
   const weeks = Array.from({ length: 12 }, (_, i) => addDays(cur, -7 * i));
   if (!weeks.includes(end)) weeks.push(end);
   weeks.sort().reverse();
@@ -1429,7 +1476,7 @@ async function weekView() {
     <button class="btn ghost" data-act="wk-now" ${end === cur ? 'disabled' : ''}>Current week</button></div>`;
 
   // C. past weeks with no timesheet (or no hours), oldest first
-  const byEnd = Object.fromEntries(mine.map(s => [s.week_ending, s])); const back = Number(R.weeks_back ?? 8); const miss = [];
+  const byEnd = weekAgg(mine); const back = Number(R.weeks_back ?? 8); const miss = [];
   const first = S.me.member_since ? weekEnd(S.me.member_since) : null;   // weeks before the account existed are never reclaimed
   for (let i = back; i >= 1; i--) { const w = addDays(cur, -7 * i); if (first && w < first) continue; const s = byEnd[w]; if (!s || !Number(s.total_hours)) miss.push(w); }
   const alert = miss.length ? `<div class="wkalert" role="status"><div class="t">${miss.length === 1 ? 'You have 1 past week with no timesheet. Start with the oldest:' : `You have ${miss.length} past weeks with no timesheet. Start with the oldest:`}</div>
@@ -1455,18 +1502,22 @@ async function weekView() {
     const cells = days.map((d, di) => {
       const es = ln.ents.filter(e => e.work_date === d); const sum = es.reduce((a, e) => a + Number(e.hours), 0); const key = ln.lid + '|' + d;
       const aria = `${dow(parse(d).getDay())} hours, line ${li + 1}`;
-      if (mode === 'from_to' || es.length > 1) { lt += sum; tot.day[di] += sum; return `<input class="inp num wkc ro" readonly data-di="${di}" data-act="cell-pop" data-lid="${esc(ln.lid)}" data-d="${d}" title="Details" aria-label="${aria}" value="${sum ? h1(sum) : ''}">`; }
+      const dl = locked || dayLocked(d);
+      const hasNote = Object.prototype.hasOwnProperty.call(st.pnote, key) ? !!st.pnote[key] : es.some(e => e.note);
+      const pendH = Object.prototype.hasOwnProperty.call(st.pend, key) ? parseFloat(st.pend[key]) || 0 : 0;
+      const noteBtn = (es.length || pendH > 0) ? `<button type="button" class="nbtn ${hasNote ? 'on' : ''}" data-act="${es.length > 1 ? 'cell-pop' : 'cell-note'}" data-lid="${esc(ln.lid)}" data-d="${d}" title="${hasNote ? 'Note' : 'Add a note'}" aria-label="${hasNote ? 'Note' : 'Add a note'}">${wkNote}</button>` : '';
+      if (mode === 'from_to' || es.length > 1) { lt += sum; tot.day[di] += sum; return `<div class="wkcw"><input class="inp num wkc ro ${dl ? 'lk' : ''}" readonly data-di="${di}" data-act="cell-pop" data-lid="${esc(ln.lid)}" data-d="${d}" title="Details" aria-label="${aria}" value="${sum ? h1(sum) : ''}">${noteBtn}</div>`; }
       const orig = es[0] ? Number(es[0].hours) : ''; const dirty = Object.prototype.hasOwnProperty.call(st.pend, key); const v = dirty ? st.pend[key] : orig;
       const n = parseFloat(v) || 0; lt += n; tot.day[di] += n;
       const badc = dirty && !wkMulti(v, inc);   // typed but not a multiple of the increment: red, and Save draft refuses
-      return `<input class="inp num wkc ${dirty ? 'dirty' : ''} ${badc ? 'bad' : ''}" type="number" min="0" max="${maxDay}" step="${inc}" data-di="${di}" data-cell="${esc(key)}" data-orig="${orig}" aria-label="${aria}" ${badc ? `aria-invalid="true" title="${esc(wkIncMsg(inc))}"` : ''} value="${esc(v)}" ${locked ? 'readonly' : ''}>`;
+      return `<div class="wkcw"><input class="inp num wkc ${dirty ? 'dirty' : ''} ${badc ? 'bad' : ''} ${dl ? 'lk' : ''}" type="number" min="0" max="${maxDay}" step="${inc}" data-di="${di}" data-cell="${esc(key)}" data-orig="${orig}" aria-label="${aria}" ${badc ? `aria-invalid="true" title="${esc(wkIncMsg(inc))}"` : ''} value="${esc(v)}" ${dl ? 'readonly' : ''}>${noteBtn}</div>`;
     }).join('');
     tot.all += lt;
     return `<div class="wkrow wkg ${emp ? 'emp' : ''}"><div class="wkproj"><select data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="project_id" aria-label="Project" ${locked ? 'disabled' : ''}>${pOpts}</select>${sSel}</div>${tSel}${cells}
       <div class="mono wktot">${h1(lt)}</div><button class="icon" type="button" data-act="wk-del" data-lid="${esc(ln.lid)}" aria-label="Remove line" ${locked ? 'disabled' : ''}>${wkClose}</button></div>`;
   }).join('');
   const grid = `<div class="card wkcard"><div class="wkscroll"><div class="wkmin">
-    <div class="wkg wkh ${emp ? 'emp' : ''}"><div class="th">Project</div>${emp ? '<div class="th">Code</div>' : ''}${days.map(d => `<div class="th c">${dow(parse(d).getDay())}<br><span class="dd">${parse(d).toLocaleDateString(LOC(), { month: 'short', day: 'numeric' })}</span></div>`).join('')}<div class="th r">Total</div><div></div></div>
+    <div class="wkg wkh ${emp ? 'emp' : ''}"><div class="th">Project</div>${emp ? '<div class="th">Code</div>' : ''}${days.map(d => wkDayHead(d, dInfo[d], PART, st)).join('')}<div class="th r">Total</div><div></div></div>
     ${rows}
     <div class="wkg wkd ${emp ? 'emp' : ''}"><div class="dl">Daily total</div>${emp ? '<div></div>' : ''}${days.map((d, di) => `<div class="mono wkdt" data-di="${di}">${h1(tot.day[di])}</div>`).join('')}<div class="mono wkgt">${h1(tot.all)}</div><div></div></div></div></div>
     ${locked ? '' : '<div class="wkbtns"><button class="btn ghost" type="button" data-act="wk-add">+ Add project line</button><button class="btn ghost" type="button" data-act="wk-copy">Copy lines from previous week</button></div>'}</div>`;
@@ -1479,14 +1530,18 @@ async function weekView() {
     ? `<div class="card wktotals"><div><div class="lbl">Billable hours</div><div class="mono big">${h1(bill)}</div></div><div><div class="lbl">Non-billable hours</div><div class="mono big">${h1(non)}</div></div><div><div class="lbl">Employee total</div><div class="mono big acc wktotbig">${h1(total)}</div></div></div>`
     : `<div class="card wktotals"><div><div class="lbl">Total hours</div><div class="mono big acc wktotbig">${h1(total)}</div></div><p class="note">Your invoice is generated from approved weeks. You never retype hours.</p></div>`;
   const canSubmit = ['draft', 'returned'].includes(sheet.status);
+  const needNote = lines.some(l => (projects.find(x => x.id === Number(l.project_id))?.services || []).some(v => v.id === Number(l.service_id) && v.require_note));
+  const noteBox = `<div><label for="wk-snote">Submission note</label><textarea id="wk-snote" class="wksnote" rows="2" maxlength="1000" data-snote placeholder="${esc(T('Applied to every line that has no note'))}">${esc(st.snote ?? sheet.submission_note ?? '')}</textarea>${needNote ? `<small class="help">${T('Some services require a note on every line: write one in each line or here.')}</small>` : ''}</div>`;
+  const through = PART && st.through ? wkThrough(sheet, days, tot, st.through) : null;
+  const sendBtn = PART ? `<button class="btn pri" type="button" data-act="wk-send-days" ${through && st.cert ? '' : 'disabled'} title="${esc(T('Check "send through here" in a day header first.'))}">${through ? esc(T('Send') + ' ' + through.label) : esc(T('Send through the marked day'))}</button>` : '';
   const right = locked ? `<div class="card wkcert"><p class="muted" style="margin:0">Approved and locked.</p></div>`
-    : `<div class="card wkcert"><label class="cert"><input type="checkbox" class="chk" data-act-change="wk-cert" ${st.cert ? 'checked' : ''}><span>I certify these hours are accurate. Submitting counts as my electronic signature.</span></label>
-      <div class="wkbtns0"><button class="btn ghost" type="button" data-act="wk-save">Save draft</button>
+    : `<div class="card wkcert">${noteBox}<label class="cert"><input type="checkbox" class="chk" data-act-change="wk-cert" ${st.cert ? 'checked' : ''}><span>I certify these hours are accurate. Submitting counts as my electronic signature.</span></label>
+      <div class="wkbtns0"><button class="btn ghost" type="button" data-act="wk-save">Save draft</button>${sendBtn}
       ${canSubmit ? `<button class="btn pri" type="button" data-act="wk-submit" ${st.cert && tot.all > 0 ? '' : 'disabled'}>${sheet.status === 'returned' ? 'Corrected: submit again' : 'Submit for approval'}</button>` : ''}</div>
       ${sheet.status === 'submitted' ? '<p class="muted" style="margin:0">Waiting for a decision. If you change it, the approver gets a notice that it changed.</p>' : ''}</div>`;
   const warn = (sheet.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('');
   const ret = sheet.status === 'returned' && sheet.return_comment ? `<div class="msg err" role="alert"><b>Returned for correction:</b> ${esc(sheet.return_comment)}${sheet.return_by ? ` <span class="muted">${T('Returned by')} ${esc(sheet.return_by.name || sheet.return_by)}</span>` : ''}</div>` : '';
-  return `<div class="wk">${head}${ret}${warn}${nav}${alert}${facts}${wkParts(sheet)}${grid}<div class="wkbottom">${left}${right}</div></div>`;
+  return `<div class="wk">${head}${ret}${warn}${nav}${alert}${facts}${wkPeriods(sheet)}${wkParts(sheet)}${grid}<div class="wkbottom">${left}${right}</div></div>`;
 }
 
 /* live totals while typing */
@@ -1499,6 +1554,7 @@ function wkRecalc() {
   const g = root.querySelector('.wkgt'); if (g) g.textContent = h1(all);
   const big = root.querySelector('.wktotbig'); if (big) big.textContent = h1(all);
   const sub = root.querySelector('[data-act="wk-submit"]'); if (sub) sub.disabled = !(WK().cert && all > 0);
+  const sd = root.querySelector('[data-act="wk-send-days"]'); if (sd) sd.disabled = !(WK().cert && WK().through);
 }
 const wkIdKey = ln => [ln.project_id, ln.service_id ?? '', ln.hour_type].join('|');
 /* Hour increment (rules.increment): applied when typing, never rounded in silence. 0.25 -> 15 min, 0.5 -> 30, 1 -> 60, 0.1 -> 6, 0.05 -> 3, 0.01 -> no alignment. */
@@ -1523,6 +1579,7 @@ function wkBody(e, ln, over = {}) {
   const b = { work_date: e.work_date, project_id: Number(ln.project_id), note: e.note || null };
   if (ln.service_id) b.service_id = Number(ln.service_id);
   if (S.cache.wkCtx.emp) b.hour_type = ln.hour_type;
+  if (over.note !== undefined) b.note = over.note;
   if (over.hours !== undefined) b.hours = over.hours; else if (e.start_time) { b.start_time = e.start_time; b.end_time = e.end_time; } else b.hours = e.hours;
   return b;
 }
@@ -1539,11 +1596,11 @@ async function wkSave() {
         if (!Number.isFinite(n) || n < 0) throw new Error('Hours must be a number, zero or more.');
         if (n > C.maxDay) throw new Error('The most hours you can enter for one day is ' + C.maxDay + '.');
         if (n > 0 && d > now) throw new Error('You cannot enter hours on future dates.');
-        const e = es[0];
+        const e = es[0]; const nt = Object.prototype.hasOwnProperty.call(st.pnote, key) ? { note: st.pnote[key] || null } : {};
         if (e && n === 0) del.push(e.id);
-        else if (e) { if (n !== Number(e.hours) || changed) put.push([e.id, wkBody(e, ln, { hours: n })]); }
-        else if (n > 0) post.push(wkBody({ work_date: d, note: null }, ln, { hours: n }));
-      } else if (changed) for (const e of es) put.push([e.id, wkBody(e, ln)]);
+        else if (e) { if (n !== Number(e.hours) || changed || 'note' in nt) put.push([e.id, wkBody(e, ln, { hours: n, ...nt })]); }
+        else if (n > 0) post.push(wkBody({ work_date: d, note: null }, ln, { hours: n, ...nt }));
+      } else if (changed || Object.prototype.hasOwnProperty.call(st.pnote, key)) { const nt = Object.prototype.hasOwnProperty.call(st.pnote, key) ? { note: st.pnote[key] || null } : {}; for (const e of es) put.push([e.id, wkBody(e, ln, nt)]); }
     }
   }
   for (const id of del) await api('/entries/' + id, { method: 'DELETE' });
@@ -1586,8 +1643,9 @@ function wkPop(lid, d, anchor, editId) {
   const es = ln.ents.filter(e => e.work_date === d); const ed = editId ? es.find(e => e.id === editId) : null;
   const svc = (p?.services || []).find(s => s.id === Number(ln.service_id));
   const items = es.map(e => `<li><span class="mono">${e.start_time ? esc(e.start_time) + '–' + esc(e.end_time) : 'Full day'}</span><span class="mono">${h1(e.hours)} h</span><span class="n">${esc(e.note || '')}</span>
-    ${C.locked ? '' : `<button type="button" class="btn ghost sm" data-act="pop-edit" data-id="${e.id}">Edit</button><button type="button" class="icon" data-act="pop-del" data-id="${e.id}" aria-label="Delete this entry">${wkClose}</button>`}</li>`).join('');
-  const form = C.locked ? '' : `<form data-form="wk-pop"><input type="hidden" name="lid" value="${esc(lid)}"><input type="hidden" name="d" value="${d}"><input type="hidden" name="id" value="${ed ? ed.id : ''}">
+    ${C.locked || (C.dayLocked && C.dayLocked(d)) ? '' : `<button type="button" class="btn ghost sm" data-act="pop-edit" data-id="${e.id}">Edit</button><button type="button" class="icon" data-act="pop-del" data-id="${e.id}" aria-label="Delete this entry">${wkClose}</button>`}</li>`).join('');
+  const dl = C.locked || (C.dayLocked && C.dayLocked(d));
+  const form = dl ? '' : `<form data-form="wk-pop"><input type="hidden" name="lid" value="${esc(lid)}"><input type="hidden" name="d" value="${d}"><input type="hidden" name="id" value="${ed ? ed.id : ''}">
     <div class="g2">${mode === 'from_to'
       ? `<div><label>From</label><input name="start_time" type="time" step="${(wkStepMin() || 1) * 60}" data-tm required value="${esc(ed?.start_time || '')}"></div><div><label>To</label><input name="end_time" type="time" step="${(wkStepMin() || 1) * 60}" data-tm required value="${esc(ed?.end_time || '')}"></div>`
       : `<div><label>Hours for the day</label><input name="hours" type="number" min="0" max="${C.maxDay}" step="${C.inc}" data-hh required value="${ed ? ed.hours : ''}"></div>`}</div>
@@ -1656,9 +1714,29 @@ Object.assign(actions, {
     const n = await wkSave(); flash(n ? 'Draft saved.' : 'Nothing to save.'); render();
   },
   async 'wk-submit'() {
-    if (!WK().cert) return; const id = S.cache.wkSheet.id;
+    if (!WK().cert) return; const id = S.cache.wkSheet.id; const note = WK().snote ?? S.cache.wkSheet.submission_note ?? '';
     const bad = wkBadCells(); if (bad.length) { toast(wkBadMsg(bad), 'err'); document.querySelector('.wk .wkc.bad')?.focus(); return; }
-    await wkSave(); await api(`/sheets/${id}/submit`, { method: 'POST' }); flash('Timesheet submitted for approval.'); render();
+    await wkSave(); await api(`/sheets/${id}/submit`, { method: 'POST', body: { note: note || null } }); flash('Timesheet submitted for approval.'); render();
+  },
+  /* "send through here": the marked day and every open day before it, in order (each block of open days becomes one sheet) */
+  async 'wk-send-days'() {
+    const st = WK(); if (!st.cert || !st.through) return; const through = st.through; const note = st.snote ?? S.cache.wkSheet.submission_note ?? '';
+    const bad = wkBadCells(); if (bad.length) { toast(wkBadMsg(bad), 'err'); document.querySelector('.wk .wkc.bad')?.focus(); return; }
+    await wkSave(); await api('/sheets/submit-days', { method: 'POST', body: { through, note: note || null } }); flash('Days sent for approval.'); render();
+  },
+  'wk-through'(el) { const st = WK(); st.through = st.through === el.dataset.d ? null : el.dataset.d; render(); },
+  /* a note for one line and day: kept with the rest of the pending changes until Save draft */
+  'cell-note'(el) {
+    const st = WK(); const ln = (S.cache.wkLines || []).find(l => l.lid === el.dataset.lid); if (!ln) return; const d = el.dataset.d; const key = ln.lid + '|' + d;
+    const es = ln.ents.filter(e => e.work_date === d); const p = (S.cache.projects || []).find(x => x.id === Number(ln.project_id));
+    const cur = Object.prototype.hasOwnProperty.call(st.pnote, key) ? st.pnote[key] : (es[0]?.note || ''); const fromSub = !Object.prototype.hasOwnProperty.call(st.pnote, key) && es[0]?.note_from_submission;
+    const ro = S.cache.wkCtx.locked || S.cache.wkCtx.dayLocked(d);
+    modalOpen({ title: 'Note', sub: `${dayLabel(d)} · ${wkPL(p)}`, size: 'sm', save: ro ? 'Close' : 'Save note',
+      body: `<div><label>Note</label><textarea name="note" rows="5" maxlength="1000" ${ro ? 'readonly' : ''}>${esc(cur)}</textarea>${fromSub ? `<small class="help">${T('Copied from the submission note. Edit it to make it this line\'s own.')}</small>` : ''}</div>`,
+      async onSubmit(m) {
+        if (ro) return m.finish(null, async () => {});
+        const v = String(formObj(m.form).note || '').trim(); st.pnote[key] = v; await m.finish(null, async () => render());
+      } });
   },
   'cell-pop'(el) { wkPop(el.dataset.lid, el.dataset.d, el); },
   'pop-edit'(el) { const f = el.closest('.wkpop').querySelector('form'); wkPop(f ? f.elements.lid.value : '', f ? f.elements.d.value : '', null, Number(el.dataset.id)); },
@@ -1718,7 +1796,8 @@ Object.assign(forms, {
   },
 });
 /* typing in a cell: the change stays pending (marked) until Save draft */
-document.addEventListener('input', e => {
+document.addEventListener('input', e => { if (e.target.matches?.('[data-snote]')) { WK().snote = e.target.value; return; }
+  
   const i = e.target.closest?.('[data-cell]'); if (!i) return;
   i.classList.add('dirty'); WK().pend[i.dataset.cell] = i.value; wkRecalc();
   const okv = wkMulti(i.value); i.classList.toggle('bad', !okv); if (okv) { i.removeAttribute('aria-invalid'); i.removeAttribute('title'); } else { i.setAttribute('aria-invalid', 'true'); i.title = T(wkIncMsg(wkInc())); }

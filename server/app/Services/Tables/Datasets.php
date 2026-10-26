@@ -117,7 +117,7 @@ class Datasets
         $date = validator($p, ['date' => 'required|date_format:Y-m-d'])->validate()['date'];
         $end = Week::ending($date);
         $start = Week::starting($end);
-        $sheet = Timesheet::where('user_id', $u->id)->where('week_ending', $end)->first();
+        $sheet = Timesheet::where('user_id', $u->id)->where('week_ending', $end)->orderByDesc('part')->first();
         $entries = TimeEntry::with('project')->where('user_id', $u->id)->where('running', false)
             ->whereBetween('work_date', [$start, $end])->orderBy('work_date')->orderBy('start_time')->get();
         $status = ['draft' => __('Borrador'), 'submitted' => __('Enviada'), 'approved' => __('Aprobada'), 'returned' => __('Devuelta')][$sheet->status ?? 'draft'] ?? __('Borrador');

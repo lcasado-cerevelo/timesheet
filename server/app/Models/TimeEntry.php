@@ -22,6 +22,7 @@ class TimeEntry extends Model
             'hours' => 'decimal:2',
             'running' => 'boolean',
             'billable' => 'boolean',
+            'note_from_submission' => 'boolean',
             'bill_rate' => 'decimal:2',
             'pay_rate' => 'decimal:2',
         ];

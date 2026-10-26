@@ -126,6 +126,7 @@ class ServiceController extends Controller
             'name' => [...$required, 'string', 'max:120', Rule::unique('services')->where('project_id', $project->id)->ignore($service?->id)],
             'bill_rate' => 'nullable|numeric|min:0',
             'billable' => 'boolean',
+            'require_note' => 'boolean',
             'capture_mode' => ['sometimes', Rule::in(Service::MODES)],
             'accountisi_item_id' => 'nullable|string|max:40',
             'approval_mode' => ['sometimes', Rule::in(Service::APPROVAL_MODES)],
@@ -144,7 +145,8 @@ class ServiceController extends Controller
     public static function payload(Service $s, bool $owner, ?User $for = null, ?Project $project = null): array
     {
         $out = ['id' => $s->id, 'project_id' => $s->project_id, 'name' => $s->name, 'billable' => $s->billable,
-            'capture_mode' => $s->capture_mode, 'approval_mode' => $s->approval_mode ?: 'external', 'active' => $s->active, 'sort' => $s->sort];
+            'capture_mode' => $s->capture_mode, 'approval_mode' => $s->approval_mode ?: 'external', 'active' => $s->active, 'sort' => $s->sort,
+            'require_note' => (bool) $s->require_note];
         if ($for) {
             // Cómo entra las horas esta persona en este servicio: 'from_to' (detalle) o 'full_day' (total).
             $out['mode'] = $s->effectiveMode($for);

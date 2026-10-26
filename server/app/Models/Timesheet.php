@@ -23,6 +23,8 @@ class Timesheet extends Model
     {
         return [
             'week_ending' => 'date:Y-m-d',
+            'period_start' => 'date:Y-m-d',
+            'period_end' => 'date:Y-m-d',
             'total_hours' => 'decimal:2',
             'late' => 'boolean',
             'submitted_at' => 'datetime',
@@ -87,6 +89,34 @@ class Timesheet extends Model
     public function events(): HasMany
     {
         return $this->hasMany(TimesheetEvent::class)->orderBy('id');
+    }
+
+    /** Primer día que cubre la hoja: el inicio de su periodo, o el lunes de la semana. */
+    public function periodStarting(): string
+    {
+        return $this->period_start?->toDateString() ?? \App\Support\Week::starting($this->week_ending->toDateString());
+    }
+
+    /** Último día que cubre la hoja: el final de su periodo, o el domingo de la semana. */
+    public function periodEnding(): string
+    {
+        return $this->period_end?->toDateString() ?? $this->week_ending->toDateString();
+    }
+
+    /** ¿Esta hoja (enviada, devuelta o aprobada) cubre ese día? Una hoja en borrador nunca cubre: solo guarda lo que falta por enviar. */
+    public function covers(string $date): bool
+    {
+        return $this->status !== self::DRAFT && $date >= $this->periodStarting() && $date <= $this->periodEnding();
+    }
+
+    /** La semana de la hoja escrita para mensajes: la fecha de siempre y, si es una parte, los días que cubre. */
+    public function weekLabel(): string
+    {
+        $end = $this->week_ending->toDateString();
+        if (! $this->period_start || ! $this->period_end) {
+            return $end;
+        }
+        return $end.' ('.__('parte :n: del :from al :to', ['n' => $this->part, 'from' => $this->periodStarting(), 'to' => $this->periodEnding()]).')';
     }
 
     /** Aprobada = bloqueada. */

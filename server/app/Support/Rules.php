@@ -23,6 +23,7 @@ class Rules
         'code_minutes' => 15,           // vigencia del código de 6 dígitos
         'remember_days' => 30,          // días que se recuerda un equipo de aprobador (0 = nunca)
         'second_approval_hours' => null,// hojas sobre estas horas: individual y con código
+        'partial_submission' => false,  // permite enviar la semana por partes (días corridos)
     ];
 
     public function __construct(private array $values)

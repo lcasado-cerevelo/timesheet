@@ -320,7 +320,7 @@ class InternalApprovalService
             'project' => Parts::label($p['project'], $p['service']),
             'hours' => round((float) $entries->where('service_id', $p['service']->id)->sum('hours'), 2),
         ])->values()->all();
-        return ['worker' => $sheet->user->name, 'week' => $sheet->week_ending->toDateString(),
+        return ['worker' => $sheet->user->name, 'week' => $sheet->weekLabel(),
             'total_hours' => round(array_sum(array_column($projects, 'hours')), 2), 'projects' => $projects,
             'late' => (bool) $sheet->late, 'changes' => Parts::changes($sheet->change_summary, $parts->map(fn ($p) => $p['service']->id)->all())];
     }

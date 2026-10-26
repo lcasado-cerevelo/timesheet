@@ -350,5 +350,10 @@
     "Hay servicios con aprobadores externos de otro cliente (:services). Revisa esos servicios antes de cambiar el cliente.": "Some services have external approvers from another client (:services). Review those services before changing the client.",
     "No se puede quitar el cliente :client: el servicio :service (:project) lo tiene escogido como aprobador. Quítalo de ese servicio primero.": "The client :client cannot be removed: the service :service (:project) has this approver chosen. Remove them from that service first.",
     "Esta hoja no tiene partes para ti.": "This sheet has no parts for you.",
-    "Aprobaste tus horas de la hoja de :name (semana :week). La hoja queda aprobada cuando los demás aprobadores terminen.": "You approved your hours on :name's sheet (week :week). The sheet is approved once the other approvers finish."
+    "Aprobaste tus horas de la hoja de :name (semana :week). La hoja queda aprobada cuando los demás aprobadores terminen.": "You approved your hours on :name's sheet (week :week). The sheet is approved once the other approvers finish.",
+    "parte :n: del :from al :to": "part :n: from :from to :to",
+    "El envío por partes no está activado.": "Sending in parts is not turned on.",
+    "No se pueden enviar días futuros.": "Future days cannot be sent.",
+    "No hay horas para enviar hasta esa fecha.": "There are no hours to send up to that date.",
+    "Falta la nota en: :list. Escribe una nota en cada línea o una nota del envío.": "A note is missing on: :list. Write a note on each line or a submission note."
 }

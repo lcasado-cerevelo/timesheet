@@ -74,4 +74,18 @@
     [/^Only (\d+) min passed\. The minimum is (\d+) min\. Record it as (\d+) min\?$/, 'Solo han pasado $1 min. El mínimo es $2 min. ¿Registrarlo como $3 min?'],
     [/^Record (\d+) min$/, 'Registrar $1 min'],
   );
+  Object.assign(d.exact, {
+    // notes and sending in parts
+    'Add a note': 'Agregar una nota', 'Save note': 'Guardar nota', 'Submission note': 'Nota del envío',
+    'Applied to every line that has no note': 'Se aplica a cada línea que no tenga nota',
+    'Some services require a note on every line: write one in each line or here.': 'Algunos servicios exigen una nota en cada línea: escribe una en cada línea o aquí.',
+    'Check "send through here" in a day header first.': 'Marca primero "enviar hasta aquí" en el encabezado de un día.',
+    'Send': 'Enviar', 'Send through the marked day': 'Enviar hasta el día marcado', 'Send through this day': 'Enviar hasta este día',
+    'Sent': 'Enviado', 'day': 'día', 'days': 'días', 'Sent in parts': 'Enviada por partes', 'Part': 'Parte',
+    'Days sent for approval.': 'Días enviados a aprobación.',
+    "Copied from the submission note. Edit it to make it this line's own.": 'Copiada de la nota del envío. Edítala para que sea propia de esta línea.',
+    'Require a note on every line': 'Exigir una nota en cada línea',
+    'Allow sending a week in parts': 'Permitir enviar la semana por partes',
+    'People can send the days that are done (in order, with no day skipped) before the week ends. Each part is its own timesheet: it is approved, returned and invoiced apart.': 'Las personas pueden enviar los días ya hechos (en orden, sin saltar ninguno) antes de que termine la semana. Cada parte es su propia hoja: se aprueba, se devuelve y se factura aparte.',
+  });
 })();

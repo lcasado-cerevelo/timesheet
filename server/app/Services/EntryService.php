@@ -159,6 +159,7 @@ class EntryService
                 'running' => $running,
                 'hours' => $hours,
                 'note' => isset($data['note']) ? mb_substr((string) $data['note'], 0, 1000) : null,
+                'note_from_submission' => $entry && $entry->note_from_submission && isset($data['note']) && (string) $data['note'] === (string) $entry->note,
                 'billable' => $billable,
                 'hour_type' => $hourType,
             ];

@@ -70,6 +70,7 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
 
     Route::get('/sheets', [SheetController::class, 'index']);
     Route::get('/sheets/week', [SheetController::class, 'week']);
+    Route::post('/sheets/submit-days', [SheetController::class, 'submitDays']);
     Route::get('/sheets/{sheet}', [SheetController::class, 'show']);
     Route::post('/sheets/{sheet}/submit', [SheetController::class, 'submit']);
 

@@ -75,7 +75,7 @@ class ApprovalPageController extends Controller
             return $this->invalid($token, collect($e->errors())->flatten()->first());
         }
         $name = $sheet->user->name;
-        $week = $sheet->week_ending->toDateString();
+        $week = $sheet->weekLabel();
         // Con varios aprobadores, la hoja puede seguir esperando a los demás.
         return view('approval.done', ['brand' => $sheet->company->brand(), 'title' => __('Hoja aprobada'),
             'message' => $after->status === Timesheet::APPROVED

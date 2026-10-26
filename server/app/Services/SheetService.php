@@ -4,12 +4,15 @@ namespace App\Services;
 
 use App\Models\ApprovalToken;
 use App\Models\Approver;
+use App\Models\TimeEntry;
 use App\Models\Timesheet;
 use App\Models\TimesheetEvent;
 use App\Models\User;
 use App\Support\Parts;
 use App\Support\Week;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -24,13 +27,154 @@ class SheetService
     {
     }
 
+    /** Las hojas (partes) de la semana que termina ese domingo, en orden. */
+    public function weekSheets(User $user, string $weekEnding): Collection
+    {
+        return Timesheet::where('user_id', $user->id)->where('week_ending', $weekEnding)->orderBy('part')->get();
+    }
+
+    /**
+     * La hoja donde cae ese día: la que ya lo cubre (enviada, devuelta o aprobada) o, si el día sigue abierto, el borrador de la semana
+     * (que se crea si falta). Una semana sin envíos por partes tiene una sola hoja, como siempre.
+     */
     public function forWeek(User $user, string $date): Timesheet
     {
-        $end = Week::ending($date);
+        $day = CarbonImmutable::parse($date)->toDateString();
+        $end = Week::ending($day);
+        $sheets = $this->weekSheets($user, $end);
+        if ($cover = $sheets->first(fn (Timesheet $s) => $s->covers($day))) {
+            return $cover;
+        }
+        if ($draft = $sheets->firstWhere('status', Timesheet::DRAFT)) {
+            return $draft;
+        }
         return Timesheet::firstOrCreate(
-            ['user_id' => $user->id, 'week_ending' => $end],
-            ['company_id' => $user->company_id, 'status' => Timesheet::DRAFT, 'version' => 1]
+            ['user_id' => $user->id, 'week_ending' => $end, 'status' => Timesheet::DRAFT],
+            ['company_id' => $user->company_id, 'version' => 1]
         );
+    }
+
+    /**
+     * Envía los días abiertos de la semana hasta $through, en orden y sin saltar ninguno. Cada bloque seguido de días abiertos
+     * (borrador) pasa a una hoja nueva (una parte); las partes devueltas dentro del rango se reenvían tal cual, cada una en su hoja.
+     * Los días ya enviados o aprobados no se tocan. Devuelve las hojas enviadas.
+     */
+    public function submitDays(User $user, string $through, ?string $note = null, string $channel = 'app', bool $enforceFlag = true): Collection
+    {
+        $company = $user->company;
+        if ($enforceFlag && ! $company->rules()->get('partial_submission')) {
+            throw ValidationException::withMessages(['status' => __('El envío por partes no está activado.')]);
+        }
+        $through = CarbonImmutable::parse($through)->toDateString();
+        $today = CarbonImmutable::now($company->timezone)->toDateString();
+        if ($through > $today) {
+            throw ValidationException::withMessages(['through' => __('No se pueden enviar días futuros.')]);
+        }
+        $end = Week::ending($through);
+        $start = Week::starting($end);
+
+        return DB::transaction(function () use ($user, $through, $note, $channel, $end, $start) {
+            $sheets = $this->weekSheets($user, $end);
+            $draft = $sheets->firstWhere('status', Timesheet::DRAFT);
+            $blocks = [];
+            $cur = null;
+            $resubmit = collect();
+            for ($d = CarbonImmutable::parse($start); $d->toDateString() <= $through; $d = $d->addDay()) {
+                $day = $d->toDateString();
+                $cover = $sheets->first(fn (Timesheet $s) => $s->covers($day));
+                if ($cover === null) {
+                    $cur = $cur === null ? [$day, $day] : [$cur[0], $day];
+                    continue;
+                }
+                if ($cur !== null) {
+                    $blocks[] = $cur;
+                    $cur = null;
+                }
+                if ($cover->status === Timesheet::RETURNED) {
+                    $resubmit->put($cover->id, $cover);
+                }
+            }
+            if ($cur !== null) {
+                $blocks[] = $cur;
+            }
+
+            $draftEntries = $draft ? TimeEntry::where('timesheet_id', $draft->id)->get() : collect();
+            $plan = [];
+            foreach ($blocks as [$a, $b]) {
+                $ents = $draftEntries->filter(fn ($e) => $e->work_date->toDateString() >= $a && $e->work_date->toDateString() <= $b);
+                if ($ents->isNotEmpty()) {
+                    $plan[] = [$a, $b, $ents];
+                }
+            }
+            if ($plan === [] && $resubmit->isEmpty()) {
+                throw ValidationException::withMessages(['status' => __('No hay horas para enviar hasta esa fecha.')]);
+            }
+            // Todo se revisa antes de crear o enviar nada: un error en la segunda hoja no debe dejar la primera enviada.
+            foreach ($plan as [, , $ents]) {
+                $this->assertSendable($ents, $note);
+            }
+            foreach ($resubmit as $r) {
+                $this->assertSendable(TimeEntry::where('timesheet_id', $r->id)->get(), $note);
+            }
+
+            $sent = collect();
+            $part = (int) $sheets->max('part');
+            foreach ($resubmit as $r) {
+                $sent->push($this->submit($r, $user, $channel, $note));
+            }
+            foreach ($plan as [$a, $b, $ents]) {
+                $new = Timesheet::create(['company_id' => $user->company_id, 'user_id' => $user->id, 'week_ending' => $end, 'part' => ++$part,
+                    'period_start' => $a, 'period_end' => $b, 'status' => Timesheet::DRAFT, 'version' => 1]);
+                TimeEntry::whereIn('id', $ents->pluck('id'))->update(['timesheet_id' => $new->id]);
+                $sent->push($this->submit($new, $user, $channel, $note));
+            }
+            if ($draft && ! TimeEntry::where('timesheet_id', $draft->id)->exists()) {
+                $draft->delete();
+            } elseif ($draft) {
+                $draft->refresh()->recalcTotal();   // las líneas que se fueron a otras hojas ya no cuentan aquí
+            }
+            return $sent->map->refresh();
+        });
+    }
+
+    /** Revisa unas líneas antes de enviarlas: con horas, sin reloj corriendo y con la nota que exigen sus servicios. */
+    private function assertSendable(Collection $entries, ?string $note): void
+    {
+        if ($entries->where('running', true)->isNotEmpty()) {
+            throw ValidationException::withMessages(['status' => __('Hay un reloj corriendo; páralo antes de enviar.')]);
+        }
+        if ((float) $entries->sum('hours') <= 0) {
+            throw ValidationException::withMessages(['status' => __('La hoja no tiene horas.')]);
+        }
+        $this->assertNotes($entries->load('service:id,name,require_note', 'project:id,code'), $note);
+    }
+
+    /** Los servicios que exigen nota necesitan una en cada línea con horas: la propia o la del envío. */
+    private function assertNotes(Collection $entries, ?string $note): void
+    {
+        if (trim((string) $note) !== '') {
+            return;
+        }
+        $missing = $entries->filter(fn ($e) => (float) $e->hours > 0 && $e->service?->require_note
+            && (trim((string) $e->note) === '' || $e->note_from_submission))
+            ->sortBy(fn ($e) => $e->work_date->toDateString());
+        if ($missing->isNotEmpty()) {
+            $list = $missing->take(6)->map(fn ($e) => $e->work_date->format('m-d').' '.($e->project?->code ?? '').' '.($e->service?->name ?? ''))->implode(', ');
+            throw ValidationException::withMessages(['note' => __('Falta la nota en: :list. Escribe una nota en cada línea o una nota del envío.', ['list' => trim($list)])]);
+        }
+    }
+
+    /** Copia la nota del envío a las líneas sin nota (las marca para poder quitarlas si la hoja se devuelve y se reenvía). */
+    private function applySubmissionNote(Timesheet $sheet, ?string $note): ?string
+    {
+        $note = mb_substr(trim((string) $note), 0, 1000);
+        TimeEntry::where('timesheet_id', $sheet->id)->where('note_from_submission', true)->update(['note' => null, 'note_from_submission' => false]);
+        if ($note === '') {
+            return null;
+        }
+        TimeEntry::where('timesheet_id', $sheet->id)->where(fn ($q) => $q->whereNull('note')->orWhere('note', ''))
+            ->update(['note' => $note, 'note_from_submission' => true]);
+        return $note;
     }
 
     public function log(Timesheet $sheet, string $type, ?string $actor, ?string $channel, array $data = []): void
@@ -163,13 +307,16 @@ class SheetService
         return $sheet->refresh();
     }
 
-    public function submit(Timesheet $sheet, User $actor, string $channel = 'app'): Timesheet
+    public function submit(Timesheet $sheet, User $actor, string $channel = 'app', ?string $note = null): Timesheet
     {
         if ($sheet->user_id !== $actor->id) {
             throw new \DomainException(__('Solo la persona dueña de la hoja puede enviarla.'));
         }
         if (! in_array($sheet->status, [Timesheet::DRAFT, Timesheet::RETURNED], true)) {
             throw ValidationException::withMessages(['status' => __('Esta hoja ya fue enviada o aprobada.')]);
+        }
+        if ($sheet->part === null) {
+            $sheet->part = (int) Timesheet::where('user_id', $sheet->user_id)->where('week_ending', $sheet->week_ending)->max('part') + 1;
         }
         $sheet->recalcTotal();
         if ((float) $sheet->total_hours <= 0) {
@@ -178,6 +325,10 @@ class SheetService
         if ($sheet->entries()->where('running', true)->exists()) {
             throw ValidationException::withMessages(['status' => __('Hay un reloj corriendo; páralo antes de enviar.')]);
         }
+
+        // La nota del envío se copia a las líneas sin nota y los servicios que exigen nota se revisan.
+        $submissionNote = $this->applySubmissionNote($sheet, $note);
+        $this->assertNotes($sheet->entries()->with('service:id,name,require_note', 'project:id,code')->get(), $submissionNote);
 
         // Cada servicio decide qué aprobación pide (none | internal | external | both).
         $needsExternal = $this->internal->requiresExternal($sheet);
@@ -195,6 +346,7 @@ class SheetService
             'approver_id' => $needsExternal ? $this->external->hintApproverId($sheet) : null,
             'submitted_at' => now(),
             'late' => (bool) $company->rules()->get('flag_late') && CarbonImmutable::now($company->timezone)->gt($deadline),
+            'submission_note' => $submissionNote,
             'return_comment' => null,
             'change_notice_due_at' => null,
             'change_summary' => null,
