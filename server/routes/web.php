@@ -3,7 +3,8 @@
 use App\Http\Controllers\Web\ApprovalPageController as A;
 use Illuminate\Support\Facades\Route;
 
-Route::redirect('/', '/app/');
+// redirect() builds the address from the site root, so it also works when the site lives in a folder (domain.com/timesheet/).
+Route::get('/', fn () => redirect('/app/'));
 
 // Aprobación sin cuenta: enlaces secretos. Abrirlos no aprueba; se decide con un botón (POST).
 Route::middleware(['public.page', 'throttle:40,1'])->group(function () {

@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<link rel="icon" type="image/svg+xml" href="/app/icons/favicon.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="/app/icons/icon-32.png">
-<link rel="apple-touch-icon" href="/app/icons/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="{{ url('/app/icons/favicon.svg') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url('/app/icons/icon-32.png') }}">
+<link rel="apple-touch-icon" href="{{ url('/app/icons/apple-touch-icon.png') }}">
 <title>@yield('title', $brand['name'])</title>
 <style>
 :root{--primary:{{ $brand['color_primary'] }};--accent:{{ $brand['color_accent'] }};}

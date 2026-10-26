@@ -1,5 +1,7 @@
 /* Tiempo web interface. No build step: runs on any PHP hosting. Talks to /api. */
 (() => {
+/* The site may live in a folder of a shared hosting (https://domain.com/timesheet/app/): the API is next to /app/, wherever it is. */
+const BASE = location.pathname.replace(/\/app(\/.*)?$/, '');
 const $app = document.getElementById('app');
 const S = { token: sessionStorage.getItem('tt') || localStorage.getItem('tt'), me: null, login: null, flash: null, weekDate: today(), cache: {},
   lang: localStorage.getItem('lang') || ((navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en') };
@@ -51,7 +53,7 @@ async function api(path, o = {}) {
   let body;
   if (o.body instanceof FormData) body = o.body;
   else if (o.body !== undefined) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(o.body); }
-  const r = await fetch('/api' + path, { method: o.method || 'GET', headers, body });
+  const r = await fetch(BASE + '/api' + path, { method: o.method || 'GET', headers, body });
   if (o.blob) { if (!r.ok) throw new Error('The file could not be downloaded'); return r; }
   const data = await r.json().catch(() => ({}));
   if (r.status === 401 && S.token && !o.anon) { logout('Your session expired. Sign in again.'); throw new Error('Session expired'); }
@@ -225,7 +227,7 @@ const langBtn = () => `<p style="text-align:center;margin:14px 0 0"><button clas
 const resendLeft = () => Math.max(0, Math.ceil(((S.login?.resendAt || 0) - Date.now()) / 1000));
 async function loadPub() {
   if (S.cache.pub === undefined) {
-    try { const r = await fetch('/api/public-config'); if (!r.ok) return {}; S.cache.pub = await r.json(); } catch { return {}; }
+    try { const r = await fetch(BASE + '/api/public-config'); if (!r.ok) return {}; S.cache.pub = await r.json(); } catch { return {}; }
     if (S.cache.pub.locale && !localStorage.getItem('lang')) S.lang = S.cache.pub.locale;
   }
   return S.cache.pub;

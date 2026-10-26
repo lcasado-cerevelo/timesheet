@@ -34,7 +34,6 @@ services:
       - "${HTTPS_PORT:-443}:443"
     environment:
       DOMAIN: ${DOMAIN:?falta DOMAIN en .env.prod}
-      ACME_EMAIL: ${ACME_EMAIL:?falta ACME_EMAIL en .env.prod}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data                      # certificados de Let's Encrypt (no borrar)

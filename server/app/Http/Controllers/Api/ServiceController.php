@@ -121,9 +121,9 @@ class ServiceController extends Controller
 
     private function validated(Request $request, Project $project, ?Service $service): array
     {
-        $required = $service ? 'sometimes|required' : 'required';
+        $required = $service ? ['sometimes', 'required'] : ['required'];
         $v = $request->validate([
-            'name' => [$required, 'string', 'max:120', Rule::unique('services')->where('project_id', $project->id)->ignore($service?->id)],
+            'name' => [...$required, 'string', 'max:120', Rule::unique('services')->where('project_id', $project->id)->ignore($service?->id)],
             'bill_rate' => 'nullable|numeric|min:0',
             'billable' => 'boolean',
             'capture_mode' => ['sometimes', Rule::in(Service::MODES)],

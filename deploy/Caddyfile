@@ -1,15 +1,10 @@
 # Caddy: pone el HTTPS (certificado de Let's Encrypt, pedido y renovado solo) y le pasa el tráfico a la aplicación.
 # Requisitos de Let's Encrypt: el dominio apunta a la IP de este servidor (en Cloudflare, nube GRIS = solo DNS) y los puertos 80 y 443
 # están abiertos a internet. Los certificados se guardan en el volumen caddy_data: no lo borres o se pedirán de nuevo (hay límites).
-{
-	email {$ACME_EMAIL}
-}
-
 # Un dominio o subdominio por compañía (companies.domain): Caddy puede pedir el certificado al primer acceso, pero solo para dominios
 # que la aplicación reconozca. Para activarlo, agrega arriba en el bloque global (y vuelve a cargar Caddy):
 #
 #   {
-#   	email {$ACME_EMAIL}
 #   	on_demand_tls {
 #   		ask http://app:80/api/domain-check
 #   	}

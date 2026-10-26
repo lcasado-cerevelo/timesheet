@@ -9,7 +9,7 @@ import { kv, secure } from '../lib/storage';
 import { devDefaultServerUrl, fixedServerUrl, normalizeServerUrl, resolveServer } from '../lib/server';
 import type { Brand, Me } from '../lib/types';
 
-const NEUTRAL: Brand = { name: 'Tiempo', logo_url: null, logo_dark_url: null, color_primary: '#1f4e79', color_accent: '#2e8b57', email_footer: null };
+const NEUTRAL: Brand = { name: 'Cerevelo Timesheet', logo_url: null, logo_dark_url: null, color_primary: '#1f4e79', color_accent: '#2e8b57', email_footer: null };
 
 interface AuthState {
   ready: boolean;

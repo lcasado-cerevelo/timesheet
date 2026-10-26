@@ -35,7 +35,12 @@ class Company extends Model
     /** Dirección base de los enlaces de los correos: el dominio de la compañía o, si no tiene, el de la instalación. */
     public function baseUrl(): string
     {
-        return $this->domain ? 'https://'.$this->domain : rtrim((string) config('app.url'), '/');
+        $app = rtrim((string) config('app.url'), '/');
+        if (! $this->domain) {
+            return $app;
+        }
+        // A site that lives in a folder of a hosting (domain.com/timesheet) keeps its folder in the links.
+        return strtolower((string) parse_url($app, PHP_URL_HOST)) === strtolower($this->domain) ? $app : 'https://'.$this->domain;
     }
 
     /** Compañía cuyo dominio es exactamente este Host (sin puerto, en minúsculas). */

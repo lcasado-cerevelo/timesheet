@@ -18,3 +18,6 @@ backups/
 
 # Configuración local de desarrollo con claves
 docker-compose.override.yml
+
+# APK y paquetes generados
+dist/
