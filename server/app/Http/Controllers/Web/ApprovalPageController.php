@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ApprovalToken;
 use App\Models\Timesheet;
 use App\Services\ApprovalService;
+use App\Services\ExternalApprovalService;
 use App\Services\SheetService;
 use App\Models\Company;
 use Illuminate\Http\Request;
@@ -18,7 +19,7 @@ use Illuminate\Validation\ValidationException;
  */
 class ApprovalPageController extends Controller
 {
-    public function __construct(private ApprovalService $approvals, private SheetService $sheets)
+    public function __construct(private ApprovalService $approvals, private SheetService $sheets, private ExternalApprovalService $external)
     {
     }
 
@@ -69,12 +70,17 @@ class ApprovalPageController extends Controller
             return redirect()->back()->withErrors(['code' => __('Verifica el código primero.')]);
         }
         try {
-            $this->sheets->approve($sheet, $token->approver, null, 'link', (int) $token->sheet_version);
+            $after = $this->sheets->approve($sheet, $token->approver, null, 'link', (int) $token->sheet_version);
         } catch (ValidationException $e) {
             return $this->invalid($token, collect($e->errors())->flatten()->first());
         }
+        $name = $sheet->user->name;
+        $week = $sheet->week_ending->toDateString();
+        // Con varios aprobadores, la hoja puede seguir esperando a los demás.
         return view('approval.done', ['brand' => $sheet->company->brand(), 'title' => __('Hoja aprobada'),
-            'message' => __('Aprobaste la hoja de :name (semana :week). Ya no se puede cambiar.', ['name' => $sheet->user->name, 'week' => $sheet->week_ending->toDateString()])]);
+            'message' => $after->status === Timesheet::APPROVED
+                ? __('Aprobaste la hoja de :name (semana :week). Ya no se puede cambiar.', ['name' => $name, 'week' => $week])
+                : __('Aprobaste tus horas de la hoja de :name (semana :week). La hoja queda aprobada cuando los demás aprobadores terminen.', ['name' => $name, 'week' => $week])]);
     }
 
     public function returnSheet(Request $request, string $plain)
@@ -108,13 +114,16 @@ class ApprovalPageController extends Controller
         if (! $this->codeOk($token)) {
             return $this->codeView($token, $plain, 'b', $approver->company);
         }
-        $sheets = Timesheet::with('user', 'entries.project')->where('approver_id', $approver->id)
-            ->where('status', Timesheet::SUBMITTED)->releasedToExternal()->orderBy('submitted_at')->get();
+        // Solo las hojas con partes pendientes suyas, y de cada una solo las horas que le tocan.
+        $sheets = $this->external->pendingSheetsFor($approver);
         $limit = $approver->company->rules()->get('second_approval_hours');
         return view('approval.batch', [
             'brand' => $approver->company->brand(), 'plain' => $plain, 'approver' => $approver,
-            'rows' => $sheets->map(fn ($s) => ['sheet' => $s, 'summary' => $this->approvals->sheetSummary($s),
-                'bulk_ok' => $limit === null || (float) $s->total_hours <= (float) $limit]),
+            'rows' => $sheets->map(function ($s) use ($approver, $limit) {
+                $entries = $this->external->entriesOf($s, $approver, true);
+                return ['sheet' => $s, 'summary' => $this->approvals->sheetSummary($s, $entries),
+                    'bulk_ok' => $limit === null || (float) $entries->sum('hours') <= (float) $limit];
+            }),
         ]);
     }
 
@@ -129,10 +138,10 @@ class ApprovalPageController extends Controller
         $skipped = 0;
         foreach ((array) $request->input('items', []) as $pair) {
             [$id, $version] = array_pad(explode(':', (string) $pair), 2, null);
-            $sheet = Timesheet::where('approver_id', $token->approver_id)->where('status', Timesheet::SUBMITTED)->find($id);
-            // Lo que cambió después de verse, o pasa del límite, no se aprueba en bloque.
-            if (! $sheet || (int) $sheet->version !== (int) $version
-                || ($limit !== null && (float) $sheet->total_hours > (float) $limit)) {
+            $sheet = Timesheet::where('company_id', $token->approver->company_id)->where('status', Timesheet::SUBMITTED)->releasedToExternal()->find($id);
+            // Lo que cambió después de verse, o pasa del límite (de las horas que le tocan), no se aprueba en bloque.
+            if (! $sheet || ! $this->external->pendingPartsOf($sheet, $token->approver)->isNotEmpty() || (int) $sheet->version !== (int) $version
+                || ($limit !== null && (float) $this->external->entriesOf($sheet, $token->approver, true)->sum('hours') > (float) $limit)) {
                 $skipped++;
                 continue;
             }
@@ -153,7 +162,7 @@ class ApprovalPageController extends Controller
         if (! $token instanceof ApprovalToken) {
             return $token;
         }
-        abort_unless($sheet->approver_id === $token->approver_id, 404);
+        abort_unless($this->external->involves($sheet, $token->approver), 404);
         try {
             $this->sheets->approve($sheet, $token->approver, null, 'link-batch', (int) $request->input('version'));
         } catch (ValidationException $e) {
@@ -168,7 +177,7 @@ class ApprovalPageController extends Controller
         if (! $token instanceof ApprovalToken) {
             return $token;
         }
-        abort_unless($sheet->approver_id === $token->approver_id, 404);
+        abort_unless($this->external->involves($sheet, $token->approver), 404);
         try {
             $this->sheets->return($sheet, $token->approver, null, 'link-batch', (string) $request->input('comment'), (int) $request->input('version'));
         } catch (ValidationException $e) {
@@ -226,7 +235,9 @@ class ApprovalPageController extends Controller
     private function needsCode(ApprovalToken $token, Timesheet $sheet): bool
     {
         $limit = $sheet->company->rules()->get('second_approval_hours');
-        return $token->approver->require_code || ($limit !== null && (float) $sheet->total_hours > (float) $limit);
+        $mine = $this->external->entriesOf($sheet, $token->approver);
+        $hours = $mine->isNotEmpty() ? (float) $mine->sum('hours') : (float) $sheet->total_hours;
+        return $token->approver->require_code || ($limit !== null && $hours > (float) $limit);
     }
 
     private function codeOk(ApprovalToken $token): bool
@@ -236,11 +247,12 @@ class ApprovalPageController extends Controller
 
     private function sheetData(ApprovalToken $token, Timesheet $sheet, string $plain): array
     {
-        $sheet->loadMissing('entries.project');
+        // Solo las líneas de las partes que le tocan a este aprobador.
+        $entries = $this->external->entriesOf($sheet, $token->approver);
         return [
             'brand' => $sheet->company->brand(), 'plain' => $plain, 'sheet' => $sheet,
-            'summary' => $this->approvals->sheetSummary($sheet),
-            'byDay' => $sheet->entries->groupBy(fn ($e) => $e->work_date->toDateString()),
+            'summary' => $this->approvals->sheetSummary($sheet, $entries),
+            'byDay' => $entries->groupBy(fn ($e) => $e->work_date->toDateString()),
         ];
     }
 

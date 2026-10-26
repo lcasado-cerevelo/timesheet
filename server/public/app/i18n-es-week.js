@@ -66,3 +66,12 @@
     [/^(.+) — skipped$/, '$1 — omitida']
   );
 })();
+/* Clock: minimum duration (Spanish). */
+(function () {
+  const d = window.I18N_ES;
+  Object.assign(d.exact, { 'Keep clock running': 'Dejar el reloj corriendo' });
+  d.patterns.push(
+    [/^Only (\d+) min passed\. The minimum is (\d+) min\. Record it as (\d+) min\?$/, 'Solo han pasado $1 min. El mínimo es $2 min. ¿Registrarlo como $3 min?'],
+    [/^Record (\d+) min$/, 'Registrar $1 min'],
+  );
+})();

@@ -37,7 +37,7 @@ export function applySyncResults(local: Entry[], results: SyncResult[]): Entry[]
       if (e.sync === 'deleted') continue; // ya se borró en el servidor
       out.push({ ...e, id: r.id ?? e.id, sync: 'synced', reject_reason: undefined });
     } else {
-      const reason = r.status === 'locked' ? t('sync.locked') : firstError(r) ?? t('sync.rejected');
+      const reason = r.status === 'locked' ? t('sync.locked') : r.code === 'below_minimum' && r.minimum_minutes ? t('rules.below_min', { m: r.minimum_minutes }) : firstError(r) ?? t('sync.rejected');
       out.push({ ...e, sync: 'rejected', reject_reason: reason });
     }
   }

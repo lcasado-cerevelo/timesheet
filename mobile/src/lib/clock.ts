@@ -32,7 +32,12 @@ export interface Segment {
  * (hasta 23:59 y desde 00:00), porque el servidor registra cada entrada en un solo día.
  * Los tramos de menos de un incremento se descartan, igual que haría el servidor.
  */
-export function segmentsFor(c: ClockState, end: Date, inc = 0.25): Segment[] {
+export function segmentsFor(c: ClockState, end: Date, inc = 0.25, forcedMinutes?: number): Segment[] {
+  // Entrada del mínimo registrada con permiso: un solo tramo con esa duración exacta.
+  if (forcedMinutes) {
+    const s = new Date(c.started_at);
+    return [{ work_date: fmtDate(s), start_time: nowHM(s), end_time: fmtDate(end) === fmtDate(s) ? nowHM(end) : '23:59', hours: roundTo(forcedMinutes / 60, inc) }];
+  }
   const start = new Date(c.started_at);
   const out: Segment[] = [];
   let cursor = start;

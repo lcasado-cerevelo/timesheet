@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { t } from '../i18n';
 import { ClockState, segmentsFor } from '../lib/clock';
+import { checkStop, minimumMinutes } from '../lib/increment';
 import { effectiveMode, needsService, resolveService } from '../lib/services';
 import { kv } from '../lib/storage';
 import { uuid } from '../lib/uuid';
@@ -15,8 +16,14 @@ interface ClockStore {
   load: () => Promise<void>;
   /** Prende el reloj. El servicio es opcional solo si el proyecto no tiene servicios o tiene uno solo (se escoge solo). */
   start: (projectId: number, serviceId?: number | null, note?: string, at?: Date) => string | null;
-  /** Para el reloj. Devuelve un mensaje de error (y deja el reloj corriendo) o null si salió bien. */
-  stop: (at?: Date) => string | null;
+  /**
+   * Para el reloj. Devuelve un mensaje de error (y deja el reloj corriendo) o null si salió bien.
+   * Si pasó menos del mínimo no cierra: hay que pedir permiso y volver con { registerMinimum: true }
+   * (se registra una entrada del mínimo, desde la hora de entrada).
+   */
+  stop: (at?: Date, opts?: { registerMinimum?: boolean }) => string | null;
+  /** Quita el reloj sin guardar nada. */
+  discard: () => void;
   /** Cambia de proyecto en un solo paso: cierra el tramo actual y abre el nuevo. */
   switchTo: (projectId: number, serviceId?: number | null) => string | null;
 }
@@ -55,13 +62,25 @@ export const useClock = create<ClockStore>((set, get) => ({
     return null;
   },
 
-  stop(at = new Date()) {
+  discard() {
+    set({ clock: null });
+    void kv.del(KEY);
+    void cancelClockNotification();
+  },
+
+  stop(at = new Date(), opts = {}) {
     const me = useAuth.getState().me;
     const clock = get().clock;
     if (!me || !clock) return t('clock.none');
-    if (at.getTime() <= new Date(clock.started_at).getTime()) return t('clock.end_before_start');
+    const startedAt = new Date(clock.started_at);
     if (at.getTime() > Date.now() + 60_000) return t('clock.future');
-    const segments = segmentsFor(clock, at, me.rules.increment);
+    const min = minimumMinutes(me.rules);
+    const check = checkStop(startedAt, at, min);
+    if (check.kind === 'before') return t('clock.end_before_start');
+    if (check.kind === 'below' && !opts.registerMinimum) return t('clock.below_min', { n: check.elapsed, m: check.minimum });
+    // Con permiso: la entrada dura exactamente el mínimo, desde la hora de entrada.
+    const end = check.kind === 'below' ? new Date(startedAt.getTime() + min * 60000) : at;
+    const segments = segmentsFor(clock, end, me.rules.increment, check.kind === 'below' ? min : undefined);
     const entries = useEntries.getState();
     // Se validan todos los tramos antes de guardar ninguno: o entra todo o no entra nada.
     const saved: string[] = [];

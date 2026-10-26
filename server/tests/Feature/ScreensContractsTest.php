@@ -275,7 +275,10 @@ class ScreensContractsTest extends TestCase
         $other = Approver::create(['company_id' => $this->company->id, 'name' => 'Otro', 'email' => 'otro@cliente.test']);
         $mine = $this->sheet($emp, '2026-10-18', 'submitted');
         $this->sheet($emp, '2026-10-11', 'approved');
-        $this->sheet($this->worker, '2026-10-04', 'submitted', $other);
+        // La hoja de otra persona cuyo aprobador (el de la persona, que es el respaldo de este proyecto) es otro.
+        $stranger = User::create(['company_id' => $this->company->id, 'name' => 'Tercero', 'email' => 'tercero@cerevelo.test', 'password' => 'x-secret-pass',
+            'role' => 'member', 'worker_type' => 'consultant', 'capture_mode' => 'from_to', 'approver_id' => $other->id]);
+        $this->sheet($stranger, '2026-10-04', 'submitted', $other);
 
         Sanctum::actingAs($acct);
         $r = $this->getJson('/api/approver/review')->assertOk();

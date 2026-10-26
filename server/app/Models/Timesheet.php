@@ -79,6 +79,11 @@ class Timesheet extends Model
         return $this->hasMany(TimesheetInternalApproval::class, 'timesheet_id')->orderBy('id');
     }
 
+    public function externalApprovals(): HasMany
+    {
+        return $this->hasMany(TimesheetExternalApproval::class, 'timesheet_id')->orderBy('id');
+    }
+
     public function events(): HasMany
     {
         return $this->hasMany(TimesheetEvent::class)->orderBy('id');

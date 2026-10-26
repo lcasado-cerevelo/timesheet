@@ -4,6 +4,7 @@ namespace Tests\Concerns;
 
 use App\Models\Approver;
 use App\Models\Company;
+use App\Models\Customer;
 use App\Models\Project;
 use App\Models\User;
 use Carbon\Carbon;
@@ -35,6 +36,15 @@ trait BuildsWorld
             'capture_mode' => 'from_to', 'approver_id' => $this->approver->id,
         ]);
         $this->worker->projects()->attach($this->project->id);
+    }
+
+    /** Le pone cliente al proyecto (si no tiene) y liga al aprobador Jorge a ese cliente. Devuelve el cliente. */
+    protected function clientWithApprover(Project $project, ?Approver $approver = null, string $name = 'Cliente SA'): Customer
+    {
+        $customer = $project->customer_id ? Customer::find($project->customer_id) : Customer::create(['company_id' => $this->company->id, 'name' => $name]);
+        $project->forceFill(['customer_id' => $customer->id])->save();
+        ($approver ?? $this->approver)->customers()->syncWithoutDetaching([$customer->id]);
+        return $customer;
     }
 
     protected function entry(array $over = []): array

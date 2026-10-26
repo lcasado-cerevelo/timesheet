@@ -36,8 +36,18 @@ class InternalApprovalTest extends TestCase
         $this->sara = $this->supervisor('Sara Díaz', 'sara@cerevelo.test');
         $this->tomas = $this->supervisor('Tomás Ruiz', 'tomas@cerevelo.test');
         Sanctum::actingAs($this->owner);
-        $this->putJson('/api/projects/'.$this->project->id, ['code' => 'P-1', 'name' => 'Planta A', 'billable' => false,
-            'requires_internal_approval' => true, 'internal_approver_ids' => $both ? [$this->sara->id, $this->tomas->id] : [$this->sara->id]])->assertOk();
+        $this->makeInternal($this->project, 'P-1', 'Planta A', $both ? [$this->sara->id, $this->tomas->id] : [$this->sara->id]);
+    }
+
+    /** Todos los servicios del proyecto llevan esos aprobadores internos y piden aprobación interna y externa (el cliente lleva a Jorge). */
+    private function makeInternal(Project $project, string $code, string $name, array $ids, string $mode = 'both'): void
+    {
+        Sanctum::actingAs($this->owner);
+        $this->putJson('/api/projects/'.$project->id, ['code' => $code, 'name' => $name, 'billable' => false])->assertOk();
+        $this->clientWithApprover($project);
+        foreach ($project->services()->get() as $svc) {
+            $this->putJson('/api/services/'.$svc->id, ['approval_mode' => $mode, 'internal_approver_ids' => $ids])->assertOk();
+        }
     }
 
     /** Segundo proyecto con su propio interno (Tomás). */
@@ -46,8 +56,7 @@ class InternalApprovalTest extends TestCase
         $this->second = Project::create(['company_id' => $this->company->id, 'code' => 'P-2', 'name' => 'Planta B', 'bill_rate' => 60]);
         $this->worker->projects()->attach($this->second->id);
         Sanctum::actingAs($this->owner);
-        $this->putJson('/api/projects/'.$this->second->id, ['code' => 'P-2', 'name' => 'Planta B', 'billable' => false,
-            'requires_internal_approval' => true, 'internal_approver_ids' => [$this->tomas->id]])->assertOk();
+        $this->makeInternal($this->second, 'P-2', 'Planta B', [$this->tomas->id]);
     }
 
     /** La persona carga 8 h en P-1 (y 2 h en P-2 si existe) y envía la hoja. */
@@ -208,8 +217,7 @@ class InternalApprovalTest extends TestCase
         $this->setUpInternal();
         // Ana es la única interna de P-1: esa parte se omite y la hoja va directo al externo.
         Sanctum::actingAs($this->owner);
-        $this->putJson('/api/projects/'.$this->project->id, ['code' => 'P-1', 'name' => 'Planta A', 'billable' => false,
-            'requires_internal_approval' => true, 'internal_approver_ids' => [$this->worker->id]])->assertOk();
+        $this->makeInternal($this->project, 'P-1', 'Planta A', [$this->worker->id]);
         $sheet = $this->submit();
         $this->assertSame('external', $sheet->fresh()->stage);
         $this->assertCount(0, $this->mails('mail.internal-approval-request'));
@@ -226,8 +234,7 @@ class InternalApprovalTest extends TestCase
     {
         $this->setUpInternal();
         Sanctum::actingAs($this->owner);
-        $this->putJson('/api/projects/'.$this->project->id, ['code' => 'P-1', 'name' => 'Planta A', 'billable' => false,
-            'requires_internal_approval' => true, 'internal_approver_ids' => [$this->worker->id, $this->sara->id]])->assertOk();
+        $this->makeInternal($this->project, 'P-1', 'Planta A', [$this->worker->id, $this->sara->id]);
         $sheet = $this->submit();
         $this->assertSame('internal', $sheet->fresh()->stage);
         $this->assertCount(1, $this->mails('mail.internal-approval-request'));
@@ -309,8 +316,7 @@ class InternalApprovalTest extends TestCase
         $other = Project::create(['company_id' => $this->company->id, 'code' => 'P-3', 'name' => 'Otra', 'bill_rate' => 10]);
         $outsider = $this->supervisor('Fuera', 'fuera@cerevelo.test');
         Sanctum::actingAs($this->owner);
-        $this->putJson('/api/projects/'.$other->id, ['code' => 'P-3', 'name' => 'Otra', 'billable' => false,
-            'requires_internal_approval' => true, 'internal_approver_ids' => [$outsider->id]])->assertOk();
+        $this->makeInternal($other, 'P-3', 'Otra', [$outsider->id]);
         Sanctum::actingAs($outsider);
         $this->getJson('/api/internal/sheets/'.$sheet->id)->assertNotFound();
         $this->postJson('/api/internal/sheets/'.$sheet->id.'/approve', ['version' => 1])->assertNotFound();
@@ -389,20 +395,31 @@ class InternalApprovalTest extends TestCase
         $this->assertNotContains('tomas@cerevelo.test', $approvers);
     }
 
-    public function test_project_requires_at_least_one_active_internal_approver(): void
+    public function test_internal_services_require_at_least_one_active_internal_approver(): void
     {
         $this->setUpInternal();
-        $base = ['code' => 'P-1', 'name' => 'Planta A', 'billable' => false, 'requires_internal_approval' => true];
-        $this->putJson('/api/projects/'.$this->project->id, $base + ['internal_approver_ids' => []])->assertStatus(422)->assertJsonValidationErrors('internal_approver_ids');
+        $svc = $this->project->services()->first();
+        // Un servicio internal/both no puede quedar sin supervisores: ni vaciando la lista ni dejando solo inactivos.
+        $this->putJson('/api/services/'.$svc->id, ['approval_mode' => 'both', 'internal_approver_ids' => []])->assertStatus(422)->assertJsonValidationErrors('internal_approver_ids');
+        $this->putJson('/api/services/'.$svc->id, ['internal_approver_ids' => []])->assertStatus(422)->assertJsonValidationErrors('internal_approver_ids');
         $this->sara->update(['active' => false]);
-        $this->putJson('/api/projects/'.$this->project->id, $base + ['internal_approver_ids' => [$this->sara->id]])->assertStatus(422)->assertJsonValidationErrors('internal_approver_ids');
-        $this->postJson('/api/projects', ['code' => 'N-1', 'name' => 'Nuevo', 'billable' => false, 'requires_internal_approval' => true])->assertStatus(422);
+        $this->putJson('/api/services/'.$svc->id, ['approval_mode' => 'both', 'internal_approver_ids' => [$this->sara->id]])->assertStatus(422)->assertJsonValidationErrors('internal_approver_ids');
 
-        $r = $this->putJson('/api/projects/'.$this->project->id, $base + ['internal_approver_ids' => [$this->tomas->id]])->assertOk();
-        $this->assertTrue($r->json('requires_internal_approval'));
+        $r = $this->putJson('/api/services/'.$svc->id, ['approval_mode' => 'both', 'internal_approver_ids' => [$this->tomas->id]])->assertOk();
         $this->assertSame([$this->tomas->id], $r->json('internal_approver_ids'));
         $this->assertSame([['id' => $this->tomas->id, 'name' => 'Tomás Ruiz']], $r->json('internal_approvers'));
-        // Apagar la opción no pide aprobadores.
-        $this->putJson('/api/projects/'.$this->project->id, ['code' => 'P-1', 'name' => 'Planta A', 'billable' => false, 'requires_internal_approval' => false])->assertOk();
+        $p = collect($this->getJson('/api/projects')->json())->firstWhere('id', $this->project->id);
+        $this->assertTrue($p['requires_internal_approval']);       // derivada de los servicios
+        $this->assertArrayNotHasKey('internal_approver_ids', $p);   // la lista ya no es del proyecto
+        $this->assertSame([$this->tomas->id], $p['services'][0]['internal_approver_ids']);
+
+        // El proyecto ignora la lista vieja y la casilla vieja.
+        $base = ['code' => 'P-1', 'name' => 'Planta A', 'billable' => false];
+        $r = $this->putJson('/api/projects/'.$this->project->id, $base + ['internal_approver_ids' => [$this->sara->id], 'requires_internal_approval' => false])->assertOk();
+        $this->assertArrayNotHasKey('internal_approver_ids', $r->json());
+        $this->assertTrue($r->json('requires_internal_approval'));
+        $this->assertSame([$this->tomas->id], $svc->fresh()->internalApprovers()->pluck('users.id')->all());
+        $this->postJson('/api/projects', ['code' => 'N-1', 'name' => 'Nuevo', 'billable' => false, 'requires_internal_approval' => true])->assertCreated()
+            ->assertJsonPath('requires_internal_approval', false);
     }
 }

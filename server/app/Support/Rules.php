@@ -45,6 +45,31 @@ class Rules
         return $this->values;
     }
 
+    /** Incremento de hora (horas); 0.25 si el valor guardado no sirve. */
+    public function increment(): float
+    {
+        return (float) $this->get('increment') ?: 0.25;
+    }
+
+    /** Incremento en minutos, solo si es un número entero de minutos >= 1 (0.25 -> 15, 0.1 -> 6); si no (0.01), null: no se exige alineación. */
+    public function stepMinutes(): ?int
+    {
+        $m = $this->increment() * 60;
+        return $m >= 1 - 1e-6 && abs($m - round($m)) < 1e-6 ? (int) round($m) : null;
+    }
+
+    /** Duración mínima de una entrada: un incremento, y nunca menos de 1 minuto. */
+    public function minimumMinutes(): int
+    {
+        return max(1, (int) round($this->increment() * 60));
+    }
+
+    /** El incremento escrito para mostrarlo: 0.25, 0.5, 1, 0.1, 0.05, 0.01. */
+    public function incrementLabel(): string
+    {
+        return rtrim(rtrim(number_format($this->increment(), 2, '.', ''), '0'), '.');
+    }
+
     /** Fecha límite (en la zona de la compañía) de una semana que termina el domingo $weekEnding. */
     public function deadlineFor(string $weekEnding, string $timezone): CarbonImmutable
     {

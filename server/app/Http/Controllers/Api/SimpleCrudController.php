@@ -19,10 +19,13 @@ class SimpleCrudController extends Controller
     {
     }
 
+    /** ?customer_id= filtra por los aprobadores ligados a ese cliente. */
     public function approvers(Request $request)
     {
-        return response()->json(Approver::with('account')->where('company_id', $request->user()->company_id)->orderBy('name')->get()
-            ->map(fn ($a) => $this->approverPayload($a)));
+        $f = $request->validate(['customer_id' => 'nullable|integer']);
+        return response()->json(Approver::with('account', 'customers')->where('company_id', $request->user()->company_id)
+            ->when(! empty($f['customer_id']), fn ($q) => $q->whereHas('customers', fn ($c) => $c->where('customers.id', $f['customer_id'])))
+            ->orderBy('name')->get()->map(fn ($a) => $this->approverPayload($a)));
     }
 
     public function saveApprover(Request $request, ?Approver $approver = null)
@@ -37,9 +40,19 @@ class SimpleCrudController extends Controller
             'require_code' => 'boolean',
             'active' => 'boolean',
             'can_login' => 'boolean',
+            'customer_ids' => 'nullable|array',
+            'customer_ids.*' => ['integer', Rule::exists('customers', 'id')->where('company_id', $cid)],
         ]);
+        $customerIds = array_key_exists('customer_ids', $v) ? array_values(array_unique(array_map('intval', (array) $v['customer_ids']))) : null;
+        unset($v['customer_ids']);
+        if ($approver && $customerIds !== null) {
+            $this->guardCustomerRemoval($approver, $customerIds);
+        }
         [$approver, $created] = $this->persistApprover($request->user(), $approver, $v);
-        return response()->json($this->approverPayload($approver->fresh('account')), $created ? 201 : 200);
+        if ($customerIds !== null) {
+            $approver->customers()->sync($customerIds);
+        }
+        return response()->json($this->approverPayload($approver->fresh('account', 'customers')), $created ? 201 : 200);
     }
 
     /** Crea o actualiza un aprobador y, según can_login, su cuenta de entrada (con invitación). Devuelve [aprobador, creado]. */
@@ -85,9 +98,27 @@ class SimpleCrudController extends Controller
         return [$approver, $created];
     }
 
+    /** No se le puede quitar un cliente a un aprobador que un servicio de ese cliente tiene escogido explícitamente. */
+    private function guardCustomerRemoval(Approver $approver, array $newIds): void
+    {
+        $removed = $approver->customers()->pluck('customers.id')->diff($newIds);
+        if ($removed->isEmpty()) {
+            return;
+        }
+        $svc = \App\Models\Service::whereHas('externalApprovers', fn ($q) => $q->where('approvers.id', $approver->id))
+            ->whereHas('project', fn ($q) => $q->whereIn('customer_id', $removed->all()))->with('project.customer')->first();
+        if ($svc) {
+            throw ValidationException::withMessages(['customer_ids' => __('No se puede quitar el cliente :client: el servicio :service (:project) lo tiene escogido como aprobador. Quítalo de ese servicio primero.', [
+                'client' => $svc->project->customer->name, 'service' => $svc->name, 'project' => $svc->project->code.' · '.$svc->project->name])]);
+        }
+    }
+
     private function approverPayload(Approver $a): array
     {
-        return $a->attributesToArray() + ['account_status' => $a->accountStatus(), 'user_id' => $a->account?->id];
+        $a->loadMissing('customers');
+        $customers = $a->customers->sortBy('name')->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])->values();
+        return $a->attributesToArray() + ['account_status' => $a->accountStatus(), 'user_id' => $a->account?->id,
+            'customer_ids' => $customers->pluck('id')->all(), 'customers' => $customers->all()];
     }
 
     public function customers(Request $request)

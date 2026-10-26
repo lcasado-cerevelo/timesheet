@@ -72,3 +72,9 @@
 .intap-chips .chip[hidden]{display:none}
 .intap-chips .chip:has(input:checked){background:var(--tint);border-color:var(--primary);color:#085A88;font-weight:600}
 .wkint{margin:-8px 0 0;padding:0 4px;display:flex;flex-direction:column;gap:2px;font-size:13px;color:var(--muted)}
+
+/* hours that do not follow the hour increment: red, and Save draft refuses */
+.wkc.bad,.wkpop .bad{border-color:var(--danger)!important;background:#FFF6F5;color:var(--danger)}
+.wkpop .poperr{color:var(--danger);font-size:13px;font-weight:600}.wkpop .poperr[hidden]{display:none}
+.wkint .wkk{display:inline-block;min-width:64px;margin-right:8px;font-size:11px;letter-spacing:.05em;text-transform:uppercase}
+.wkint.in{margin:8px 0}

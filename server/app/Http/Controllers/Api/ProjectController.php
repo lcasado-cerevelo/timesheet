@@ -14,7 +14,7 @@ class ProjectController extends Controller
     public function index(Request $request)
     {
         $u = $request->user();
-        $q = Project::with('customer:id,name', 'users:id,name', 'services', 'internalApprovers')->where('company_id', $u->company_id)->orderBy('code');
+        $q = Project::with('customer.approvers', 'users:id,name', 'services.internalApprovers', 'services.externalApprovers')->where('company_id', $u->company_id)->orderBy('code');
         if (! $u->isOwner()) {
             $q->where('active', true)->whereHas('users', fn ($x) => $x->where('users.id', $u->id));
         }
@@ -29,10 +29,7 @@ class ProjectController extends Controller
         if (isset($data['user_ids'])) {
             $project->users()->sync($this->ownUsers($request, $data['user_ids']));
         }
-        if ($data['internal_approver_ids'] !== null) {
-            $project->internalApprovers()->sync($data['internal_approver_ids']);
-        }
-        return response()->json($this->payload($project->fresh(['customer', 'users', 'services', 'internalApprovers']), true, $request->user()), 201);
+        return response()->json($this->payload($project->fresh(['customer.approvers', 'users', 'services.internalApprovers', 'services.externalApprovers']), true, $request->user()), 201);
     }
 
     public function update(Request $request, Project $project)
@@ -43,10 +40,7 @@ class ProjectController extends Controller
         if (isset($data['user_ids'])) {
             $project->users()->sync($this->ownUsers($request, $data['user_ids']));
         }
-        if ($data['internal_approver_ids'] !== null) {
-            $project->internalApprovers()->sync($data['internal_approver_ids']);
-        }
-        return response()->json($this->payload($project->fresh(['customer', 'users', 'services', 'internalApprovers']), true, $request->user()));
+        return response()->json($this->payload($project->fresh(['customer.approvers', 'users', 'services.internalApprovers', 'services.externalApprovers']), true, $request->user()));
     }
 
     /** Un proyecto con horas no se borra; se desactiva. */
@@ -67,9 +61,6 @@ class ProjectController extends Controller
             'approver_id' => ['nullable', 'integer', Rule::exists('approvers', 'id')->where('company_id', $companyId)],
             'billable' => 'boolean',
             'active' => 'boolean',
-            'requires_internal_approval' => 'boolean',
-            'internal_approver_ids' => 'nullable|array',
-            'internal_approver_ids.*' => 'integer',
             'bill_rate' => 'nullable|numeric|min:0',
             'budget_hours' => 'nullable|numeric|min:0',
             'meta' => 'nullable|array',
@@ -86,22 +77,35 @@ class ProjectController extends Controller
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'customer_id' => __('Un proyecto facturable necesita un cliente. Elige uno o marca el proyecto como no facturable.')]);
         }
-        // Aprobación interna: si el proyecto la exige, necesita al menos un aprobador interno activo de la compañía.
-        $requires = array_key_exists('requires_internal_approval', $v) ? (bool) $v['requires_internal_approval'] : (bool) $project?->requires_internal_approval;
-        $internalIds = null;
-        if (array_key_exists('internal_approver_ids', $v) || $requires) {
-            $given = array_key_exists('internal_approver_ids', $v) ? (array) $v['internal_approver_ids'] : ($project?->internalApprovers()->pluck('users.id')->all() ?? []);
-            $internalIds = User::where('company_id', $companyId)->where('active', true)->whereIn('id', $given)->pluck('id')->all();
-            if ($requires && ! $internalIds) {
+        // Quiénes aprueban se decide por servicio (ServiceController): internal_approver_ids y requires_internal_approval ya no se
+        // usan aquí (requires_internal_approval se deriva de los servicios activos con aprobación interna) y se ignoran.
+        // Cambiar el cliente no puede dejar, en servicios externos, aprobadores escogidos que no son del cliente nuevo.
+        if ($project && array_key_exists('customer_id', $v) && (int) $v['customer_id'] !== (int) $project->customer_id) {
+            $bad = $project->services()->with('externalApprovers.customers')->get()
+                ->filter(fn ($svc) => $svc->externalApprovers->contains(fn ($a) => ! $a->customers->contains('id', $v['customer_id'])));
+            if ($bad->isNotEmpty()) {
                 throw \Illuminate\Validation\ValidationException::withMessages([
-                    'internal_approver_ids' => __('Elige al menos un aprobador interno activo.')]);
+                    'customer_id' => __('Hay servicios con aprobadores externos de otro cliente (:services). Revisa esos servicios antes de cambiar el cliente.', ['services' => $bad->pluck('name')->implode(', ')])]);
             }
         }
-        unset($v['internal_approver_ids']);
         // invoice_detail ya no se usa: se acepta y se ignora (clientes antiguos). El detalle de la factura sigue cómo se entraron las horas.
         $ids = $v['user_ids'] ?? null;
         unset($v['user_ids']);
-        return ['fields' => $v, 'user_ids' => $ids, 'internal_approver_ids' => $internalIds];
+        return ['fields' => $v, 'user_ids' => $ids];
+    }
+
+    /** Opciones para los selectores de aprobadores de los servicios del proyecto: internos posibles y externos del cliente. */
+    public function approverOptions(Request $request, Project $project)
+    {
+        abort_unless($project->company_id === $request->user()->company_id, 404);
+        $project->loadMissing('customer');
+        $pair = fn ($c) => $c->sortBy(fn ($x) => mb_strtolower($x->name))->map(fn ($x) => ['id' => $x->id, 'name' => $x->name])->values();
+        return response()->json([
+            'client' => $project->customer ? ['id' => $project->customer->id, 'name' => $project->customer->name] : null,
+            'internal' => $pair(User::where('company_id', $project->company_id)->where('active', true)->where('role', '!=', 'approver')->get()),
+            'external' => $project->customer
+                ? $pair($project->customer->approvers()->where('approvers.active', true)->where('approvers.company_id', $project->company_id)->get()) : [],
+        ]);
     }
 
     private function ownUsers(Request $request, array $ids): array
@@ -116,13 +120,11 @@ class ProjectController extends Controller
         $out['customer'] = $p->customer?->only(['id', 'name']);
         // Servicios del proyecto: el dueño ve todos (también los desactivados); los demás solo los activos.
         $out['services'] = $p->services->when(! $owner, fn ($c) => $c->where('active', true))->values()
-            ->map(fn ($s) => ServiceController::payload($s, $owner, $for))->all();
+            ->map(fn ($s) => ServiceController::payload($s, $owner, $for, $p))->all();
         if ($owner) {
             $out += ['bill_rate' => $p->bill_rate, 'approver_id' => $p->approver_id, 'user_ids' => $p->users->pluck('id'),
                 'accountisi_id' => $p->accountisi_id,
-                'requires_internal_approval' => (bool) $p->requires_internal_approval,
-                'internal_approver_ids' => $p->internalApprovers->pluck('id')->values(),
-                'internal_approvers' => $p->internalApprovers->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->values()];
+                'requires_internal_approval' => (bool) $p->requires_internal_approval];
         }
         return $out;
     }

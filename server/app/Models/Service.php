@@ -15,12 +15,36 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Service extends Model
 {
     public const MODES = ['detail', 'total', 'both'];
+    /** Qué aprobación pide el servicio: ninguna, solo interna, solo externa o las dos. */
+    public const APPROVAL_MODES = ['none', 'internal', 'external', 'both'];
 
     protected $guarded = [];
 
     protected function casts(): array
     {
         return ['billable' => 'boolean', 'active' => 'boolean', 'bill_rate' => 'decimal:2'];
+    }
+
+    public function needsInternal(): bool
+    {
+        return in_array($this->approval_mode, ['internal', 'both'], true);
+    }
+
+    public function needsExternal(): bool
+    {
+        return in_array($this->approval_mode ?: 'external', ['external', 'both'], true);
+    }
+
+    /** Supervisores (usuarios con cuenta) de este servicio: basta que apruebe uno. */
+    public function internalApprovers(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'service_internal_approvers');
+    }
+
+    /** Aprobadores externos escogidos entre los del cliente. Vacío = todos los aprobadores activos del cliente del proyecto. */
+    public function externalApprovers(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Approver::class, 'service_external_approvers');
     }
 
     public function project(): BelongsTo
@@ -43,5 +67,11 @@ class Service extends Model
     {
         $r = $this->bill_rate ?? $this->project?->bill_rate;
         return $r === null ? null : (float) $r;
+    }
+
+    protected static function booted(): void
+    {
+        // requires_internal_approval del proyecto se deriva de sus servicios activos.
+        static::saved(fn (Service $s) => $s->project?->syncInternalFlag());
     }
 }

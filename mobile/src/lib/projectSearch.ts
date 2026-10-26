@@ -35,3 +35,17 @@ export function searchProjects(projects: Project[], query: string, recentIds: nu
   const rest = found.filter((p) => rank(p.id) < 0).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' }));
   return [...recent.map((project) => ({ project, recent: true })), ...rest.map((project) => ({ project, recent: false }))];
 }
+
+/** Proyectos activos en orden por código (el orden de las flechas de la pantalla Día). */
+export function sortedProjects(projects: Project[]): Project[] {
+  return projects.filter((p) => p.active).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' }) || a.id - b.id);
+}
+
+/** El proyecto anterior (-1) o siguiente (+1) en orden por código; da la vuelta en los extremos. Con uno o ninguno devuelve null. */
+export function stepProject(projects: Project[], currentId: number | null | undefined, dir: -1 | 1): Project | null {
+  const list = sortedProjects(projects);
+  if (list.length < 2) return null;
+  const i = list.findIndex((p) => p.id === currentId);
+  const next = i < 0 ? (dir === 1 ? 0 : list.length - 1) : (i + dir + list.length) % list.length;
+  return list[next];
+}

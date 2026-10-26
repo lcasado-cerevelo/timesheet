@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import { hmAligned, hoursAligned, minimumMinutes, stepMinutes } from './increment';
 import { needsService, resolveService, serviceMode } from './services';
 import { addDays, hoursBetween, isValidHM, minutes, weekEnding } from './time';
 import type { CaptureMode, Entry, Project, Rules } from './types';
@@ -19,7 +20,7 @@ export interface RuleContext {
   /** Servicio que ya tenía la entrada que se edita (aunque ahora esté desactivado). */
   keepServiceId?: number | null;
   project: Project | undefined;
-  rules: Pick<Rules, 'increment' | 'max_day_hours' | 'weeks_back'>;
+  rules: Pick<Rules, 'increment' | 'max_day_hours' | 'weeks_back' | 'minimum_minutes'>;
   /** Otras entradas de la persona ese mismo día (sin la que se edita). */
   sameDay: Entry[];
   today: string;
@@ -60,12 +61,19 @@ export function validateEntry(input: EntryInput, ctx: RuleContext): string[] {
     if (input.start_time || input.end_time || input.running) errors.push(t('rules.total_no_times'));
     if (project?.invoice_detail === 'with_times') errors.push(t('rules.project_needs_times'));
     if (!input.hours || input.hours <= 0) errors.push(t('rules.write_hours'));
+    else if (!hoursAligned(input.hours, rules.increment)) errors.push(t('rules.hours_not_aligned', { inc: rules.increment }));
   } else {
     if (!isValidHM(input.start_time)) errors.push(t('rules.bad_start'));
+    // Los minutos deben caer en el incremento de la compañía (no se redondea en silencio).
+    const misaligned =
+      (isValidHM(input.start_time) && !hmAligned(input.start_time, rules.increment)) ||
+      (!input.running && isValidHM(input.end_time) && !hmAligned(input.end_time, rules.increment, true));
+    if (misaligned) errors.push(t('rules.not_aligned', { n: stepMinutes(rules.increment) }));
     if (!input.running) {
       if (!isValidHM(input.end_time)) errors.push(t('rules.bad_end'));
       else if (isValidHM(input.start_time)) {
         if (minutes(input.end_time) <= minutes(input.start_time)) errors.push(t('rules.end_after_start'));
+        else if (minutes(input.end_time) - minutes(input.start_time) < minimumMinutes(rules)) errors.push(t('rules.below_min', { m: minimumMinutes(rules) }));
         else if (hoursBetween(input.start_time, input.end_time, rules.increment) <= 0) errors.push(t('rules.too_short'));
         else {
           const s = minutes(input.start_time);

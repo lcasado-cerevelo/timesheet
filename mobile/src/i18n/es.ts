@@ -76,6 +76,9 @@ export const es = {
   'rules.too_short': 'La duración es demasiado corta.',
   'rules.overlap': 'Se cruza con otra entrada del mismo día.',
   'rules.max_day': 'Pasa del máximo de horas por día ({n}).',
+  'rules.not_aligned': 'Los minutos deben ser múltiplos de {n}.',
+  'rules.hours_not_aligned': 'Las horas deben ser múltiplos de {inc}.',
+  'rules.below_min': 'La duración mínima de una entrada es de {m} min.',
 
   // sincronización
   'sync.locked': 'La hoja de esa semana ya fue aprobada.',
@@ -91,10 +94,22 @@ export const es = {
   'clock.end_before_start': 'La hora de salida debe ser después de la de entrada.',
   'clock.not_applicable': 'Este servicio se registra con el total de horas del día; el reloj no aplica.',
   'clock.segment_failed': 'No se pudo guardar el tramo {n}: {error}',
+  'clock.below_min': 'Solo pasaron {n} min. El mínimo es {m} min.',
+  'clock.below_min_title': 'Menos del mínimo',
+  'clock.below_min_ask': 'Solo pasaron {n} min. El mínimo es {m} min. ¿Registrarlo como una entrada de {m} min?',
+  'clock.register_min': 'Registrar {m} min',
+  'clock.keep_going': 'Seguir con el reloj',
+  'clock.discard': 'Descartar',
 
   // pantalla Día
   'day.choose_project': 'Elegir proyecto',
   'day.choose_service': 'Elegir servicio',
+  'day.search': 'Buscar proyecto',
+  'day.prev_project': 'Proyecto anterior',
+  'day.next_project': 'Proyecto siguiente',
+  'day.pick_service': 'Escoger servicio',
+  'picker.hour': 'Hora',
+  'picker.minute': 'Minutos',
   'day.no_projects': 'No tienes proyectos asignados. Pídele al dueño de la compañía que te asigne alguno.',
   'day.service': 'Servicio',
   'day.check_in': 'Entrar ahora',

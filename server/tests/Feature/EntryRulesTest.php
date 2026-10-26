@@ -92,7 +92,7 @@ class EntryRulesTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors('start_time');
         $this->company->update(['rules' => ['max_day_hours' => 10]]);
         $this->worker->unsetRelation('company');
-        $this->postJson('/api/entries', $this->entry(['start_time' => '16:00', 'end_time' => '23:59']))
+        $this->postJson('/api/entries', $this->entry(['start_time' => '16:00', 'end_time' => '23:45']))
             ->assertStatus(422)->assertJsonValidationErrors('hours');
     }
 
@@ -107,12 +107,12 @@ class EntryRulesTest extends TestCase
         $this->postJson('/api/clock/stop')->assertOk()->assertJsonPath('running', false)->assertJsonPath('hours', 2.5);
     }
 
-    public function test_hours_are_rounded_to_the_increment(): void
+    public function test_misaligned_minutes_are_refused_not_rounded(): void
     {
         $this->world();
         Sanctum::actingAs($this->worker);
         $this->postJson('/api/entries', $this->entry(['start_time' => '08:00', 'end_time' => '08:20']))
-            ->assertCreated()->assertJsonPath('hours', 0.25);
+            ->assertStatus(422)->assertJsonValidationErrors('end_time')->assertJsonPath('errors.end_time.0', 'Los minutos deben ser múltiplos de 15');
     }
 
     public function test_weeks_too_far_back_are_refused(): void

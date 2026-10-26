@@ -22,6 +22,11 @@ class TimesheetInternalApproval extends Model
         return $this->belongsTo(User::class, 'approved_by_user_id');
     }
 
+    public function service(): BelongsTo
+    {
+        return $this->belongsTo(Service::class);
+    }
+
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);

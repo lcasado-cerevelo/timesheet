@@ -5,7 +5,8 @@ import { useT } from '../src/i18n';
 import { ProjectSheet } from '../src/pickers';
 import { computeHours } from '../src/lib/rules';
 import { activeServices, needsService, resolveService, serviceMode } from '../src/lib/services';
-import { fmtHours, longDate, nowHM } from '../src/lib/time';
+import { roundedNowHM } from '../src/lib/increment';
+import { fmtHours, longDate } from '../src/lib/time';
 import { useAuth } from '../src/store/auth';
 import { useEntries } from '../src/store/entries';
 import { computeCurrent, useSelection } from '../src/store/selection';
@@ -31,7 +32,7 @@ export default function EntryScreen() {
   const [serviceId, setServiceId] = useState<number | null>(editing ? editing.service_id ?? null : current.service?.id ?? null);
   const [pickProject, setPickProject] = useState(false);
   const [date] = useState(editing?.work_date ?? params.date ?? selectedDate);
-  const [start, setStart] = useState<string | null>(editing?.start_time ?? nowHM());
+  const [start, setStart] = useState<string | null>(editing?.start_time ?? roundedNowHM(me.rules.increment));
   const [end, setEnd] = useState<string | null>(editing?.end_time ?? null);
   const [hours, setHours] = useState(editing && !editing.start_time ? String(editing.hours) : '');
   const [note, setNote] = useState(editing?.note ?? '');

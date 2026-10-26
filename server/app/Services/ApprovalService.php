@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Support\Lang;
+use App\Support\Parts;
 use App\Mail\BrandedMail;
 use App\Models\ApprovalToken;
 use App\Models\Approver;
@@ -20,13 +21,14 @@ use Illuminate\Support\Str;
  */
 class ApprovalService
 {
-    public function issueSheetToken(Timesheet $sheet): string
+    /** Un enlace por hoja Y por aprobador: emitir uno nuevo solo anula los anteriores de ese mismo aprobador. */
+    public function issueSheetToken(Timesheet $sheet, Approver $approver): string
     {
-        ApprovalToken::where('timesheet_id', $sheet->id)->where('scope', 'sheet')->whereNull('used_at')
+        ApprovalToken::where('timesheet_id', $sheet->id)->where('approver_id', $approver->id)->where('scope', 'sheet')->whereNull('used_at')
             ->update(['used_at' => now()]);
         $plain = Str::random(48);
         ApprovalToken::create([
-            'approver_id' => $sheet->approver_id,
+            'approver_id' => $approver->id,
             'timesheet_id' => $sheet->id,
             'scope' => 'sheet',
             'token_hash' => ApprovalToken::hash($plain),
@@ -55,47 +57,53 @@ class ApprovalService
         return ApprovalToken::where('token_hash', ApprovalToken::hash($plain))->first();
     }
 
-    /** Resumen sin tarifas ni importes: persona, semana, horas por proyecto. */
-    public function sheetSummary(Timesheet $sheet): array
+    /**
+     * Resumen sin tarifas ni importes: persona, semana, horas por proyecto (y servicio, si el proyecto tiene varios).
+     * $entries recorta el resumen a ciertas líneas (las partes de un aprobador externo); sin eso, toda la hoja.
+     */
+    public function sheetSummary(Timesheet $sheet, ?\Illuminate\Support\Collection $entries = null): array
     {
-        $sheet->loadMissing('user', 'entries.project');
-        $byProject = $sheet->entries->groupBy('project_id')->map(fn ($rows) => [
-            'project' => $rows->first()->project->code.' · '.$rows->first()->project->name,
+        $sheet->loadMissing('user');
+        $entries ??= $sheet->entries()->get();
+        \Illuminate\Database\Eloquent\Collection::make($entries)->loadMissing('project.services', 'service');
+        $byPart = $entries->groupBy(fn ($e) => $e->project_id.'|'.(Parts::serviceName($e->project, $e->service) ?? ''))->map(fn ($rows) => [
+            'project' => Parts::label($rows->first()->project, $rows->first()->service),
             'hours' => (float) $rows->sum('hours'),
         ])->values()->all();
         return [
             'worker' => $sheet->user->name,
             'week_ending' => $sheet->week_ending->toDateString(),
-            'total_hours' => (float) $sheet->total_hours,
-            'projects' => $byProject,
+            'total_hours' => round((float) $entries->sum('hours'), 2),
+            'projects' => $byPart,
             'late' => (bool) $sheet->late,
             'warnings' => $sheet->warnings(),
         ];
     }
 
-    /** $kind: new | resubmitted | changed */
-    public function sendSheetRequest(Timesheet $sheet, string $kind): void
+    /** $kind: new | resubmitted | changed. Un correo para este aprobador solo con las horas de las partes que le tocan. */
+    public function sendSheetRequest(Timesheet $sheet, string $kind, Approver $approver): void
     {
-        $sheet->loadMissing('approver', 'company', 'user');
-        if (! $sheet->approver) {
+        $sheet->loadMissing('company', 'user');
+        $entries = app(ExternalApprovalService::class)->entriesOf($sheet, $approver, true);
+        if ($entries->isEmpty()) {
             return;
         }
-        $plain = $this->issueSheetToken($sheet);
+        $plain = $this->issueSheetToken($sheet, $approver);
         $company = $sheet->company;
         // El aprobador es una persona externa sin cuenta: recibe el correo en el idioma de la compañía.
-        Lang::with($company->lang(), function () use ($sheet, $kind, $plain, $company) {
+        Lang::with($company->lang(), function () use ($sheet, $kind, $plain, $company, $approver, $entries) {
             $p = ['name' => $sheet->user->name, 'week' => $sheet->week_ending->toDateString()];
             $subject = match ($kind) {
                 'changed' => __('Esta hoja cambió: :name, semana :week', $p),
                 'resubmitted' => __('Hoja corregida para aprobar: :name, semana :week', $p),
                 default => __('Hoja para aprobar: :name, semana :week', $p),
             };
-            Mail::to($sheet->approver->email, $sheet->approver->name)->locale($company->lang())->send(new BrandedMail(
+            Mail::to($approver->email, $approver->name)->locale($company->lang())->send(new BrandedMail(
                 $company, $subject, 'mail.approval-request',
                 [
                     'kind' => $kind,
-                    'summary' => $this->sheetSummary($sheet),
-                    'changes' => $kind === 'changed' ? array_filter(explode("\n", (string) $sheet->change_summary)) : [],
+                    'summary' => $this->sheetSummary($sheet, $entries),
+                    'changes' => $kind === 'changed' ? Parts::changes($sheet->change_summary, $entries->map(fn ($e) => (int) $e->service_id)->unique()->values()->all()) : [],
                     'url' => $company->baseUrl().'/a/'.$plain,
                     'days' => (int) $company->rules()->get('token_days'),
                 ]
@@ -167,26 +175,32 @@ class ApprovalService
         return false;
     }
 
-    /** Recordatorios: aprobadores con hojas enviadas hace más de N días sin decisión. Una sola alerta por aprobador. */
+    /**
+     * Recordatorios: aprobadores externos con partes pendientes de hojas enviadas hace más de N días. Un solo correo por
+     * aprobador. Como una hoja puede tener varios aprobadores, last_reminded_at se actualiza al final, para todos a la vez.
+     */
     public function sendReminders(): int
     {
         $sent = 0;
-        Approver::where('active', true)->with('company')->each(function (Approver $a) use (&$sent) {
+        $dueSheets = [];
+        $external = app(ExternalApprovalService::class);
+        Approver::where('active', true)->with('company')->each(function (Approver $a) use (&$sent, &$dueSheets, $external) {
             $rules = $a->company->rules();
             $days = (int) $rules->get('approval_remind_days');
             $every = (int) $rules->get('remind_every_days');
-            $stale = Timesheet::where('approver_id', $a->id)->where('status', Timesheet::SUBMITTED)->releasedToExternal()
-                ->where('submitted_at', '<=', now()->subDays($days))
-                ->where(fn ($q) => $q->whereNull('last_reminded_at')->orWhere('last_reminded_at', '<=', now()->subDays($every)))
-                ->get();
+            $pending = $external->pendingSheetsFor($a);
+            $stale = $pending->filter(fn (Timesheet $s) => $s->submitted_at && $s->submitted_at->lte(now()->subDays($days))
+                && (! $s->last_reminded_at || $s->last_reminded_at->lte(now()->subDays($every))));
             if ($stale->isEmpty()) {
                 return;
             }
-            $pending = Timesheet::where('approver_id', $a->id)->where('status', Timesheet::SUBMITTED)->releasedToExternal()->count();
-            $this->sendDigest($a, $pending);
-            Timesheet::whereIn('id', $stale->pluck('id'))->update(['last_reminded_at' => now()]);
+            $this->sendDigest($a, $pending->count());
+            array_push($dueSheets, ...$stale->pluck('id')->all());
             $sent++;
         });
+        if ($dueSheets) {
+            Timesheet::whereIn('id', array_unique($dueSheets))->update(['last_reminded_at' => now()]);
+        }
         // Los aprobadores internos con partes pendientes también reciben su recordatorio.
         return $sent + app(InternalApprovalService::class)->sendReminders();
     }

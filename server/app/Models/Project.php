@@ -38,10 +38,19 @@ class Project extends Model
         return $this->belongsToMany(User::class);
     }
 
-    /** Supervisores (usuarios con cuenta) que aprueban las horas de este proyecto antes del aprobador externo. */
+    /** LEGADO: la lista interna ya es por servicio (services.internalApprovers). Solo sirve de respaldo para servicios viejos con la lista vacía. */
     public function internalApprovers(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'project_internal_approvers');
+    }
+
+    /** requires_internal_approval se deriva: true si algún servicio activo pide aprobación interna (internal o both). */
+    public function syncInternalFlag(): void
+    {
+        $v = $this->services()->where('active', true)->whereIn('approval_mode', ['internal', 'both'])->exists();
+        if ((bool) $this->requires_internal_approval !== $v) {
+            $this->forceFill(['requires_internal_approval' => $v])->saveQuietly();
+        }
     }
 
     public function services(): HasMany

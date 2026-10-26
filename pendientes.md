@@ -105,3 +105,11 @@ Decidido: servicios por "desde/hasta" se editan en un cuadrito al tocar la celda
 ## Estado al 2026-10-26 (noche): construido y probado, SIN subir
 Pantallas del mockup, aprobación interna y detalle de horas por cómo se entró. 182 pruebas del servidor, 84 del móvil, tsc en verde. Flujo interno probado con usuarios reales (Ana envía, Marcos aprueba o devuelve, el externo recibe solo después). Reglas de aprobación interna sin confirmar por Luis (basta uno, parte por proyecto, devolución completa, etc.); están en InternalApprovalService.
 Pendiente: aprobación interna en el móvil (no pedida), ver el móvil en teléfono, revisar los PDF/Excel del detalle de horas, subir a GitHub.
+
+## Aprobadores por servicio (Luis, 2026-10-26) — servidor construido (ver diseno.md v1.10); falta web/móvil
+- Cada SERVICIO dice quiénes aprueban, según su modo (none/internal/external/both). La lista de supervisores internos pasa del proyecto al servicio.
+- Interno: NO se puede omitir; hay que escoger al menos un supervisor (uno o varios; basta que apruebe uno).
+- Externo: los aprobadores externos se ligan a CLIENTES (un aprobador puede servir a varios clientes). En el servicio se escogen entre los del cliente del proyecto. Si se omite, se envía a TODOS los aprobadores externos de ese cliente. Si el cliente no tiene ninguno, se PROHÍBE guardar un servicio que requiera aprobación externa (y el proyecto debe tener cliente).
+- Una hoja puede tener varios aprobadores externos (servicios de distintos clientes): cada uno recibe solo sus horas; la hoja se completa cuando todas las partes estén aprobadas.
+- Por omisión (sin respuesta de Luis): el "aprobador" de la persona deja de mandar y queda solo como respaldo de servicios viejos sin configurar; un aprobador sin clientes no sale en ningún servicio; con varios externos basta uno.
+- Selección múltiple (Luis, 2026-10-26): las listas pueden ser grandes, así que NADA de casillas sueltas. Un solo componente reutilizable: casilla de búsqueda que filtra mientras escribes, lista desplegable con scroll (máx. unas 8 filas visibles) y los escogidos como fichas con ✕ arriba. Se usa en: supervisores internos y aprobadores externos del servicio, clientes de un aprobador, personas asignadas y proyectos asignados. Lo de editar en ventana emergente se queda como está.

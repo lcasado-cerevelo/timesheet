@@ -277,6 +277,12 @@ async function loginView(err, info) {
     document.getElementById(S.cache.loginEmail ? 'pw-password' : 'login-email')?.focus();
   }
 }
+/* A message above the sign-in form without redrawing it (the typed email, password and code stay). */
+function loginInline(f, text) {
+  let b = f.parentElement.querySelector('.msg.err.inline');
+  if (!b) { b = document.createElement('div'); b.className = 'msg err inline'; b.setAttribute('role', 'alert'); f.parentElement.insertBefore(b, f); }
+  b.textContent = T(text); const i = f.querySelector('input:not([type=hidden])'); if (i && !f.querySelector('input:focus')) i.focus();
+}
 function finishLogin(r) {
   S.token = r.token; S.cache.newDt = r.device_token || null;
   try { sessionStorage.setItem('tt', r.token); } catch { /* storage blocked */ }   // moved to localStorage after /me if the rule says to remember
@@ -357,7 +363,7 @@ async function approverView() {
       <button class="btn danger" data-act="apr-return" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></p>`
       : `<p class="muted" style="margin:10px 0 0">${sel.decided_at ? `Decided on ${esc(String(sel.decided_at).slice(0, 10))}.` : ''}</p>`;
     detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}</span></div><span class="spacer"></span>${pill(label, color)}${sel.late ? ' ' + pill('Late', 'red') : ''}</div>
-      ${(sel.warnings || []).map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${ret}
+      ${wkParts(d.internal || d.external ? d : sel, 'in')}${(sel.warnings || []).map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${ret}
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
       ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
       <p class="row" style="margin:10px 0"><b>Total hours</b><span class="spacer"></span><b>${h1(sel.total_hours)}</b></p>
@@ -513,8 +519,8 @@ async function exportView() {
     <details><summary>Create a template</summary><form data-form="tpl"><div class="grid">
     <div><label>Name</label><input name="name" required></div><div><label>Format</label><select name="format"><option>xlsx</option><option>csv</option></select></div>
     <div><label>Group</label><select name="group"><option value="">Do not group</option><option value="project,date">By project and day</option><option value="project">By project</option><option value="worker">By person</option><option value="date">By day</option></select></div></div>
-    <p><label>Columns (one per line: Heading | source). Sources: date, week_ending, worker, project.code, project.name, project.patient, project.plan, project.contract, project.meta.KEY, customer, hours, amount, rate, start, end, notes, billable</label>
-    <textarea name="columns" rows="6">Date | date\nPerson | worker\nProject | project.code\nHours | hours</textarea></p>
+    <p><label>Columns</label>
+    <textarea name="columns" rows="6">Date | date\nPerson | worker\nProject | project.code\nHours | hours</textarea><small class="help">One per line: Heading | source. Sources: date, week_ending, worker, project.code, project.name, project.patient, project.plan, project.contract, project.meta.KEY, customer, hours, amount, rate, start, end, notes, billable</small></p>
     <button class="btn pri" type="submit">Save template</button></form></details></div>` : ''}`;
 }
 
@@ -524,130 +530,44 @@ async function projectsView() {
   S.cache.pl = list;
   const F = FL('projects');
   const shown = list.filter(x => matchQ(F.q, [x.code, x.name, x.customer?.name]) && sameFlag(F.active, x.active) && sameFlag(F.billable, x.billable) && (!F.customer_id || x.customer_id === Number(F.customer_id)));
-  const edit = S.cache.editProject; const p = edit ? list.find(x => x.id === edit) : null;
-  const metaTxt = p?.meta ? Object.entries(p.meta).map(([k, v]) => k + '=' + v).join('\n') : '';
-  return `<h1>Projects</h1><p class="sub">Only the company owner manages projects. For Consultorio 1500 each patient is a project named “Patient - Health plan - Contract” (if the name has no plan or contract, the plan_medico and numero_contrato fields under “Fields” are used).</p>
+  return `<div class="pghead"><div><h1>Projects</h1><p class="sub">Only the company owner manages projects. For Consultorio 1500 each patient is a project named “Patient - Health plan - Contract” (if the name has no plan or contract, the plan_medico and numero_contrato fields under “Fields” are used).</p></div><button class="btn pri" type="button" data-act="project-new">New project</button></div>
     <div class="card">${exportBar('projects', activeF('projects'))}${filterBar('projects', [{ k: 'q', label: 'Search', ph: 'Code, name or client' }, { k: 'customer_id', label: 'Client', type: 'select', opts: [['', 'All'], ...customers.map(c => [c.id, c.name])] }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }, { k: 'billable', label: 'Billable', type: 'select', opts: YN('Billable', 'Non-billable') }])}
-    <table><tr><th>Code</th><th>Name</th><th>Client</th><th class="r">Rate</th><th>Status</th><th></th></tr>
+    <div class="scroll"><table><tr><th>Code</th><th>Name</th><th>Client</th><th class="r">Rate</th><th>Status</th><th></th></tr>
     ${shown.map(x => `<tr><td>${esc(x.code)}</td><td>${esc(x.name)}${(x.services || []).filter(s => s.active).length > 1 ? ' <span class="muted">· ' + (x.services || []).filter(s => s.active).length + ' ' + T('services') + '</span>' : ''}</td><td>${esc(x.customer?.name || '—')}</td>
     <td class="r">${x.bill_rate ? money(x.bill_rate) : '—'}</td>
     <td>${activePill(x.active)} ${x.billable ? '' : pill('Non-billable', 'amber')} ${x.requires_internal_approval ? pill('Internal approval', 'blue') : ''}</td>
-    <td class="r"><button class="btn ghost sm" data-act="edit-project" data-id="${x.id}">Edit</button></td></tr>`).join('')}</table></div>
-    <div class="card"><h2>${p ? 'Edit ' + esc(p.code) : 'New project'}</h2><form data-form="project"><input type="hidden" name="id" value="${p?.id || ''}">
-    <div class="grid"><div><label>Code</label><input name="code" required value="${esc(p?.code)}"></div><div><label>Name</label><input name="name" required value="${esc(p?.name)}"></div>
-    <div><label>Client${(p ? p.billable : true) ? ' *' : ''}</label><select name="customer_id" ${(p ? p.billable : true) ? 'required' : ''}><option value="">—</option>${customers.map(c => `<option value="${c.id}" ${p?.customer_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select><small class="muted">A billable project needs a client. Non-billable (internal) projects can have none.</small></div>
-    <div><label>Approver (optional)</label><select name="approver_id"><option value="">Use the person's approver</option>${approvers.map(a => `<option value="${a.id}" ${p?.approver_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>
-    <div><label>Default billing rate (services without their own)</label><input name="bill_rate" type="number" step="0.01" min="0" value="${esc(p?.bill_rate)}"></div>
-    <div><label>Budgeted hours</label><input name="budget_hours" type="number" step="0.5" min="0" value="${esc(p?.budget_hours)}"></div>
-    <div><label>Latitude (work site)</label><input name="geo_lat" type="number" step="0.000001" value="${esc(p?.geo_lat)}"></div>
-    <div><label>Longitude</label><input name="geo_lng" type="number" step="0.000001" value="${esc(p?.geo_lng)}"></div>
-    <div><label>Radius (m)</label><input name="geo_radius_m" type="number" min="50" max="5000" value="${esc(p?.geo_radius_m)}"></div></div>
-    <p class="row"><label class="chk"><input type="checkbox" name="billable" data-act-change="proj-billable" ${p ? (p.billable ? 'checked' : '') : 'checked'}> Billable</label>
-    <label class="chk"><input type="checkbox" name="active" ${p ? (p.active ? 'checked' : '') : 'checked'}> Active</label></p>
-    <p><label>Fields (key=value, one per line)</label><textarea name="meta" rows="3">${esc(metaTxt)}</textarea></p>
-    <p><label>Assigned people</label><span class="row">${users.filter(u => u.active).map(u => `<label class="chk"><input type="checkbox" data-multi="1" name="user_ids" value="${u.id}" ${p?.user_ids?.includes(u.id) ? 'checked' : ''}> ${esc(u.name)}</label>`).join('')}</span></p>
-    ${internalApprovalBlock(p, users)}
-    <button class="btn pri" type="submit">Save</button> ${p ? '<button class="btn ghost" type="button" data-act="new-project">New</button>' : ''}</form></div>
-    ${p ? servicesCard(p) : ''}`;
+    <td class="r"><button class="btn ghost sm" data-act="edit-project" data-id="${x.id}">Edit</button></td></tr>`).join('')}</table></div></div>
+`;
 }
 
-/* Internal approval of a project: a checkbox and, when on, the people (any active person) who approve the hours first. */
-function internalApprovalBlock(p, users) {
-  const on = !!p?.requires_internal_approval; const ids = new Set(p?.internal_approver_ids || []);
-  const people = users.filter(u => u.active || ids.has(u.id));
-  return `<div class="intap"><label class="chk"><input type="checkbox" name="requires_internal_approval" data-act-change="proj-internal" ${on ? 'checked' : ''}> Requires internal approval</label>
-    <div class="intap-body" ${on ? '' : 'hidden'}><label>Internal approvers</label>
-    <input type="search" class="intap-q" data-intap-q placeholder="Search people" aria-label="Search people">
-    <div class="intap-chips">${people.map(u => `<label class="chip" data-nm="${esc(u.name.toLowerCase())}"><input type="checkbox" data-multi="1" name="internal_approver_ids" value="${u.id}" ${ids.has(u.id) ? 'checked' : ''}><span>${esc(u.name)}</span></label>`).join('')}</div>
-    <small class="muted">The hours go to these people first. When one of them approves, they go to the external approver, who certifies at the end.</small></div></div>`;
-}
-
-/* Services of a project: each one has its own rate, billable flag and way of entering hours. They are deactivated, never deleted. */
-function servicesCard(p) {
-  const sv = S.cache.editService; const s = sv ? (p.services || []).find(x => x.id === sv) : null;
-  const modeName = { detail: 'Detail (from / to)', total: 'Total hours per day', both: 'Both (the person’s preference decides)' };
-  return `<div class="card"><h2>Services of ${esc(p.code)}</h2>
-    <p class="muted">The person picks the project and then the service. A service decides the rate, whether it is billed and how hours are entered. A project with one service picks it automatically. Changes only affect new entries.</p>
-    <table><tr><th>Service</th><th class="r">Rate</th><th>Billable</th><th>Entry</th><th>Accountisi item</th><th>Status</th><th></th></tr>
-    ${(p.services || []).map(x => `<tr><td><b>${esc(x.name)}</b></td><td class="r">${x.bill_rate !== null && x.bill_rate !== undefined ? money(x.bill_rate) : '<span class="muted">project rate</span>'}</td>
-    <td>${x.billable ? pill('Billable', 'green') : pill('Non-billable', 'amber')}</td><td>${modeName[x.capture_mode]}</td><td>${esc(x.accountisi_item_id || '—')}</td><td>${activePill(x.active)}</td>
-    <td class="r"><button class="btn ghost sm" data-act="edit-service" data-id="${x.id}">Edit</button> <button class="btn ghost sm" data-act="toggle-service" data-id="${x.id}" data-pid="${p.id}">${x.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table>
-    <h2 style="margin-top:16px">${s ? 'Edit service' : 'New service'}</h2>
-    <form data-form="service"><input type="hidden" name="id" value="${s?.id || ''}"><input type="hidden" name="project_id" value="${p.id}">
-    <div class="grid"><div><label>Name</label><input name="name" required maxlength="120" value="${esc(s?.name)}"></div>
-    <div><label>Rate (empty = project rate)</label><input name="bill_rate" type="number" step="0.01" min="0" value="${esc(s?.bill_rate)}"></div>
-    <div><label>How hours are entered</label><select name="capture_mode">${['both', 'detail', 'total'].map(m => `<option value="${m}" ${(s?.capture_mode || 'both') === m ? 'selected' : ''}>${modeName[m]}</option>`).join('')}</select></div>
-    <div><label>Accountisi item id</label><input name="accountisi_item_id" maxlength="40" value="${esc(s?.accountisi_item_id)}"></div></div>
-    <p class="row"><label class="chk"><input type="checkbox" name="billable" ${s ? (s.billable ? 'checked' : '') : 'checked'}> Billable</label></p>
-    <button class="btn pri" type="submit">Save service</button> ${s ? '<button class="btn ghost" type="button" data-act="new-service">New service</button>' : ''}</form></div>`;
-}
-
-/* --- People & rates --- */
-async function peopleView() {
-  const [list, approvers, projects] = await Promise.all([api('/users'), api('/approvers'), api('/projects')]);
-  const edit = S.cache.editUser; const u = edit ? list.find(x => x.id === edit) : null; const t = u?.terms || {};
-  const F = FL('people');
-  const shown = list.filter(x => matchQ(F.q, [x.name, x.email]) && sameFlag(F.active, x.active) && (!F.worker_type || x.worker_type === F.worker_type) && (!F.capture_mode || x.capture_mode === F.capture_mode));
-  return `<h1>People</h1><p class="sub">Add people, set their role and entry preference, and configure each consultant's billing terms.</p>
-    <div class="card">${exportBar('people', activeF('people'))}${filterBar('people', [{ k: 'q', label: 'Search by name or email', ph: 'Start typing' }, { k: 'worker_type', label: 'Worker type', type: 'select', opts: [['', 'All types'], ['consultant', 'Consultants'], ['employee', 'Employees']] }, { k: 'capture_mode', label: 'Entry preference', type: 'select', opts: [['', 'All'], ['from_to', 'From / to'], ['full_day', 'Total hours per day']] }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }])}
-    <table><tr><th>Name</th><th>Worker type</th><th>Entry preference</th><th>Approver</th><th>Status</th><th>Sign-in</th><th></th></tr>
-    ${shown.map(x => `<tr><td><b>${esc(x.name)}</b><div class="muted">${esc(x.email)}</div></td>
-    <td>${x.worker_type === 'employee' ? 'Employee (' + (x.weekly_hours || 40) + ' h/week)' : 'Consultant'}${x.role === 'owner' ? ' · owner' : ''}</td>
-    <td>${x.capture_mode === 'full_day' ? 'Total hours per day' : 'From / to'}</td><td>${esc(approvers.find(a => a.id === x.approver_id)?.name || '—')}</td>
-    <td>${activePill(x.active)}</td><td>${x.invitation_status === 'pending' ? pill('Invited', 'amber') : pill('Active', 'green')}</td>
-    <td class="r"><button class="btn ghost sm" data-act="edit-user" data-id="${x.id}">Edit</button>${x.id === S.me.id ? '' : ` <button class="btn ghost sm" data-act="reset-user" data-id="${x.id}" data-name="${esc(x.name)}">Reset password</button>`}${x.invitation_status === 'pending' ? ` <button class="btn ghost sm" data-act="resend-invite" data-id="${x.id}" data-email="${esc(x.email)}">Resend invitation</button>` : ''}</td></tr>`).join('')}</table></div>
-    <div class="card"><h2>${u ? 'Edit ' + esc(u.name) : 'New person'}</h2>${u ? '' : '<p class="muted" style="margin-top:-4px">You never type a password. When you save, the person receives an invitation by email to create their own.</p>'}<form data-form="user"><input type="hidden" name="id" value="${u?.id || ''}">
-    <div class="grid"><div><label>Name</label><input name="name" required value="${esc(u?.name)}"></div><div><label>Email</label><input name="email" type="email" required value="${esc(u?.email)}"></div>
-    <div><label>Worker type</label><select name="worker_type"><option value="consultant" ${u?.worker_type !== 'employee' ? 'selected' : ''}>Consultant (invoices)</option><option value="employee" ${u?.worker_type === 'employee' ? 'selected' : ''}>Employee (no invoices)</option></select></div>
-    <div><label>Entry preference (used when a service allows both)</label><select name="capture_mode"><option value="from_to" ${u?.capture_mode !== 'full_day' ? 'selected' : ''}>From / to (detail)</option><option value="full_day" ${u?.capture_mode === 'full_day' ? 'selected' : ''}>Total hours per day</option></select></div>
-    <div><label>Hours per week (employee)</label><input name="weekly_hours" type="number" step="0.5" value="${esc(u?.weekly_hours || '')}" placeholder="40"></div>
-    <div><label>Approver</label><select name="approver_id"><option value="">—</option>${approvers.map(a => `<option value="${a.id}" ${u?.approver_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>
-    <div><label>Role</label><select name="role"><option value="member" ${u?.role !== 'owner' ? 'selected' : ''}>Member</option><option value="owner" ${u?.role === 'owner' ? 'selected' : ''}>Company owner</option></select></div></div>
-    <h2 style="margin-top:14px">Consultant billing terms</h2><div class="grid">
-    <div><label>Hourly rate</label><input name="t_rate" type="number" step="0.01" min="0" value="${esc(t.rate)}"></div>
-    <div><label>Professional services withholding (%)</label><input name="t_retention_pct" type="number" step="0.01" min="0" max="100" value="${esc(t.retention_pct)}"></div>
-    <div><label>IVU / sales tax (%)</label><input name="t_ivu_pct" type="number" step="0.01" min="0" max="100" value="${esc(t.ivu_pct)}"></div>
-    <div><label>Payment terms (days)</label><input name="t_terms_days" type="number" min="0" max="365" value="${esc(t.terms_days ?? 30)}"></div>
-    <div><label>Accountisi vendor id</label><input name="t_accountisi_vendor_id" value="${esc(t.accountisi_vendor_id)}"></div></div>
-    <p class="row"><label class="chk"><input type="checkbox" name="t_ivu_agent" ${t.ivu_agent ? 'checked' : ''}> IVU withholding agent</label> <label class="chk"><input type="checkbox" name="active" ${u ? (u.active ? 'checked' : '') : 'checked'}> Active</label></p>
-    <p><label>Assigned projects</label><span class="row">${projects.map(p => `<label class="chk"><input type="checkbox" data-multi="1" name="project_ids" value="${p.id}" ${u?.project_ids?.includes(p.id) ? 'checked' : ''}> ${esc(p.code)}</label>`).join('')}</span></p>
-    <button class="btn pri" type="submit">Save</button> ${u ? '<button class="btn ghost" type="button" data-act="new-user">New person</button>' : ''}</form></div>`;
-}
-
+/* short chips for a list of names: the first `max`, then "+N" (the full list in the tooltip) */
+const pchips = (names, max = 3) => names.length ? `<span class="pchips" title="${esc(names.join(', '))}">${names.slice(0, max).map(n => `<span class="pchip">${esc(n)}</span>`).join('')}${names.length > max ? `<span class="pchip">+${names.length - max}</span>` : ''}</span>` : '<span class="muted">—</span>';
 async function approversView() {
   const list = await api('/approvers');
-  const ea = S.cache.editApprover ? list.find(x => x.id === S.cache.editApprover) : null;
   const F = FL('approvers');
   const shown = list.filter(a => matchQ(F.q, [a.name, a.email]) && sameFlag(F.active, a.active));
-  return `<h1>Approvers</h1><p class="sub">They can be external and need no account: they receive an email with a secure link. Optionally they can also sign in to the system to see their approvals.</p>
+  return `<div class="pghead"><div><h1>Approvers</h1><p class="sub">They can be external and need no account: they receive an email with a secure link. Optionally they can also sign in to the system to see their approvals.</p></div><button class="btn pri" type="button" data-act="approver-new">Add approver</button></div>
     <div class="card">${exportBar('approvers', activeF('approvers'))}${filterBar('approvers', [{ k: 'q', label: 'Search', ph: 'Name or email' }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }])}
-    <table><tr><th>Name</th><th>Email</th><th>Extra code</th><th>Can sign in</th><th>Account</th><th>Status</th><th></th></tr>${shown.map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.email)}</td><td>${a.require_code ? pill('Yes', 'blue') : pill('No')}</td><td>${a.can_login ? pill('Yes', 'blue') : pill('No')}</td><td>${accountPill(a.account_status)}</td><td>${activePill(a.active)}</td>
-    <td class="r"><button class="btn ghost sm" data-act="edit-approver" data-id="${a.id}">Edit</button> <button class="btn ghost sm" data-act="toggle-login" data-id="${a.id}">${a.can_login ? 'Remove sign-in' : 'Allow sign-in'}</button> <button class="btn ghost sm" data-act="toggle-approver" data-id="${a.id}">${a.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table></div>
-    <div class="card"><h2>${ea ? 'Edit ' + esc(ea.name) : 'New approver'}</h2><form data-form="approver" class="grid"><input type="hidden" name="id" value="${ea?.id || ''}"><div><label>Name</label><input name="name" required value="${esc(ea?.name)}"></div><div><label>Email</label><input name="email" type="email" required value="${esc(ea?.email)}"></div>
-    <div><label class="chk"><input type="checkbox" name="require_code" ${ea?.require_code ? 'checked' : ''}> Always ask for a 6-digit code</label></div>
-    <div style="grid-column:1/-1"><label class="chk"><input type="checkbox" name="can_login" ${ea?.can_login ? 'checked' : ''}> Can sign in to the system</label><div class="muted">The person receives an invitation at the same email, creates a password and signs in with a code sent by email.</div></div>
-    ${ea ? `<div><label class="chk"><input type="checkbox" name="active" ${ea.active ? 'checked' : ''}> Active</label></div>` : ''}
-    <div style="align-self:end"><button class="btn pri" type="submit">${ea ? 'Save' : 'Add'}</button> ${ea ? '<button class="btn ghost" type="button" data-act="new-approver">New</button>' : ''}</div></form></div>`;
+    <div class="scroll"><table><tr><th>Name</th><th>Email</th><th>Clients</th><th>Extra code</th><th>Can sign in</th><th>Account</th><th>Status</th><th></th></tr>${shown.map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.email)}</td><td>${pchips((a.customers || []).map(c => c.name), 3)}</td><td>${a.require_code ? pill('Yes', 'blue') : pill('No')}</td><td>${a.can_login ? pill('Yes', 'blue') : pill('No')}</td><td>${accountPill(a.account_status)}</td><td>${activePill(a.active)}</td>
+    <td class="r"><button class="btn ghost sm" data-act="edit-approver" data-id="${a.id}">Edit</button> <button class="btn ghost sm" data-act="toggle-login" data-id="${a.id}">${a.can_login ? 'Remove sign-in' : 'Allow sign-in'}</button> <button class="btn ghost sm" data-act="toggle-approver" data-id="${a.id}">${a.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table></div></div>
+`;
 }
 
 async function customersView() {
   const list = await api('/customers');
   S.cache.cl = list;
-  const ec = S.cache.editCustomer ? list.find(x => x.id === S.cache.editCustomer) : null;
   const F = FL('customers');
   const shown = list.filter(c => matchQ(F.q, [c.name, c.email]) && sameFlag(F.active, c.active) && sameFlag(F.linked, c.accountisi_id));
-  return `<h1>Clients</h1><p class="sub">For Consultorio 1500, each client is an office.</p>
-    <div class="card">${exportBar('customers', activeF('customers'))}${filterBar('customers', [{ k: 'q', label: 'Search', ph: 'Name or email' }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }, { k: 'linked', label: 'Accountisi', type: 'select', opts: YN('Linked', 'Not linked') }])}<table><tr><th>Name</th><th>Email</th><th>Accountisi</th><th>Status</th><th></th></tr>${shown.map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.email || '')}</td><td>${c.accountisi_id ? pill('Linked', 'green') + ' <span class="muted">' + esc(c.accountisi_id) + '</span>' : pill('Not linked')}</td><td>${activePill(c.active)}</td><td class="r"><button class="btn ghost sm" data-act="edit-customer" data-id="${c.id}">Edit</button></td></tr>`).join('')}</table></div>
-    <div class="card"><h2>${ec ? 'Edit ' + esc(ec.name) : 'New client'}</h2><form data-form="customer" class="grid"><input type="hidden" name="id" value="${ec?.id || ''}"><div><label>Name</label><input name="name" required value="${esc(ec?.name)}"></div><div><label>Email</label><input name="email" type="email" value="${esc(ec?.email)}"></div>
-    ${ec ? `<div><label>Accountisi</label><div>${ec.accountisi_id ? pill('Linked', 'green') + ' <span class="muted">' + esc(ec.accountisi_id) + '</span>' : pill('Not linked')}</div></div><div><label class="chk"><input type="checkbox" name="active" ${ec.active ? 'checked' : ''}> Active</label></div>` : ''}
-    <div style="align-self:end"><button class="btn pri" type="submit">${ec ? 'Save' : 'Add'}</button> ${ec ? '<button class="btn ghost" type="button" data-act="new-customer">New</button>' : ''}</div></form></div>`;
+  return `<div class="pghead"><div><h1>Clients</h1><p class="sub">For Consultorio 1500, each client is an office.</p></div><button class="btn pri" type="button" data-act="customer-new">Add client</button></div>
+    <div class="card">${exportBar('customers', activeF('customers'))}${filterBar('customers', [{ k: 'q', label: 'Search', ph: 'Name or email' }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }, { k: 'linked', label: 'Accountisi', type: 'select', opts: YN('Linked', 'Not linked') }])}<div class="scroll"><table><tr><th>Name</th><th>Email</th><th>Accountisi</th><th>Status</th><th></th></tr>${shown.map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.email || '')}</td><td>${c.accountisi_id ? pill('Linked', 'green') + ' <span class="muted">' + esc(c.accountisi_id) + '</span>' : pill('Not linked')}</td><td>${activePill(c.active)}</td><td class="r"><button class="btn ghost sm" data-act="edit-customer" data-id="${c.id}">Edit</button></td></tr>`).join('')}</table></div></div>
+`;
 }
 
 /* --- Branding --- */
 /* A color: just the picker. The form sends #rrggbb; the preview follows it. */
-function colorField(name, label, value) {
+function colorField(name, label, value, help) {
   const v = /^#[0-9a-f]{6}$/i.test(value || '') ? value.toLowerCase() : '#000000';
-  return `<div><label>${label}</label><input name="${name}" type="color" value="${v}" aria-label="${label}"></div>`;
+  return `<div><label>${label}</label><input name="${name}" type="color" value="${v}" aria-label="${label}">${help ? `<small class="help">${help}</small>` : ''}</div>`;
 }
 function brandPreview(f) {
   const pv = document.getElementById('bpreview'); if (!pv || !f) return;
@@ -662,13 +582,13 @@ async function brandView() {
   return `<h1>Branding</h1><p class="sub">Applies to the web app, emails, PDF invoices and the mobile app, without touching code.</p>
     <div class="card"><form data-form="brand"><div class="grid"><div><label>Business name</label><input name="brand_name" value="${esc(b.name)}"></div>
     ${colorField('color_primary', 'Main color', b.color_primary)}
-    ${colorField('color_accent', 'Accent color (buttons)', b.color_accent)}
-    <div><label>Logo (png, jpg or webp; max 1 MB)</label><input name="logo" type="file" accept="image/*"></div>
+    ${colorField('color_accent', 'Accent color', b.color_accent, 'Used for buttons.')}
+    <div><label>Logo</label><input name="logo" type="file" accept="image/*"><small class="help">png, jpg or webp; max 1 MB.</small></div>
     <div><label>Sender name</label><input name="email_from_name" value="${esc(b.email_from_name)}"></div>
     <div><label>Sender email</label><input name="email_from_address" type="email" value="${esc(b.email_from_address)}"></div></div>
     <p><label>Footer of emails and invoices</label><input name="email_footer" value="${esc(b.email_footer)}"></p>
     <p><label class="chk"><input type="checkbox" name="remove_logo"> Remove the logo</label></p>
-    <p><label class="chk"><input type="checkbox" name="show_name" ${sn ? 'checked' : ''}> Show the name next to the logo</label><small class="muted" style="display:block">Unchecked, the header and the sign-in page show only the logo. Without a logo the name always shows.</small></p>
+    <p><label class="chk"><input type="checkbox" name="show_name" ${sn ? 'checked' : ''}> Show the name next to the logo</label><small class="help">Unchecked, the header and the sign-in page show only the logo. Without a logo the name always shows.</small></p>
     <div class="preview" id="bpreview" style="margin:12px 0"><div class="ph" style="background:${esc(b.color_primary)}">${b.logo_url ? `<img src="${esc(b.logo_url)}" style="max-height:${sn ? 34 : 52}px"> <span class="pvname" ${sn ? '' : 'hidden'}>${esc(b.name)}</span>` : esc(b.name)}</div>
     <div class="pb"><p>This is how the header and button of an approval email look.</p><span class="btn pvbtn" style="background:${esc(b.color_accent)}">Review and decide</span></div></div>
     <button class="btn pri" type="submit">Save branding</button></form></div>
@@ -714,24 +634,24 @@ async function integrationsView() {
   return `<h1>Accountisi integration</h1><p class="sub">Optional. If you do not use it, the rest of the system works the same.
     ${i.last_ok_at ? 'Last successful connection: ' + esc(String(i.last_ok_at).slice(0, 16).replace('T', ' ')) : ''} ${i.last_error ? '<span style="color:var(--danger)">' + esc(i.last_error) + '</span>' : ''}</p>
     <div class="card"><form data-form="accountisi"><div class="grid">
-    <div><label>API URL (localhost today, the server tomorrow)</label><input name="base_url" value="${esc(i.base_url || 'http://localhost:5099')}" required></div>
+    <div><label>API URL</label><input name="base_url" value="${esc(i.base_url || 'http://localhost:5099')}" required><small class="help">Localhost today, the server tomorrow.</small></div>
     <div><label>Access</label><select name="auth_mode"><option value="login" ${i.auth_mode !== 'api_key' ? 'selected' : ''}>Service user</option><option value="api_key" ${i.auth_mode === 'api_key' ? 'selected' : ''}>Service credential (API key)</option></select></div>
-    <div><label>Username (login)</label><input name="login" value="${esc(i.login)}"></div>
+    <div><label>Username</label><input name="login" value="${esc(i.login)}"></div>
     <div>${pwField('password', 'Password' + (i.has_password ? ' (saved)' : ''), { auto: 'new-password', optional: true, ph: i.has_password ? 'unchanged' : '' })}</div>
     <div>${pwField('api_key', 'API key' + (i.has_api_key ? ' (saved)' : ''), { auto: 'new-password', optional: true })}</div>
-    <div><label>Company id in Accountisi</label><input name="company_id" type="number" value="${esc(i.company_id)}"></div>
-    <div><label>Service item (sales invoices)</label><input name="default_item_id" type="number" value="${esc(i.default_item_id)}"></div>
-    <div><label>Income account (if no item)</label><input name="default_income_account_id" type="number" value="${esc(i.default_income_account_id)}"></div>
-    <div><label>Service item (bills)</label><input name="default_service_item_id" type="number" value="${esc(i.default_service_item_id)}"></div>
-    <div><label>Expense account (if no item)</label><input name="default_expense_account_id" type="number" value="${esc(i.default_expense_account_id)}"></div></div>
+    <div><label>Company id</label><input name="company_id" type="number" value="${esc(i.company_id)}"><small class="help">The company in Accountisi.</small></div>
+    <div><label>Sales service item</label><input name="default_item_id" type="number" value="${esc(i.default_item_id)}"><small class="help">Used on sales invoices.</small></div>
+    <div><label>Income account</label><input name="default_income_account_id" type="number" value="${esc(i.default_income_account_id)}"><small class="help">Used if there is no item.</small></div>
+    <div><label>Bills service item</label><input name="default_service_item_id" type="number" value="${esc(i.default_service_item_id)}"><small class="help">Used on bills.</small></div>
+    <div><label>Expense account</label><input name="default_expense_account_id" type="number" value="${esc(i.default_expense_account_id)}"><small class="help">Used if there is no item.</small></div></div>
     <p><label class="chk"><input type="checkbox" name="enabled" ${i.enabled ? 'checked' : ''}> Integration enabled</label></p>
     <p class="row"><button class="btn pri" type="submit">Save</button><button class="btn ghost" type="button" data-act="acc-test">Test connection</button>
     <button class="btn ghost" type="button" data-act="acc-sync">Pull clients from Accountisi</button></p></form></div>
     <div class="card"><h2>Create a sales invoice in Accountisi</h2><p class="muted">Uses a client's approved hours that have not been invoiced yet. The project goes in the invoice comment.</p>
-    <form data-form="sales" class="grid"><div><label>Client (linked)</label><select name="customer_id" required>${linked.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+    <form data-form="sales" class="grid"><div><label>Client</label><select name="customer_id" required>${linked.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
     <div><label>From</label><input name="from" type="date" value="${addDays(today(), -30)}"></div><div><label>To</label><input name="to" type="date" value="${today()}"></div>
     <div><label>Invoice</label><select name="mode"><option value="new">Create a new one</option><option value="append">Add to an open one</option></select></div>
-    <div><label>Open invoice id (when adding)</label><input name="accountisi_invoice_id"></div>
+    <div><label>Open invoice id</label><input name="accountisi_invoice_id"><small class="help">Only when adding to an open one.</small></div>
     <div style="grid-column:span 2"><label>Extra comment</label><input name="comment" maxlength="300"></div>
     <div style="align-self:end" class="row"><button class="btn ghost" type="button" data-act="sales-preview">Preview</button><button class="btn pri" type="submit">Create in Accountisi</button></div></form>
     ${pv ? `<div style="margin-top:12px"><p><b>${hrs(pv.total_hours)} h</b> · ${money(pv.amount)} · ${esc(pv.comment)}</p>${pv.projects_without_rate.length ? `<div class="msg warn">Missing rate on: ${esc(pv.projects_without_rate.join(', '))}</div>` : ''}
@@ -864,21 +784,12 @@ const actions = {
   async 'push-bill'(el) { const r = await api(`/contractor-invoices/${el.dataset.id}/push-accountisi`, { method: 'POST' }); flash(r.accountisi_status === 'draft' ? 'Created in Accountisi as a draft.' : 'Status in Accountisi: ' + r.accountisi_status, r.accountisi_status === 'draft' ? 'ok' : 'warn'); render(); },
   'exp-all'(el) { document.querySelectorAll('input[name="project_ids"]').forEach(c => { c.checked = el.dataset.on === '1'; }); },
   async 'del-tpl'(el) { if (!confirm(T('Delete the template?'))) return; await api('/export-templates/' + el.dataset.id, { method: 'DELETE' }); render(); },
-  'edit-project': el => { S.cache.editProject = Number(el.dataset.id); S.cache.editService = null; render(); }, 'new-project': () => { S.cache.editProject = null; S.cache.editService = null; render(); },
-  'edit-service': el => { S.cache.editService = Number(el.dataset.id); render(); }, 'new-service': () => { S.cache.editService = null; render(); },
-  async 'toggle-service'(el) {
-    const p = S.cache.pl.find(x => x.id === Number(el.dataset.pid)); const s = p.services.find(x => x.id === Number(el.dataset.id));
-    await api('/services/' + s.id, { method: 'PUT', body: { active: !s.active } }); render();
-  },
   lang: async el => { const to = el.dataset.to; S.lang = to; localStorage.setItem('lang', to); if (S.token) { S.me = await api('/me/locale', { method: 'PUT', body: { locale: to } }); } render(); },
-  'edit-approver': el => { S.cache.editApprover = Number(el.dataset.id); render(); }, 'new-approver': () => { S.cache.editApprover = null; render(); },
-  'edit-customer': el => { S.cache.editCustomer = Number(el.dataset.id); render(); }, 'new-customer': () => { S.cache.editCustomer = null; render(); },
-  'edit-user': el => { S.cache.editUser = Number(el.dataset.id); render(); }, 'new-user': () => { S.cache.editUser = null; render(); },
-  async 'toggle-approver'(el) { const a = (await api('/approvers')).find(x => x.id === Number(el.dataset.id)); await api('/approvers/' + a.id, { method: 'PUT', body: { name: a.name, email: a.email, require_code: a.require_code, can_login: !!a.can_login, active: !a.active } }); render(); },
+  async 'toggle-approver'(el) { const a = (await api('/approvers')).find(x => x.id === Number(el.dataset.id)); await api('/approvers/' + a.id, { method: 'PUT', body: { name: a.name, email: a.email, require_code: a.require_code, can_login: !!a.can_login, active: !a.active, customer_ids: a.customer_ids || [] } }); render(); },
   async 'toggle-login'(el) {
     const a = (await api('/approvers')).find(x => x.id === Number(el.dataset.id)); const on = !a.can_login;
     if (!on && !confirm(T('This approver will no longer be able to sign in. Their sessions will be closed.'))) return;
-    await api('/approvers/' + a.id, { method: 'PUT', body: { name: a.name, email: a.email, require_code: a.require_code, can_login: on, active: a.active } });
+    await api('/approvers/' + a.id, { method: 'PUT', body: { name: a.name, email: a.email, require_code: a.require_code, can_login: on, active: a.active, customer_ids: a.customer_ids || [] } });
     flash(on ? 'Invitation sent to ' + a.email : 'Sign-in removed.'); render();
   },
   async 'revert-brand'(el) { await api(`/brand/history/${el.dataset.id}/revert`, { method: 'POST' }); S.me = null; flash('Branding restored.'); render(); },
@@ -906,9 +817,11 @@ async function aprDecide(el, kind, base = '/approver/sheets/') {
 }
 const forms = {
   async login(f) {
+    if (f.dataset.busy) return;   // Enter pressed twice: one request only
     const o = formObj(f); S.cache.loginEmail = o.email;
     const ts = f.querySelector('[name="cf-turnstile-response"]');
-    if (ts && !ts.value) return loginView('Complete the security check first.');
+    if (S.cache.pub?.turnstile_site_key && !(ts && ts.value)) return loginInline(f, 'Complete the security check first.');   // never fail silently, and keep what was typed
+    f.dataset.busy = '1'; const go = f.querySelector('[type=submit]'); if (go) go.disabled = true;
     let dt = null; try { dt = localStorage.getItem('dt'); } catch { /* storage blocked */ }
     try {
       const r = await api('/login/web', { method: 'POST', anon: true, body: { email: o.email, password: o.password, device: 'web', ...(ts ? { turnstile_token: ts.value } : {}), ...(dt ? { device_token: dt } : {}) } });
@@ -917,7 +830,10 @@ const forms = {
     } catch (e) { loginView(loginError(e)); }
   },
   async 'login-code'(f) {
+    if (f.dataset.busy) return;
     const o = formObj(f); const L = S.login; if (!L) return loginView();
+    if (String(o.code || '').replace(/\D/g, '').length !== 6) return loginInline(f, 'Type the 6-digit code.');
+    f.dataset.busy = '1'; const go = f.querySelector('[type=submit]'); if (go) go.disabled = true;
     try { finishLogin(await api('/login/code', { method: 'POST', anon: true, body: { challenge: L.challenge, code: String(o.code || '').replace(/\D/g, ''), remember: !!o.remember } })); }
     catch (e) {
       if (e.status === 410 || e.code === 'expired' || e.code === 'challenge') { S.login = null; return loginView('The code expired. Sign in again to get a new one.'); }
@@ -955,30 +871,6 @@ const forms = {
     await api('/export-templates', { method: 'POST', body: { name: o.name, format: o.format, config: { sheet_name: o.name.slice(0, 30), group_by: o.group ? o.group.split(',') : [], filters: { status: 'approved' }, columns } } });
     flash('Template created.'); render();
   },
-  async service(f) {
-    const o = formObj(f); const id = o.id; const pid = o.project_id; delete o.id; delete o.project_id;
-    if (o.bill_rate === null) o.bill_rate = null; o.billable = !!o.billable; if (o.accountisi_item_id === null) o.accountisi_item_id = null;
-    if (id) await api('/services/' + id, { method: 'PUT', body: o }); else await api('/projects/' + pid + '/services', { method: 'POST', body: o });
-    S.cache.editService = null; flash('Service saved.'); render();
-  },
-  async project(f) {
-    const o = formObj(f); const id = o.id; delete o.id; o.meta = parseMeta(o.meta); o.user_ids = o.user_ids || [];
-    for (const k of ['customer_id', 'approver_id']) if (o[k] != null) o[k] = Number(o[k]);
-    o.billable = !!o.billable; o.requires_internal_approval = !!o.requires_internal_approval; o.internal_approver_ids = o.requires_internal_approval ? (o.internal_approver_ids || []) : [];
-    if (o.requires_internal_approval && !o.internal_approver_ids.length) throw new Error('Pick at least one internal approver.');
-    if (o.billable && !o.customer_id) throw new Error('Pick a client: a billable project needs one.');
-    if (id) await api('/projects/' + id, { method: 'PUT', body: o }); else await api('/projects', { method: 'POST', body: o });
-    S.cache.editProject = null; flash('Project saved.'); render();
-  },
-  async user(f) {
-    const o = formObj(f); const id = o.id; delete o.id;
-    const terms = { rate: o.t_rate ?? 0, retention_pct: o.t_retention_pct ?? 0, ivu_pct: o.t_ivu_pct ?? 0, terms_days: o.t_terms_days ?? 30, ivu_agent: o.t_ivu_agent, accountisi_vendor_id: o.t_accountisi_vendor_id };
-    for (const k of Object.keys(o)) if (k.startsWith('t_')) delete o[k];
-    o.project_ids = o.project_ids || []; if (o.approver_id != null) o.approver_id = Number(o.approver_id);
-    if (o.worker_type === 'consultant') o.terms = terms; delete o.password;   // nobody types passwords for others: new people get an invitation
-    if (id) await api('/users/' + id, { method: 'PUT', body: o }); else await api('/users', { method: 'POST', body: o });
-    S.cache.editUser = null; flash(id ? 'Person saved.' : 'Invitation sent to ' + o.email); render();
-  },
   async cs(f) { S.cache.csPreview = await api('/client-timesheet/preview', { method: 'POST', body: csBody(f) }); S.cache.csEmail = undefined; render(); },
   async 'cs-email'(f) {
     const o = formObj(f); const body = { ...S.cache.cs }; delete body.user_id;
@@ -986,16 +878,6 @@ const forms = {
     S.cache.csEmail = o.email_to;
     const r = await api('/client-timesheet/email', { method: 'POST', body: { ...body, email_to: o.email_to, message: o.message || undefined } });
     flash('Timesheet sent to ' + r.sent_to + ' (' + hrs(r.total_hours) + ' h).'); render();
-  },
-  async approver(f) {
-    const o = formObj(f); const id = o.id; delete o.id; o.can_login = !!o.can_login; o.require_code = !!o.require_code;
-    if (id) { o.active = !!o.active; await api('/approvers/' + id, { method: 'PUT', body: o }); S.cache.editApprover = null; flash('Approver saved.'); return render(); }
-    await api('/approvers', { method: 'POST', body: o }); flash(o.can_login ? 'Approver added. An invitation was sent to ' + o.email : 'Approver added.'); render();
-  },
-  async customer(f) {
-    const o = formObj(f); const id = o.id; delete o.id;
-    if (id) { const c = S.cache.cl?.find(x => x.id === Number(id)); o.active = !!o.active; if (c) o.accountisi_id = c.accountisi_id ?? null; await api('/customers/' + id, { method: 'PUT', body: o }); S.cache.editCustomer = null; flash('Client saved.'); return render(); }
-    await api('/customers', { method: 'POST', body: o }); flash('Client added.'); render();
   },
   async brand(f) {
     const fd = new FormData(); const o = formObj(f);
@@ -1023,13 +905,12 @@ const optHtml = (v, l, cur) => `<option value="${esc(v)}" ${String(cur ?? '') ==
 const numOrNull = v => (v === '' || v == null ? null : Number(v));
 const nz = v => (v === '' || v == null ? '' : String(Number(v)));
 async function peopleScreen() {
-  const [accounts, users, approvers, projects] = await Promise.all([api('/accounts'), api('/users'), api('/approvers'), api('/projects')]);
+  const [accounts, users] = await Promise.all([api('/accounts'), api('/users')]);
   S.cache.ppUsers = users;
   const F = FL('ppl');
   const shown = accounts.filter(a => matchQ(F.q, [a.name, a.email]) && (!F.role || a.role === F.role) && (!F.worker_type || a.worker_type === F.worker_type));
   const ids = new Set(shown.map(a => a.user_id));
   const billing = users.filter(x => x.worker_type === 'consultant' && ids.has(x.id));
-  const u = S.cache.editUser ? users.find(x => x.id === S.cache.editUser) : null; const t = u?.terms || {};
   const roleName = { worker: 'Worker', approver: 'Approver', backoffice: 'Back office' };
   const stPill = { active: pill('Active', 'green'), invited: pill('Invited', 'amber'), disabled: pill('Disabled', 'red') };
   const row = a => {
@@ -1047,29 +928,7 @@ async function peopleScreen() {
       <input class="num" type="number" min="0" max="100" step="0.5" aria-label="Professional services retention percent" data-bill="retention_pct" value="${esc(nz(b.retention_pct))}">
       <label class="bchk"><input type="checkbox" data-bill="ivu_agent" ${b.ivu_agent ? 'checked' : ''}><span>${b.ivu_agent ? 'Yes, adds IVU' : 'No'}</span></label>
       <input class="num" type="number" min="0" max="100" step="0.5" aria-label="IVU percent" data-bill="ivu_pct" ${b.ivu_agent ? '' : 'disabled'} value="${esc(nz(b.ivu_pct))}"></div>`; };
-  const editCard = u ? `<div class="card edit" id="pp-edit"><h2>Edit ${esc(u.name)}</h2><form data-form="user" style="margin-top:12px"><input type="hidden" name="id" value="${u.id}">
-    <div class="grid"><div><label>Name</label><input name="name" required value="${esc(u.name)}"></div><div><label>Email</label><input name="email" type="email" required value="${esc(u.email)}"></div>
-    <div><label>Worker type</label><select name="worker_type"><option value="consultant" ${u.worker_type !== 'employee' ? 'selected' : ''}>Consultant (invoices)</option><option value="employee" ${u.worker_type === 'employee' ? 'selected' : ''}>Employee (no invoices)</option></select></div>
-    <div><label>Entry preference (used when a service allows both)</label><select name="capture_mode"><option value="from_to" ${u.capture_mode !== 'full_day' ? 'selected' : ''}>From / to (detail)</option><option value="full_day" ${u.capture_mode === 'full_day' ? 'selected' : ''}>Total hours per day</option></select></div>
-    <div><label>Hours per week (employee)</label><input name="weekly_hours" type="number" step="0.5" value="${esc(u.weekly_hours || '')}" placeholder="40"></div>
-    <div><label>Approver</label><select name="approver_id"><option value="">—</option>${approvers.map(a => `<option value="${a.id}" ${u.approver_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>
-    <div><label>ID number</label><input name="employee_number" maxlength="40" value="${esc(u.employee_number)}"></div></div>
-    <h2 style="margin:16px 0 8px;font-size:16px">Contractor billing terms</h2><div class="grid">
-    <div><label>Hourly rate</label><input name="t_rate" type="number" step="0.01" min="0" value="${esc(t.rate)}"></div>
-    <div><label>Professional services withholding (%)</label><input name="t_retention_pct" type="number" step="0.01" min="0" max="100" value="${esc(t.retention_pct)}"></div>
-    <div><label>IVU / sales tax (%)</label><input name="t_ivu_pct" type="number" step="0.01" min="0" max="100" value="${esc(t.ivu_pct)}"></div>
-    <div><label>Payment terms (days)</label><input name="t_terms_days" type="number" min="0" max="365" value="${esc(t.terms_days ?? 30)}"></div>
-    <div><label>Accountisi vendor id</label><input name="t_accountisi_vendor_id" value="${esc(t.accountisi_vendor_id)}"></div></div>
-    <p class="row"><label class="chk"><input type="checkbox" name="t_ivu_agent" ${t.ivu_agent ? 'checked' : ''}> IVU withholding agent</label> <label class="chk"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}> Active</label></p>
-    <p><label>Assigned projects</label><span class="row">${projects.map(p => `<label class="chk"><input type="checkbox" data-multi="1" name="project_ids" value="${p.id}" ${u.project_ids?.includes(p.id) ? 'checked' : ''}> ${esc(p.code)}</label>`).join('')}</span></p>
-    <button class="btn pri" type="submit">Save</button> <button class="btn ghost" type="button" data-act="new-user">Close</button></form></div>` : '';
-  return `<div class="pp"><div><h1>People &amp; rates</h1><p class="sub">Invite users, set roles, and configure each contractor's billing terms.</p></div>
-    <form class="card inv invrow" data-form="invite">
-      <label class="lbl" style="flex:1 1 180px">Name<input name="name" required maxlength="120" placeholder="Full name"></label>
-      <label class="lbl" style="flex:2 1 240px">Invite by email<input name="email" type="email" required placeholder="name@company.com"></label>
-      <label class="lbl" style="flex:1 1 160px">Role<select name="role" data-pp-role><option value="worker">Worker</option><option value="approver">Approver</option><option value="backoffice">Back office</option></select></label>
-      <label class="lbl" style="flex:1 1 160px" data-pp-wt>Worker type<select name="worker_type"><option value="employee">Employee</option><option value="consultant">Consultant</option></select></label>
-      <button class="btn pri" type="submit">Send invitation</button></form>
+  return `<div class="pp"><div class="pghead"><div><h1>People &amp; rates</h1><p class="sub">Invite users, set roles, and configure each contractor's billing terms.</p></div><button class="btn pri" type="button" data-act="inv-open">Invite</button></div>
     <div class="card flt">
       <label class="flbl" style="flex:2 1 240px">Search by name or email<input type="search" data-filter="ppl" name="q" placeholder="Start typing" value="${esc(F.q ?? '')}"></label>
       <label class="flbl" style="flex:1 1 160px">Role<select data-filter="ppl" name="role">${optHtml('', 'All roles', F.role)}${optHtml('worker', 'Worker', F.role)}${optHtml('approver', 'Approver', F.role)}${optHtml('backoffice', 'Back office', F.role)}</select></label>
@@ -1081,7 +940,7 @@ async function peopleScreen() {
     <div class="card"><h2 style="font-size:18px">Contractor billing terms</h2><p class="muted" style="font-size:15px;margin:4px 0 12px">Applies to contractors only. Employees have no billing terms: the system records hours, nothing else. Changes affect new invoices, never invoices already submitted.</p>
       <div class="scrollx"><div style="min-width:760px"><div class="hd cols-bill"><div class="th">Contractor</div><div class="th">Rate ($/h)</div><div class="th">Retention (%)</div><div class="th">IVU withholding agent</div><div class="th">IVU (%)</div></div>
       ${billing.map(bill).join('') || '<div class="empty">No contractor matches the filter.</div>'}</div></div></div>
-    ${editCard}</div>`;
+    </div>`;
 }
 /* Approvals (owner and approver see the same screen): status pills with counts, filters, list on the left, the selected timesheet on the right. */
 function rvState() {
@@ -1102,7 +961,7 @@ async function reviewScreen() {
   const stName = s => (s === 'submitted' || s === 'pending' ? 'Pending' : STATUS[s] || s);
   // The owner sees which stage a pending sheet is in: waiting for the internal approvers or for the client.
   const stOf = s => ((s.status === 'submitted' || s.status === 'pending') && !ap && !inn && (s.stage === 'internal' || s.stage === 'external') ? (s.stage === 'internal' ? 'Pending · internal' : 'Pending · client') : stName(s.status));
-  const waitTxt = s => (!inn && s.stage && (s.waiting_for || []).length ? `<p class="note" style="margin:0">${T(s.stage === 'internal' ? 'Waiting for' : 'Waiting for client approval:')} ${esc(s.waiting_for.map(w => w.name).join(', '))}</p>` : '');
+  const waitTxt = s => (!inn && s.stage && (s.waiting_for || []).length ? `<p class="note" style="margin:0">${T(s.stage === 'internal' ? 'Waiting for' : 'Waiting for client approval:')} ${esc(wkNames(s.waiting_for, 3))}</p>` : '');
   const typeName = s => (s.worker_type === 'consultant' ? 'Contractor' : 'Employee');
   const nameOf = s => s.user?.name ?? s.name ?? s.worker_name ?? '';
   const projOf = s => (s.projects || []).map(p => (typeof p === 'string' ? p : [p.code, p.name].filter(Boolean).join(' · '))).join(', ');
@@ -1123,7 +982,7 @@ async function reviewScreen() {
       <div class="decided"><button class="btn" data-act="${A[0]}" data-id="${sel.id}" data-v="${sel.version}">Approve</button><button class="btn danger" data-act="${A[1]}" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></div></div>`
       : (sel.decided_at ? `<p class="muted" style="margin:0">Decided on ${esc(String(sel.decided_at).slice(0, 10))}.</p>` : '');
     const cell = (v, extra = '') => `<div class="mono" style="text-align:center;${extra}">${v ? h1(v) : ''}</div>`;
-    detail = `<div class="card r"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><div><h2 style="font-size:19px">${esc(nameOf(sel))}</h2><p style="margin:0">${typeName(sel)} · week ending ${nice(sel.week_ending)}</p></div>${pill(stOf(sel), stColor[sel.status] || 'gray')}</div>${waitTxt(sel)}
+    detail = `<div class="card r"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><div><h2 style="font-size:19px">${esc(nameOf(sel))}</h2><p style="margin:0">${typeName(sel)} · week ending ${nice(sel.week_ending)}</p></div>${pill(stOf(sel), stColor[sel.status] || 'gray')}</div>${wkParts(d && (d.internal || d.external) ? d : sel, 'in') || waitTxt(sel)}
       ${(d?.warnings || sel.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('')}${ret}
       <div class="scrollx"><div style="min-width:440px"><div class="hd cols-det"><div class="th">Line</div>${days.map(x => `<div class="th c">${dow(parse(x).getDay())}</div>`).join('')}<div class="th r">Total</div></div>
       ${[...lines.values()].map(r => `<div class="rw cols-det"><div style="font-size:14px">${esc([r.p?.code, r.p?.name, r.s?.name].filter(Boolean).join(' · '))}</div>${days.map(x => cell(r.by[x])).join('')}<div class="mono" style="text-align:right;font-weight:500">${h1(Object.values(r.by).reduce((a, v) => a + v, 0))}</div></div>`).join('')}
@@ -1146,18 +1005,9 @@ async function reviewScreen() {
       ${rows || `<div class="empty">${pend && !R.q && !R.type ? 'Nothing is waiting for approval.' : 'No timesheet matches the filter.'}</div>`}</div></div></div>${detail}</div></div>`;
 }
 Object.assign(actions, {
-  async 'pp-edit'(el) { S.cache.editUser = Number(el.dataset.id); await render(); document.getElementById('pp-edit')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
-  'pp-edit-approver'(el) { S.cache.editApprover = Number(el.dataset.id); location.hash = '#/approvers'; },
   'rv-status'(el) { rvState().status = el.dataset.s; S.cache.apSel = null; render(); },
   'rv-pick'(el) { S.cache.apSel = Number(el.dataset.id); render(); },
   'rv-period'(el) { if (el.disabled) return; rvState().period = el.dataset.p; render(); },
-});
-Object.assign(forms, {
-  async invite(f) {
-    const o = formObj(f); const body = { name: String(o.name || '').trim(), email: o.email, role: o.role || 'worker' };
-    if (body.role === 'worker') body.worker_type = o.worker_type || 'employee';
-    const r = await api('/invitations', { method: 'POST', body }); flash('Invitation sent to ' + (r.emailed_to || body.email)); render();
-  },
 });
 document.addEventListener('change', e => {
   const rv = e.target.closest('[data-rv]');
@@ -1173,40 +1023,362 @@ document.addEventListener('change', e => {
     await api('/users/' + x.id, { method: 'PUT', body }); flash('Billing terms saved.'); render();
   })();
 });
+/* ================= Pop-up windows (modals): ONE component for every add / edit =================
+   Overlay + centered box, title, ✕, Esc and click outside (asking first when there are unsaved changes), focus kept inside,
+   inner scroll, aria-modal, Cancel / Save at the bottom. Modals stack (the service window opens over the project window).
+   Server errors (422) appear inside the window, next to the field and in a strip on top, without closing it. */
+const MDL = []; let mdlN = 0;
+const mdlSnap = f => JSON.stringify([...f.elements].filter(el => el.name && !el.disabled && el.type !== 'file').map(el => [el.name, el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value]));
+const mdlFocusable = box => [...box.querySelectorAll('a[href],button,input,select,textarea,[tabindex]')].filter(x => !x.disabled && x.type !== 'hidden' && x.tabIndex >= 0 && x.getClientRects().length && !x.closest('[hidden]'));
+function mdlClear(m) { m.form.querySelectorAll('.fe').forEach(x => x.remove()); m.form.querySelectorAll('.bad').forEach(x => x.classList.remove('bad')); const s = m.el.querySelector('.mdl-err'); s.hidden = true; s.textContent = ''; }
+function mdlError(m, err) {
+  mdlClear(m); const er = err?.errors || {};
+  for (const [k, v] of Object.entries(er)) {
+    const fld = m.form.querySelector(`[data-ef="${k}"]`) || m.form.querySelector(`[name="${k}"]`); if (!fld) continue;
+    fld.classList.add('bad'); const s = document.createElement('small'); s.className = 'fe'; s.textContent = T([].concat(v)[0]); fld.insertAdjacentElement('afterend', s);
+  }
+  const strip = m.el.querySelector('.mdl-err'); strip.textContent = T(err?.message || 'Could not save. Try again.'); strip.hidden = false;
+  m.el.querySelector('.mdl-body').scrollTop = 0; (m.form.querySelector('.bad') || strip).scrollIntoView?.({ block: 'nearest' });
+  const b = m.form.querySelector('.bad'); if (b && b.focus) b.focus();
+}
+function modalOpen(o) {
+  const id = 'mdl-t' + (++mdlN); const ov = document.createElement('div');
+  ov.className = 'mdl'; ov.style.zIndex = 800 + MDL.length * 20;
+  ov.innerHTML = localizeHtml(`<div class="mdl-box ${o.size || ''}" role="dialog" aria-modal="true" aria-labelledby="${id}">
+    <div class="mdl-head"><div><h2 id="${id}">${o.title}</h2>${o.sub ? '<p class="mdl-sub"></p>' : ''}</div><button type="button" class="mdl-x" data-mdl-close aria-label="Close" title="Close">${wkClose}</button></div>
+    <form class="mdl-form"><div class="mdl-body"><div class="mdl-err msg err" role="alert" hidden></div>${o.body}</div>
+    <div class="mdl-foot"><button type="button" class="btn ghost" data-mdl-close>Cancel</button><button type="submit" class="btn pri">${o.save || 'Save'}</button></div></form></div>`);
+  if (o.sub) ov.querySelector('.mdl-sub').textContent = o.sub;
+  const box = ov.firstElementChild, form = ov.querySelector('form'), sb = form.querySelector('[type=submit]');
+  const m = { el: ov, box, form, busy: false, prev: document.activeElement, down: false, snap: '' };
+  m.dirty = () => mdlSnap(form) !== m.snap;
+  m.close = skip => { const i = MDL.indexOf(m); if (i >= 0) MDL.splice(i, 1); ov.remove(); if (!MDL.length) document.body.classList.remove('mdl-open'); if (m.prev?.isConnected) { try { m.prev.focus(); } catch { /* gone */ } } if (!skip) o.onClose?.(m); };
+  m.request = () => { if (m.busy) return; if (m.dirty() && !confirm(T('Discard your changes?'))) return; m.close(); };
+  /* after a successful save: the window closes, the list refreshes and the notice appears */
+  m.finish = async (msg, after) => { m.snap = mdlSnap(form); m.close(true); if (msg) toast(msg); await (after ? after() : render()); };
+  ov.addEventListener('click', e => { if (e.target.closest('[data-mdl-close]')) m.request(); });
+  ov.addEventListener('mousedown', e => { m.down = e.target === ov; });
+  ov.addEventListener('mouseup', e => { if (e.target === ov && m.down) m.request(); m.down = false; });
+  ov.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.type === 'search') { e.preventDefault(); return; }   // the people search inside a window must not submit it
+    if (e.key !== 'Tab') return; const f = mdlFocusable(box); if (!f.length) return; const a = document.activeElement;
+    if (e.shiftKey && (a === f[0] || !box.contains(a))) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && (a === f[f.length - 1] || !box.contains(a))) { e.preventDefault(); f[0].focus(); }
+  });
+  form.addEventListener('input', e => { e.target.classList.remove('bad'); const n = e.target.nextElementSibling; if (n?.classList.contains('fe')) n.remove(); });
+  form.addEventListener('submit', async e => {
+    e.preventDefault(); if (m.busy) return; m.busy = true; sb.disabled = true; mdlClear(m);
+    try { await o.onSubmit(m); } catch (err) { if (err.message !== 'Session expired') mdlError(m, err); } finally { m.busy = false; sb.disabled = false; }
+  });
+  document.body.appendChild(ov); document.body.classList.add('mdl-open'); MDL.push(m);
+  ov.querySelectorAll('[data-msel]').forEach(mselSync); o.init?.(m); m.snap = mdlSnap(form);
+  (form.querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=search]),select,textarea') || sb).focus();
+  return m;
+}
+const mdlCloseAll = () => [...MDL].forEach(m => m.close(true));
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && MDL.length && !e.target.closest?.('.msel-q[aria-expanded="true"]')) { e.preventDefault(); e.stopImmediatePropagation(); MDL[MDL.length - 1].request(); } }, true);
+window.addEventListener('hashchange', mdlCloseAll);
+const needErr = (field, msg) => Object.assign(new Error(msg), { errors: { [field]: [msg] } });
+
+/* --- Searchable multi-select: the one component for every long list (people, projects, approvers, clients) ---
+   Chips on top (with ✕), a search box that filters while typing (no accents, no case; name and email), a scrolling list
+   of about 8 rows (↑ ↓ Enter, Esc), the count and Clear. The state lives in hidden checkboxes (data-multi), so formObj and the
+   "discard changes?" check work as before. o = { name, label, options: [{ id, label, sub, disabled }], selected: [ids], ef, placeholder } */
+const mselNorm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+let mselN = 0;
+function msel(o) {
+  const n = ++mselN, sel = new Set((o.selected || []).map(Number));
+  return `<div class="msel" data-msel${o.ef ? ` data-ef="${o.ef}"` : ''}>
+    <div class="msel-chips" data-msel-chips></div>
+    <input type="search" class="msel-q" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="msel-l${n}" aria-autocomplete="list" aria-label="${esc(o.label)}" placeholder="${esc(o.placeholder || 'Search by name or email')}" autocomplete="off">
+    <ul class="msel-list" id="msel-l${n}" role="listbox" aria-multiselectable="true" aria-label="${esc(o.label)}" hidden>${(o.options || []).map((x, i) => `<li role="option" id="msel-${n}-${i}" data-v="${x.id}" data-label="${esc(x.label)}" data-nm="${esc(mselNorm(x.label + ' ' + (x.sub || '')))}" aria-selected="${sel.has(Number(x.id))}"${x.disabled ? ' aria-disabled="true"' : ''}><input type="checkbox" hidden data-multi="1" name="${o.name}" value="${x.id}" ${sel.has(Number(x.id)) ? 'checked' : ''}><span class="msel-nm">${esc(x.label)}</span>${x.sub ? `<small class="msel-sub">${esc(x.sub)}</small>` : ''}<span class="msel-tick" aria-hidden="true">✓</span></li>`).join('')}<li class="msel-none" role="presentation" hidden>${(o.options || []).length ? 'No matches' : esc(o.empty || 'Nothing to choose from yet.')}</li></ul>
+    <div class="msel-foot"><span class="msel-n" aria-live="polite"></span><button type="button" class="msel-clear">Clear</button></div></div>`;
+}
+const mselOpts = w => [...w.querySelectorAll('.msel-list li[data-v]')];
+function mselSync(w) {
+  const on = mselOpts(w).filter(li => li.querySelector('input').checked);
+  mselOpts(w).forEach(li => li.setAttribute('aria-selected', li.querySelector('input').checked));
+  w.querySelector('[data-msel-chips]').innerHTML = on.map(li => `<span class="msel-chip"><span>${esc(li.dataset.label)}</span><button type="button" class="msel-x" data-v="${li.dataset.v}" aria-label="${esc(T('Remove'))} ${esc(li.dataset.label)}" ${li.getAttribute('aria-disabled') ? 'disabled' : ''}>✕</button></span>`).join('');
+  w.querySelector('.msel-n').textContent = T(`${on.length} selected`); w.querySelector('.msel-clear').hidden = !on.some(li => !li.getAttribute('aria-disabled'));
+}
+function mselAct(w, li) {
+  const q = w.querySelector('.msel-q'); w.querySelectorAll('.msel-list li.act').forEach(x => x.classList.remove('act'));
+  if (li) { li.classList.add('act'); q.setAttribute('aria-activedescendant', li.id); li.scrollIntoView({ block: 'nearest' }); } else q.removeAttribute('aria-activedescendant');
+}
+function mselFilter(w) {
+  const terms = mselNorm(w.querySelector('.msel-q').value).split(/\s+/).filter(Boolean); let first = null, n = 0;
+  mselOpts(w).forEach(li => { const ok = terms.every(t => li.dataset.nm.includes(t)); li.hidden = !ok; if (ok) { n++; first ??= li; } });
+  w.querySelector('.msel-none').hidden = n > 0; mselAct(w, terms.length ? first : null);
+}
+function mselShow(w, on) {
+  const q = w.querySelector('.msel-q'), l = w.querySelector('.msel-list'); if (!on === l.hidden) return;
+  l.hidden = !on; q.setAttribute('aria-expanded', String(on)); if (on) mselFilter(w); else mselAct(w, null);
+}
+function mselToggle(w, li, force) {
+  if (!li || li.getAttribute('aria-disabled')) return; const c = li.querySelector('input'); c.checked = force ?? !c.checked;
+  mselSync(w); w.classList.remove('bad'); const f = w.nextElementSibling; if (f?.classList.contains('fe')) f.remove();
+  w.dispatchEvent(new Event('mselchange', { bubbles: true }));
+}
+document.addEventListener('focusin', e => { const q = e.target.closest?.('.msel-q'); if (q) mselShow(q.closest('.msel'), true); });
+document.addEventListener('click', e => {
+  const w = e.target.closest?.('.msel'); if (!w) return;
+  if (e.target.closest('.msel-q')) { mselShow(w, true); return; }
+  const li = e.target.closest('.msel-list li[data-v]'); if (li) { mselToggle(w, li); return; }
+  const x = e.target.closest('.msel-x'); if (x) { mselToggle(w, mselOpts(w).find(l => l.dataset.v === x.dataset.v), false); return; }
+  if (e.target.closest('.msel-clear')) { mselOpts(w).forEach(l => mselToggle(w, l, false)); w.querySelector('.msel-q').focus(); }
+});
+document.addEventListener('mousedown', e => {
+  if (e.target.closest?.('.msel-list')) { e.preventDefault(); return; }   // clicking a row keeps the focus in the search box
+  document.querySelectorAll('.msel-list:not([hidden])').forEach(l => { const w = l.closest('.msel'); if (!w.contains(e.target)) mselShow(w, false); });
+});
+document.addEventListener('focusout', e => { const w = e.target.closest?.('.msel'); if (w && !w.contains(e.relatedTarget) && e.relatedTarget) mselShow(w, false); });
+document.addEventListener('input', e => { const q = e.target.closest?.('.msel-q'); if (!q) return; const w = q.closest('.msel'); mselShow(w, true); mselFilter(w); });
+document.addEventListener('keydown', e => {
+  const q = e.target.closest?.('.msel-q'); if (!q) return; const w = q.closest('.msel'), open = !w.querySelector('.msel-list').hidden;
+  const vis = mselOpts(w).filter(l => !l.hidden), cur = vis.indexOf(w.querySelector('.msel-list li.act'));
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (!open) mselShow(w, true); if (vis.length) mselAct(w, vis[(cur + (e.key === 'ArrowDown' ? 1 : -1) + vis.length) % vis.length]); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (open && cur >= 0) mselToggle(w, vis[cur]); }
+  else if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); mselShow(w, false); }
+});
+
+/* --- People: invite --- */
+function openInviteModal() {
+  modalOpen({ title: 'Invite person', size: 'sm', save: 'Send invitation',
+    body: `<p class="muted" style="margin:0">You never type a password. The person receives an invitation by email to create their own.</p>
+      <div><label>Name</label><input name="name" required maxlength="120" placeholder="Full name" autocomplete="off"></div>
+      <div><label>Email</label><input name="email" type="email" required placeholder="name@company.com" autocomplete="off"></div>
+      <div><label>Role</label><select name="role" data-pp-role><option value="worker">Worker</option><option value="approver">Approver</option><option value="backoffice">Back office</option></select></div>
+      <div data-pp-wt><label>Worker type</label><select name="worker_type"><option value="employee">Employee</option><option value="consultant">Consultant</option></select></div>`,
+    async onSubmit(m) {
+      const o = formObj(m.form); const body = { name: String(o.name || '').trim(), email: o.email, role: o.role || 'worker' };
+      if (body.role === 'worker') body.worker_type = o.worker_type || 'employee';
+      const r = await api('/invitations', { method: 'POST', body }); await m.finish('Invitation sent to ' + (r.emailed_to || body.email));
+    } });
+}
+/* --- People: edit (ID number, type, preference, external approver, projects, active and the consultant's billing terms) --- */
+async function openPersonModal(id) {
+  const [users, approvers, projects] = await Promise.all([api('/users'), api('/approvers'), api('/projects')]);
+  const u = users.find(x => x.id === Number(id)); if (!u) throw new Error('That person no longer exists.'); const t = u.terms || {};
+  modalOpen({ title: 'Edit person', sub: u.name, size: 'lg',
+    body: `<div class="grid"><div><label>Name</label><input name="name" required value="${esc(u.name)}"></div><div><label>Email</label><input name="email" type="email" required value="${esc(u.email)}"></div>
+      <div><label>ID number</label><input name="employee_number" maxlength="40" value="${esc(u.employee_number)}"></div>
+      <div><label>Worker type</label><select name="worker_type"><option value="consultant" ${u.worker_type !== 'employee' ? 'selected' : ''}>Consultant (invoices)</option><option value="employee" ${u.worker_type === 'employee' ? 'selected' : ''}>Employee (no invoices)</option></select></div>
+      <div><label>Entry preference</label><select name="capture_mode"><option value="from_to" ${u.capture_mode !== 'full_day' ? 'selected' : ''}>From / to (detail)</option><option value="full_day" ${u.capture_mode === 'full_day' ? 'selected' : ''}>Total hours per day</option></select><small class="help">Used when a service allows both.</small></div>
+      <div><label>Hours per week</label><input name="weekly_hours" type="number" step="0.5" value="${esc(u.weekly_hours || '')}" placeholder="40"><small class="help">Employees only.</small></div>
+      <div><label>External approver</label><select name="approver_id"><option value="">—</option>${approvers.map(a => `<option value="${a.id}" ${u.approver_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div></div>
+      <div class="mdl-sec"><h3>Consultant billing terms</h3><div class="grid">
+      <div><label>Hourly rate</label><input name="t_rate" type="number" step="0.01" min="0" value="${esc(t.rate)}"></div>
+      <div><label>Withholding (%)</label><input name="t_retention_pct" type="number" step="0.01" min="0" max="100" value="${esc(t.retention_pct)}"><small class="help">Professional services withholding.</small></div>
+      <div><label>IVU / sales tax (%)</label><input name="t_ivu_pct" type="number" step="0.01" min="0" max="100" value="${esc(t.ivu_pct)}"></div>
+      <div><label>Payment terms (days)</label><input name="t_terms_days" type="number" min="0" max="365" value="${esc(t.terms_days ?? 30)}"></div>
+      <div><label>Accountisi vendor id</label><input name="t_accountisi_vendor_id" value="${esc(t.accountisi_vendor_id)}"></div></div>
+      <p class="row" style="margin:12px 0 0"><label class="chk"><input type="checkbox" name="t_ivu_agent" ${t.ivu_agent ? 'checked' : ''}> IVU withholding agent</label></p></div>
+      <div class="mdl-sec"><h3>Assigned projects</h3>${msel({ name: 'project_ids', ef: 'project_ids', label: 'Assigned projects', placeholder: 'Search by code or name', empty: 'There are no projects yet.', selected: u.project_ids, options: projects.filter(p => p.active || u.project_ids?.includes(p.id)).map(p => ({ id: p.id, label: p.code, sub: p.name })) })}</div>
+      <label class="chk"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}> Active</label>`,
+    async onSubmit(m) {
+      const o = formObj(m.form);
+      const terms = { rate: o.t_rate ?? 0, retention_pct: o.t_retention_pct ?? 0, ivu_pct: o.t_ivu_pct ?? 0, terms_days: o.t_terms_days ?? 30, ivu_agent: o.t_ivu_agent, accountisi_vendor_id: o.t_accountisi_vendor_id };
+      for (const k of Object.keys(o)) if (k.startsWith('t_')) delete o[k];
+      o.project_ids = o.project_ids || []; if (o.approver_id != null) o.approver_id = Number(o.approver_id);
+      if (o.worker_type === 'consultant') o.terms = terms;
+      await api('/users/' + u.id, { method: 'PUT', body: o }); await m.finish('Person saved.');
+    } });
+}
+/* --- Approvers: add / edit --- */
+async function openApproverModal(id) {
+  const [alist, custs] = await Promise.all([api('/approvers'), api('/customers')]);
+  const a = id ? alist.find(x => x.id === Number(id)) : null; if (id && !a) throw new Error('That approver no longer exists.');
+  const mine = a?.customer_ids || [];
+  modalOpen({ title: a ? 'Edit approver' : 'Add approver', sub: a?.name, size: 'sm', save: a ? 'Save' : 'Add',
+    body: `<div><label>Name</label><input name="name" required value="${esc(a?.name)}"></div><div><label>Email</label><input name="email" type="email" required value="${esc(a?.email)}"></div>
+      <div><label>Clients</label>${msel({ name: 'customer_ids', ef: 'customer_ids', label: 'Clients', placeholder: 'Search clients', empty: 'There are no clients yet.', selected: mine, options: custs.filter(c => c.active || mine.includes(c.id)).map(c => ({ id: c.id, label: c.name })) })}<small class="help">This approver can be chosen for services of these clients.</small></div>
+      <label class="chk"><input type="checkbox" name="require_code" ${a?.require_code ? 'checked' : ''}> Always ask for a 6-digit code</label>
+      <div><label class="chk"><input type="checkbox" name="can_login" ${a?.can_login ? 'checked' : ''}> Can sign in to the system</label><small class="help">The person receives an invitation at the same email, creates a password and signs in with a code sent by email.</small></div>
+      ${a ? `<label class="chk"><input type="checkbox" name="active" ${a.active ? 'checked' : ''}> Active</label>` : ''}`,
+    async onSubmit(m) {
+      const o = formObj(m.form); o.can_login = !!o.can_login; o.require_code = !!o.require_code; o.customer_ids = o.customer_ids || [];
+      if (a) { o.active = !!o.active; await api('/approvers/' + a.id, { method: 'PUT', body: o }); return m.finish('Approver saved.'); }
+      await api('/approvers', { method: 'POST', body: o }); await m.finish(o.can_login ? 'Approver added. An invitation was sent to ' + o.email : 'Approver added.');
+    } });
+}
+/* --- Clients: add / edit --- */
+async function openCustomerModal(id) {
+  const c = id ? (await api('/customers')).find(x => x.id === Number(id)) : null; if (id && !c) throw new Error('That client no longer exists.');
+  modalOpen({ title: c ? 'Edit client' : 'Add client', sub: c?.name, size: 'sm', save: c ? 'Save' : 'Add',
+    body: `<div><label>Name</label><input name="name" required value="${esc(c?.name)}"></div><div><label>Email</label><input name="email" type="email" value="${esc(c?.email)}"></div>
+      ${c ? `<div><label>Accountisi</label><div>${c.accountisi_id ? pill('Linked', 'green') + ' <span class="muted">' + esc(c.accountisi_id) + '</span>' : pill('Not linked')}</div></div><label class="chk"><input type="checkbox" name="active" ${c.active ? 'checked' : ''}> Active</label>` : ''}`,
+    async onSubmit(m) {
+      const o = formObj(m.form);
+      if (c) { o.active = !!o.active; o.accountisi_id = c.accountisi_id ?? null; await api('/customers/' + c.id, { method: 'PUT', body: o }); return m.finish('Client saved.'); }
+      await api('/customers', { method: 'POST', body: o }); await m.finish('Client added.');
+    } });
+}
+/* --- Projects: add / edit, with the project's services inside --- */
+const APPROVAL_MODES = { none: ['None', 'gray'], internal: ['Internal only', 'blue'], external: ['External only', 'amber'], both: ['Internal and external', 'green'] };
+const approvalPill = m => { const a = APPROVAL_MODES[m || 'external'] || APPROVAL_MODES.external; return pill(a[0], a[1]); };
+const CAPTURE_NAMES = { detail: 'Detail (from / to)', total: 'Total hours per day', both: 'Both (the person’s preference decides)' };
+/* the approvers of a service, short: internal and external names, or a dash */
+function svcApprovers(x) {
+  const nm = l => (l || []).map(a => a.name), short = l => { const n = nm(l); return esc(n.slice(0, 2).join(', ')) + (n.length > 2 ? ' +' + (n.length - 2) : ''); };
+  const mode = x.approval_mode || 'external', rows = [];
+  if ((mode === 'internal' || mode === 'both') && (x.internal_approvers || []).length) rows.push(`<div class="svap" title="${esc(nm(x.internal_approvers).join(', '))}"><span class="muted">Internal</span>${short(x.internal_approvers)}</div>`);
+  if (mode === 'external' || mode === 'both') {
+    const sel = x.external_approvers || [], eff = x.external_effective || [];
+    if (sel.length) rows.push(`<div class="svap" title="${esc(nm(sel).join(', '))}"><span class="muted">External</span>${short(sel)}</div>`);
+    else if (eff.length) rows.push(`<div class="svap" title="${esc(nm(eff).join(', '))}"><span class="muted">External · all</span>${short(eff)}</div>`);
+  }
+  return rows.join('') || '<span class="muted">—</span>';
+}
+function svcBox(p) {
+  return `<div class="mdl-sech"><h3>Services</h3><button type="button" class="btn ghost sm" data-act="svc-add" data-pid="${p.id}">Add service</button></div>
+    <p class="muted" style="margin:0 0 8px">The person picks the project and then the service. A service decides the rate, whether it is billed, how hours are entered and which approval it needs. A project with one service picks it automatically. Changes only affect new entries.</p>
+    <div class="scrollx"><table class="svct"><tr><th>Service</th><th class="r">Rate</th><th>Billable</th><th>Entry</th><th>Approval</th><th>Approvers</th><th>Status</th><th></th></tr>
+    ${(p.services || []).map(x => `<tr><td><b>${esc(x.name)}</b></td><td class="r">${x.bill_rate !== null && x.bill_rate !== undefined ? money(x.bill_rate) : '<span class="muted">project rate</span>'}</td>
+    <td>${x.billable ? pill('Billable', 'green') : pill('Non-billable', 'amber')}</td><td>${CAPTURE_NAMES[x.capture_mode] || ''}</td><td>${approvalPill(x.approval_mode)}</td><td>${svcApprovers(x)}</td><td>${activePill(x.active)}</td>
+    <td class="r"><button type="button" class="btn ghost sm" data-act="svc-edit" data-pid="${p.id}" data-id="${x.id}">Edit</button> <button type="button" class="btn ghost sm" data-act="svc-toggle" data-pid="${p.id}" data-id="${x.id}">${x.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table></div>`;
+}
+async function openProjectModal(id) {
+  const [list, customers, approvers, users] = await Promise.all([api('/projects'), api('/customers'), api('/approvers'), api('/users')]);
+  S.cache.pl = list; const p = id ? list.find(x => x.id === Number(id)) : null; if (id && !p) throw new Error('That project no longer exists.');
+  const bill = p ? p.billable : true; const metaTxt = p?.meta ? Object.entries(p.meta).map(([k, v]) => k + '=' + v).join('\n') : '';
+  const m = modalOpen({ title: p ? 'Edit project' : 'New project', sub: p ? `${p.code} · ${p.name}` : '', size: 'xl', save: p ? 'Save' : 'Create project',
+    onClose: mm => { if (mm.svcChanged) render(); },
+    body: `<div class="grid"><div><label>Code</label><input name="code" required value="${esc(p?.code)}"></div><div><label>Name</label><input name="name" required value="${esc(p?.name)}"></div>
+      <div><label>Client${bill ? ' *' : ''}</label><select name="customer_id" data-act-change="proj-client" ${bill ? 'required' : ''}><option value="">—</option>${customers.map(c => `<option value="${c.id}" ${p?.customer_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+        <small class="help">A billable project needs a client. Non-billable (internal) projects can have none.</small><small class="help" data-nocli style="color:var(--danger)" ${p?.customer_id ? 'hidden' : ''}>Without a client, the services of this project cannot have external approval.</small></div>
+      <div><label>Approver (optional)</label><select name="approver_id"><option value="">Use the person's approver</option>${approvers.map(a => `<option value="${a.id}" ${p?.approver_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>
+      <div><label>Default billing rate</label><input name="bill_rate" type="number" step="0.01" min="0" value="${esc(p?.bill_rate)}"><small class="help">Used by services without their own rate.</small></div>
+      <div><label>Budgeted hours</label><input name="budget_hours" type="number" step="0.5" min="0" value="${esc(p?.budget_hours)}"></div>
+      <div><label>Latitude (work site)</label><input name="geo_lat" type="number" step="0.000001" value="${esc(p?.geo_lat)}"></div>
+      <div><label>Longitude</label><input name="geo_lng" type="number" step="0.000001" value="${esc(p?.geo_lng)}"></div>
+      <div><label>Radius (m)</label><input name="geo_radius_m" type="number" min="50" max="5000" value="${esc(p?.geo_radius_m)}"></div></div>
+      <p class="row" style="margin:0"><label class="chk"><input type="checkbox" name="billable" data-act-change="proj-billable" ${bill ? 'checked' : ''}> Billable</label>
+      <label class="chk"><input type="checkbox" name="active" ${p ? (p.active ? 'checked' : '') : 'checked'}> Active</label></p>
+      <div><label>Fields (key=value, one per line)</label><textarea name="meta" rows="3">${esc(metaTxt)}</textarea></div>
+      <div class="mdl-sec"><h3>Assigned people</h3>${msel({ name: 'user_ids', ef: 'user_ids', label: 'Assigned people', empty: 'There are no people yet.', selected: p?.user_ids, options: users.filter(u => u.active || p?.user_ids?.includes(u.id)).map(u => ({ id: u.id, label: u.name, sub: u.email })) })}</div>
+      <div class="mdl-sec" data-svc-box>${p ? svcBox(p) : `<div class="mdl-sech"><h3>Services</h3></div><p class="muted" style="margin:0">A new project starts with one service called General. Save the project, then open it with Edit to rename that service or add more services (each one with its own rate, entry mode and approval).</p>`}</div>`,
+    async onSubmit(mm) {
+      const o = formObj(mm.form); o.meta = parseMeta(o.meta); o.user_ids = o.user_ids || [];
+      for (const k of ['customer_id', 'approver_id']) if (o[k] != null) o[k] = Number(o[k]);
+      o.billable = !!o.billable; o.active = !!o.active;
+      if (o.billable && !o.customer_id) throw needErr('customer_id', 'Pick a client: a billable project needs one.');
+      if (p) await api('/projects/' + p.id, { method: 'PUT', body: o }); else await api('/projects', { method: 'POST', body: o });
+      await mm.finish('Project saved.');
+    } });
+  if (p) m.el.dataset.pid = p.id;
+}
+/* the small window over the project's: a service (rate, entry mode, approval) */
+async function openServiceModal(pid, sid) {
+  const p = (S.cache.pl || []).find(x => x.id === Number(pid)); if (!p) return;
+  const s = sid ? (p.services || []).find(x => x.id === Number(sid)) : null;
+  const opt = await api('/projects/' + p.id + '/approver-options');   // { client: {id,name}|null, internal: [{id,name}], external: [{id,name}] }
+  const cname = opt.client?.name || p.customer?.name || '';
+  const m = modalOpen({ title: s ? 'Edit service' : 'Add service', sub: `${p.code} · ${p.name}`, size: 'sm', save: s ? 'Save' : 'Add',
+    body: `<div><label>Name</label><input name="name" required maxlength="120" value="${esc(s?.name)}"></div>
+      <div><label>Rate</label><input name="bill_rate" type="number" step="0.01" min="0" value="${esc(s?.bill_rate)}"><small class="help">Empty = project rate.</small></div>
+      <div><label>How hours are entered</label><select name="capture_mode">${['both', 'detail', 'total'].map(k => `<option value="${k}" ${(s?.capture_mode || 'both') === k ? 'selected' : ''}>${CAPTURE_NAMES[k]}</option>`).join('')}</select></div>
+      <div><label>Approval</label><select name="approval_mode">${Object.entries(APPROVAL_MODES).map(([k, a]) => `<option value="${k}" ${(s?.approval_mode || 'external') === k ? 'selected' : ''}>${a[0]}</option>`).join('')}</select><small class="help">What this service needs before its hours count as approved.</small></div>
+      <div data-sv-int><label>Internal approvers *</label>${msel({ name: 'internal_approver_ids', ef: 'internal_approver_ids', label: 'Internal approvers', placeholder: 'Search by name', empty: 'There are no people yet.', selected: s?.internal_approver_ids, options: (opt.internal || []).map(u => ({ id: u.id, label: u.name, sub: u.email })) })}<small class="help">At least one. When one of them approves, the hours move on.</small></div>
+      <div data-sv-ext><label>External approvers</label>${msel({ name: 'external_approver_ids', ef: 'external_approver_ids', label: 'External approvers', placeholder: 'Search by name', empty: 'This client has no approvers yet.', selected: s?.external_approver_ids, options: (opt.external || []).map(u => ({ id: u.id, label: u.name, sub: u.email })) })}<small class="help" data-sv-exthelp></small>
+        <div class="msg err" data-sv-warn role="alert" hidden style="margin:8px 0 0"></div></div>
+      <div><label>Accountisi item id</label><input name="accountisi_item_id" maxlength="40" value="${esc(s?.accountisi_item_id)}"></div>
+      <label class="chk"><input type="checkbox" name="billable" ${s ? (s.billable ? 'checked' : '') : 'checked'}> Billable</label>`,
+    async onSubmit(mm) {
+      const o = formObj(mm.form); o.billable = !!o.billable; const need = svcNeeds(mm);
+      o.internal_approver_ids = need.int ? (o.internal_approver_ids || []) : []; o.external_approver_ids = need.ext ? (o.external_approver_ids || []) : [];
+      try {
+        if (need.int && !o.internal_approver_ids.length) throw needErr('internal_approver_ids', 'Choose at least one internal approver.');
+        if (need.ext && need.block) throw needErr('external_approver_ids', need.block);
+        if (s) await api('/services/' + s.id, { method: 'PUT', body: o }); else await api('/projects/' + p.id + '/services', { method: 'POST', body: o });
+      } catch (e) { setTimeout(() => svcSync(mm), 0); throw e; }
+      await mm.finish('Service saved.', () => refreshSvcBox(p.id));
+    } });
+  m.opt = opt; m.cname = cname; const f = m.form;
+  f.elements.approval_mode.addEventListener('change', () => svcSync(m)); f.addEventListener('mselchange', () => svcSync(m)); svcSync(m);
+}
+/* what the chosen approval mode needs, and whether saving is blocked (the client has no external approvers) */
+function svcNeeds(m) {
+  const mode = m.form.elements.approval_mode.value, int = mode === 'internal' || mode === 'both', ext = mode === 'external' || mode === 'both';
+  const block = !ext ? '' : !m.opt.client ? T('This project has no client. Pick one in the project first.') : !(m.opt.external || []).length ? T('Client ' + m.cname + ' has no approvers. Add one in Approvers first.') : '';
+  return { int, ext, block };
+}
+function svcSync(m) {
+  const n = svcNeeds(m), q = x => m.form.querySelector(x);
+  q('[data-sv-int]').hidden = !n.int; q('[data-sv-ext]').hidden = !n.ext;
+  const w = q('[data-sv-warn]'); w.hidden = !n.block; w.textContent = n.block;
+  const names = (m.opt.external || []).map(x => x.name), none = !q('[name=external_approver_ids]:checked');
+  const h = q('[data-sv-exthelp]'); h.hidden = !!n.block;
+  h.textContent = none ? T('Empty = it goes to all approvers of ' + m.cname + ': ' + names.slice(0, 5).join(', ') + (names.length > 5 ? ' +' + (names.length - 5) : '')) : T('Only the approvers chosen above are asked to approve.');
+  q('[type=submit]').disabled = !!n.block;
+}
+/* redraw the services table inside the open project window (the rest of that window is left as the person typed it) */
+async function refreshSvcBox(pid) {
+  S.cache.pl = await api('/projects'); const p = S.cache.pl.find(x => x.id === Number(pid));
+  const pm = MDL.find(x => x.el.dataset.pid === String(pid)); if (!p || !pm) return;
+  pm.el.querySelector('[data-svc-box]').innerHTML = localizeHtml(svcBox(p)); pm.svcChanged = true;
+}
+Object.assign(actions, {
+  'inv-open': () => openInviteModal(),
+  'pp-edit': el => openPersonModal(el.dataset.id),
+  'pp-edit-approver': el => openApproverModal(el.dataset.id),
+  'approver-new': () => openApproverModal(), 'edit-approver': el => openApproverModal(el.dataset.id),
+  'customer-new': () => openCustomerModal(), 'edit-customer': el => openCustomerModal(el.dataset.id),
+  'project-new': () => openProjectModal(), 'edit-project': el => openProjectModal(el.dataset.id),
+  'svc-add': el => openServiceModal(el.dataset.pid), 'svc-edit': el => openServiceModal(el.dataset.pid, el.dataset.id),
+  async 'svc-toggle'(el) {
+    const p = S.cache.pl.find(x => x.id === Number(el.dataset.pid)); const s = p.services.find(x => x.id === Number(el.dataset.id));
+    await api('/services/' + s.id, { method: 'PUT', body: { active: !s.active } }); await refreshSvcBox(p.id); toast(s.active ? 'Service deactivated.' : 'Service activated.');
+  },
+});
 /* ================= Week screen (WEB-HOJA): editable weekly grid, clock icon and toasts ================= */
 const HOUR_TYPES = [['reg', 'REG'], ['ot', 'OT'], ['hol', 'HOL'], ['sick', 'Sick'], ['vac', 'VAC'], ['nb', 'NB']];
 const WK = () => ((S.cache.wkst ??= {})[S.weekDate] ??= { extra: [], edits: {}, pend: {}, n: 0, cert: false });
 const wkSvcs = p => (p?.services || []).filter(s => s.active);
 const wkMode = (p, sid) => { const s = (p?.services || []).find(x => x.id === Number(sid)); return (s && s.mode) || (S.me.capture_mode === 'from_to' ? 'from_to' : 'full_day'); };
 /* "Submitted · waiting for Ana" (internal stage) or "Submitted · waiting for client approval" (external stage). */
+const wkNames = (l, max = 3) => { const n = (l || []).map(a => a.name || a).filter(Boolean); return n.slice(0, max).join(', ') + (n.length > max ? ' +' + (n.length - max) : ''); };
 const stageLabel = s => {
   const base = STATUS[s.status] || s.status;
   if (s.status !== 'submitted') return base;
-  const names = (s.waiting_for || []).map(w => w.name).filter(Boolean);
-  if (s.stage === 'internal') return base + ' · waiting for ' + (names.join(', ') || 'internal approval');
+  const names = wkNames(s.waiting_for);
+  if (names) return base + ' · waiting for ' + names;
+  if (s.stage === 'internal') return base + ' · waiting for internal approval';
   if (s.stage === 'external') return base + ' · waiting for client approval';
   return base;
 };
-const wkInternal = sheet => ((sheet.internal || []).length ? `<div class="wkint">${sheet.internal.map(i => {
-  const proj = typeof i.project === 'string' ? i.project : [i.project?.code, i.project?.name].filter(Boolean).join(' · ');
-  const names = (i.approvers || []).map(a => a.name || a).join(', ');
-  const by = i.approved_by?.name || i.approved_by;
-  const txt = i.status === 'approved' ? 'approved by ' + (by || names) : i.status === 'skipped' ? 'skipped' : 'waiting for ' + names;
-  return `<div>${esc(proj)} — ${txt}</div>`; }).join('')}</div>` : '');
+/* One line per part of the sheet, internal and external: "approved by Ana", "waiting for Ana, Luis" or "skipped" (the service name only if it comes). Each role sees only what the server sends it. */
+const wkParts = (sheet, cls = '') => {
+  const one = (kind, i) => {
+    const proj = typeof i.project === 'string' ? i.project : [i.project?.code, i.project?.name].filter(Boolean).join(' · ');
+    const svc = typeof i.service === 'string' ? i.service : i.service?.name;
+    const by = i.approved_by?.name || i.approved_by;
+    const txt = i.status === 'approved' ? 'approved by ' + (by || wkNames(i.approvers)) : i.status === 'skipped' ? 'skipped' : 'waiting for ' + wkNames(i.approvers);
+    return `<div><span class="wkk">${kind}</span><span>${esc([proj, svc].filter(Boolean).join(' · '))} — ${esc(txt)}</span></div>`;
+  };
+  const rows = (sheet?.internal || []).map(i => one('Internal', i)).concat((sheet?.external || []).map(i => one('External', i)));
+  return rows.length ? `<div class="wkint ${cls}">${rows.join('')}</div>` : '';
+};
 const wkPL = p => (p ? `${p.code} · ${p.name}` : '—');
 const wkClose = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 const wkClock = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
 
-/* Floating messages: success disappears by itself after ~2.5 s; errors and warnings stay until closed. They never move the page. */
+/* Floating messages. EVERY one disappears by itself (success 2.5 s, warning 6 s, error 8 s); the ✕ closes it sooner and the timer
+   pauses while the pointer is over it. None stays fixed and none moves the page. */
+const TOAST_MS = { ok: 2500, warn: 6000, err: 8000 };
 function toast(text, kind = 'ok') {
   let box = document.getElementById('toasts');
   if (!box) { box = document.createElement('div'); box.id = 'toasts'; document.body.appendChild(box); }
-  const t = document.createElement('div'); const ok = kind === 'ok';
-  t.className = 'toast ' + (ok ? 'ok' : kind === 'warn' ? 'warn' : 'err'); t.setAttribute('role', ok ? 'status' : 'alert');
-  t.innerHTML = `<span>${esc(T(text))}</span>` + (ok ? '' : `<button type="button" class="x" aria-label="${esc(T('Close'))}">✕</button>`);
-  const gone = () => t.remove();
-  if (ok) setTimeout(gone, 2500); else t.querySelector('.x').addEventListener('click', gone);
-  box.appendChild(t);
+  kind = kind === 'ok' || kind === 'warn' ? kind : 'err'; const ok = kind === 'ok'; const shown = T(text);
+  box.querySelectorAll('.toast').forEach(x => { if (x.dataset.k === kind && x.firstChild.textContent === shown) x.remove(); });   // the same message twice shows once
+  const t = document.createElement('div'); t.dataset.k = kind;
+  t.className = 'toast ' + kind; t.setAttribute('role', ok ? 'status' : 'alert');
+  t.innerHTML = `<span>${esc(shown)}</span><button type="button" class="x" aria-label="${esc(T('Close'))}">✕</button>`;
+  let left = TOAST_MS[kind], t0 = 0, timer = 0;
+  const gone = () => { clearTimeout(timer); t.remove(); };
+  const run = () => { t0 = Date.now(); clearTimeout(timer); timer = setTimeout(gone, left); };
+  t.addEventListener('mouseenter', () => { clearTimeout(timer); left = Math.max(1500, left - (Date.now() - t0)); });
+  t.addEventListener('mouseleave', run);
+  t.querySelector('.x').addEventListener('click', gone);
+  box.appendChild(t); run();
 }
 
 async function weekView() {
@@ -1284,7 +1456,8 @@ async function weekView() {
       if (mode === 'from_to' || es.length > 1) { lt += sum; tot.day[di] += sum; return `<input class="inp num wkc ro" readonly data-di="${di}" data-act="cell-pop" data-lid="${esc(ln.lid)}" data-d="${d}" title="Details" aria-label="${aria}" value="${sum ? h1(sum) : ''}">`; }
       const orig = es[0] ? Number(es[0].hours) : ''; const dirty = Object.prototype.hasOwnProperty.call(st.pend, key); const v = dirty ? st.pend[key] : orig;
       const n = parseFloat(v) || 0; lt += n; tot.day[di] += n;
-      return `<input class="inp num wkc ${dirty ? 'dirty' : ''}" type="number" min="0" max="${maxDay}" step="${inc}" data-di="${di}" data-cell="${esc(key)}" data-orig="${orig}" aria-label="${aria}" value="${esc(v)}" ${locked ? 'readonly' : ''}>`;
+      const badc = dirty && !wkMulti(v, inc);   // typed but not a multiple of the increment: red, and Save draft refuses
+      return `<input class="inp num wkc ${dirty ? 'dirty' : ''} ${badc ? 'bad' : ''}" type="number" min="0" max="${maxDay}" step="${inc}" data-di="${di}" data-cell="${esc(key)}" data-orig="${orig}" aria-label="${aria}" ${badc ? `aria-invalid="true" title="${esc(wkIncMsg(inc))}"` : ''} value="${esc(v)}" ${locked ? 'readonly' : ''}>`;
     }).join('');
     tot.all += lt;
     return `<div class="wkrow wkg ${emp ? 'emp' : ''}"><div class="wkproj"><select data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="project_id" aria-label="Project" ${locked ? 'disabled' : ''}>${pOpts}</select>${sSel}</div>${tSel}${cells}
@@ -1311,7 +1484,7 @@ async function weekView() {
       ${sheet.status === 'submitted' ? '<p class="muted" style="margin:0">Waiting for a decision. If you change it, the approver gets a notice that it changed.</p>' : ''}</div>`;
   const warn = (sheet.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('');
   const ret = sheet.status === 'returned' && sheet.return_comment ? `<div class="msg err" role="alert"><b>Returned for correction:</b> ${esc(sheet.return_comment)}${sheet.return_by ? ` <span class="muted">${T('Returned by')} ${esc(sheet.return_by.name || sheet.return_by)}</span>` : ''}</div>` : '';
-  return `<div class="wk">${head}${ret}${warn}${nav}${alert}${facts}${wkInternal(sheet)}${grid}<div class="wkbottom">${left}${right}</div></div>`;
+  return `<div class="wk">${head}${ret}${warn}${nav}${alert}${facts}${wkParts(sheet)}${grid}<div class="wkbottom">${left}${right}</div></div>`;
 }
 
 /* live totals while typing */
@@ -1326,6 +1499,23 @@ function wkRecalc() {
   const sub = root.querySelector('[data-act="wk-submit"]'); if (sub) sub.disabled = !(WK().cert && all > 0);
 }
 const wkIdKey = ln => [ln.project_id, ln.service_id ?? '', ln.hour_type].join('|');
+/* Hour increment (rules.increment): applied when typing, never rounded in silence. 0.25 -> 15 min, 0.5 -> 30, 1 -> 60, 0.1 -> 6, 0.05 -> 3, 0.01 -> no alignment. */
+const wkInc = () => Number(S.me?.rules?.increment) || 0.25;
+const wkMulti = (v, inc = wkInc()) => { const n = parseFloat(v); if (v === '' || v == null || !Number.isFinite(n) || n === 0) return true; const q = n / inc; return Math.abs(q - Math.round(q)) < 1e-6; };
+const wkIncMsg = inc => 'Hours must be multiples of ' + inc;
+const wkStepMin = () => { const m = wkInc() * 60; return m >= 1 && Math.abs(m - Math.round(m)) < 1e-6 ? Math.round(m) : null; };
+const wkMinMulti = (t, step = wkStepMin()) => { if (!step || !/^\d{1,2}:\d{2}/.test(t || '')) return true; return Number(t.slice(3, 5)) % step === 0; };
+/* cells typed with a value that is not a multiple of the increment, as readable names */
+function wkBadCells() {
+  const st = WK(); const out = [];
+  for (const [k, v] of Object.entries(st.pend)) {
+    if (wkMulti(v)) continue;
+    const i = k.lastIndexOf('|'); const lid = k.slice(0, i), d = k.slice(i + 1); const ln = (S.cache.wkLines || []).find(l => l.lid === lid);
+    out.push(dayLabel(d) + (ln ? ' · ' + wkPL((S.cache.projects || []).find(x => x.id === Number(ln.project_id))) : ''));
+  }
+  return out;
+}
+function wkBadMsg(list) { return T('Fix the hours marked in red before saving. Hours must be multiples of') + ' ' + wkInc() + ': ' + list.join('; '); }
 /* body of an entry for the server, with the line's project / service / type */
 function wkBody(e, ln, over = {}) {
   const b = { work_date: e.work_date, project_id: Number(ln.project_id), note: e.note || null };
@@ -1337,6 +1527,7 @@ function wkBody(e, ln, over = {}) {
 /* Save draft: new entries are created, changed ones updated, cells left at 0 or empty are deleted. Returns how many calls were made. */
 async function wkSave() {
   const st = WK(); const C = S.cache.wkCtx; const del = [], put = [], post = []; const now = today();
+  const bad = wkBadCells(); if (bad.length) throw new Error(wkBadMsg(bad));
   for (const ln of S.cache.wkLines) {
     const p = (S.cache.projects || []).find(x => x.id === Number(ln.project_id)); const mode = wkMode(p, ln.service_id); const changed = !!st.edits[ln.lid];
     for (const d of C.days) {
@@ -1372,6 +1563,17 @@ function wkRelid(ln) {
   st.extra = st.extra.filter(x => x.lid !== ln.lid); delete st.edits[ln.lid];
 }
 
+/* checks the time / hours fields of the small box against the hour increment; returns the message ('' = fine) and blocks Save while it is not */
+function wkPopCheck(f) {
+  const step = wkStepMin(); let msg = '';
+  f.querySelectorAll('[data-tm]').forEach(i => { const ok = wkMinMulti(i.value, step); i.classList.toggle('bad', !ok); if (!ok && !msg) msg = 'Minutes must be multiples of ' + step; });
+  f.querySelectorAll('[data-hh]').forEach(i => { const ok = wkMulti(i.value); i.classList.toggle('bad', !ok); if (!ok && !msg) msg = wkIncMsg(wkInc()); });
+  const box = f.querySelector('.poperr'); if (box) { box.hidden = !msg; box.textContent = msg ? T(msg) : ''; }
+  const btn = f.querySelector('[type=submit]'); if (btn) btn.disabled = !!msg;
+  return msg;
+}
+document.addEventListener('input', e => { const f = e.target.closest?.('.wkpop form'); if (f && e.target.matches('[data-tm],[data-hh]')) wkPopCheck(f); });
+document.addEventListener('change', e => { const f = e.target.closest?.('.wkpop form'); if (f && e.target.matches('[data-tm],[data-hh]')) { const m = wkPopCheck(f); if (m) toast(m, 'err'); } });
 /* small box for "detail" cells (from / to) and for days with several entries */
 let wkPopPos = null;
 function wkPopClose() { document.querySelectorAll('.wkpop').forEach(x => x.remove()); }
@@ -1385,8 +1587,9 @@ function wkPop(lid, d, anchor, editId) {
     ${C.locked ? '' : `<button type="button" class="btn ghost sm" data-act="pop-edit" data-id="${e.id}">Edit</button><button type="button" class="icon" data-act="pop-del" data-id="${e.id}" aria-label="Delete this entry">${wkClose}</button>`}</li>`).join('');
   const form = C.locked ? '' : `<form data-form="wk-pop"><input type="hidden" name="lid" value="${esc(lid)}"><input type="hidden" name="d" value="${d}"><input type="hidden" name="id" value="${ed ? ed.id : ''}">
     <div class="g2">${mode === 'from_to'
-      ? `<div><label>From</label><input name="start_time" type="time" required value="${esc(ed?.start_time || '')}"></div><div><label>To</label><input name="end_time" type="time" required value="${esc(ed?.end_time || '')}"></div>`
-      : `<div><label>Hours for the day</label><input name="hours" type="number" min="0" max="${C.maxDay}" step="${C.inc}" required value="${ed ? ed.hours : ''}"></div>`}</div>
+      ? `<div><label>From</label><input name="start_time" type="time" step="${(wkStepMin() || 1) * 60}" data-tm required value="${esc(ed?.start_time || '')}"></div><div><label>To</label><input name="end_time" type="time" step="${(wkStepMin() || 1) * 60}" data-tm required value="${esc(ed?.end_time || '')}"></div>`
+      : `<div><label>Hours for the day</label><input name="hours" type="number" min="0" max="${C.maxDay}" step="${C.inc}" data-hh required value="${ed ? ed.hours : ''}"></div>`}</div>
+    <div class="poperr" role="alert" hidden></div>
     <div><label>Note</label><input name="note" maxlength="1000" value="${esc(ed?.note || '')}"></div>
     <div class="fb"><button class="btn pri sm" type="submit">${ed ? 'Save entry' : 'Add entry'}</button><button class="btn ghost sm" type="button" data-act="pop-close">Close</button></div></form>`;
   const el = document.createElement('div'); el.className = 'wkpop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Entries for ' + dayLabel(d));
@@ -1407,6 +1610,21 @@ function wkModalOpen(inner) {
   document.body.appendChild(m); const f = m.querySelector('select,button'); if (f) f.focus(); return m;
 }
 
+const clockStart = run => new Date(`${run.work_date}T${String(run.start_time).slice(0, 5)}:00`);
+function clockBelow(passed, min) {
+  wkModalOpen(`<h2 id="clk-t">Clock</h2><p>Only ${passed} min passed. The minimum is ${min} min. Record it as ${min} min?</p>
+    <div class="fb"><button class="btn pri" type="button" data-act="clock-min" data-min="${min}">Record ${min} min</button><button class="btn ghost" type="button" data-act="wk-modal-close">Keep clock running</button></div>`);
+}
+async function clockStop(at) {
+  try { await api('/clock/stop', { method: 'POST', body: at ? { at: at.toISOString() } : {} }); }
+  catch (e) {
+    const run = S.cache.wkRunning; const d = e.data || {};
+    if (e.status === 422 && d.code === 'below_minimum' && run) { clockBelow(Math.max(0, Math.round((Date.now() - clockStart(run)) / 60000)), d.minimum_minutes); return; }
+    if (e.status === 422 && d.code === 'not_aligned' && d.suggested_end_time && !at) { const t = new Date(); const [h, m] = d.suggested_end_time.split(':'); t.setHours(+h, +m, 0, 0); return clockStop(t); }
+    throw e;
+  }
+  wkModalClose(); flash('Clock stopped.'); render();
+}
 Object.assign(actions, {
   'wk-go': el => { S.weekDate = el.dataset.end; render(); },
   'wk-add'() {
@@ -1431,9 +1649,13 @@ Object.assign(actions, {
     for (const k of Object.keys(st.pend)) if (k.startsWith(ln.lid + '|')) delete st.pend[k];
     render();
   },
-  async 'wk-save'() { const n = await wkSave(); flash(n ? 'Draft saved.' : 'Nothing to save.'); render(); },
+  async 'wk-save'() {
+    const bad = wkBadCells(); if (bad.length) { toast(wkBadMsg(bad), 'err'); document.querySelector('.wk .wkc.bad')?.focus(); return; }   // nothing is saved while a cell is invalid
+    const n = await wkSave(); flash(n ? 'Draft saved.' : 'Nothing to save.'); render();
+  },
   async 'wk-submit'() {
     if (!WK().cert) return; const id = S.cache.wkSheet.id;
+    const bad = wkBadCells(); if (bad.length) { toast(wkBadMsg(bad), 'err'); document.querySelector('.wk .wkc.bad')?.focus(); return; }
     await wkSave(); await api(`/sheets/${id}/submit`, { method: 'POST' }); flash('Timesheet submitted for approval.'); render();
   },
   'cell-pop'(el) { wkPop(el.dataset.lid, el.dataset.d, el); },
@@ -1459,34 +1681,56 @@ Object.assign(actions, {
       <div class="fb"><button class="btn pri" type="submit">Start</button><button class="btn ghost" type="button" data-act="wk-modal-close">Cancel</button></div></form>`);
     const f = m.querySelector('form'); syncClockForm(f); f.elements.service_id.parentElement.hidden = f.elements.service_id.hidden;
   },
-  async 'clock-stop'() { await api('/clock/stop', { method: 'POST', body: {} }); wkModalClose(); flash('Clock stopped.'); render(); },
+  /* Stop: the end time is the current time rounded to the nearest multiple of the increment, sent as 'at' so the server does not refuse it. */
+  async 'clock-stop'() {
+    const run = S.cache.wkRunning; const step = wkStepMin(); const now = new Date();
+    if (!run || !step) return clockStop(null);
+    const mins = Math.min(Math.round((now.getHours() * 60 + now.getMinutes()) / step) * step, Math.floor(1439 / step) * step);
+    const at = new Date(now); at.setHours(Math.floor(mins / 60), mins % 60, 0, 0);
+    const start = clockStart(run); const min = Number(S.me.rules?.minimum_minutes) || step;
+    if ((at - start) / 60000 < min) return clockBelow(Math.max(0, Math.round((now - start) / 60000)), min);
+    return clockStop(at);
+  },
+  'clock-min'(el) { return clockStop(new Date(clockStart(S.cache.wkRunning).getTime() + Number(el.dataset.min) * 60000)); },
 });
 Object.assign(forms, {
   async clock(f) { const o = formObj(f); if (!o.service_id) delete o.service_id; await api('/clock/start', { method: 'POST', body: o }); wkModalClose(); flash('Clock started.'); render(); },
   async 'wk-pop'(f) {
     const o = formObj(f); const ln = S.cache.wkLines.find(l => l.lid === o.lid); if (!ln) return; const C = S.cache.wkCtx;
     const p = (S.cache.projects || []).find(x => x.id === Number(ln.project_id)); const mode = wkMode(p, ln.service_id);
-    await wkApplyEdits(ln);
+    if (wkPopCheck(f)) return;   // minutes / hours not aligned to the increment: red, warned, nothing is sent
     const b = { work_date: o.d, project_id: Number(ln.project_id), note: o.note || null };
     if (ln.service_id) b.service_id = Number(ln.service_id); if (C.emp) b.hour_type = ln.hour_type;
     if (mode === 'from_to') { b.start_time = o.start_time; b.end_time = o.end_time; } else b.hours = o.hours;
-    wkPopClose();
-    if (o.id) await api('/entries/' + o.id, { method: 'PUT', body: b }); else await api('/entries', { method: 'POST', body: b });
-    wkRelid(ln); flash('Entry saved.'); render();
+    try {
+      await wkApplyEdits(ln);
+      if (o.id) await api('/entries/' + o.id, { method: 'PUT', body: b }); else await api('/entries', { method: 'POST', body: b });
+    } catch (e) {   // the server refused (422 start_time / end_time / hours): shown in the box, which stays open
+      if (e.message === 'Session expired') throw e;
+      const box = f.querySelector('.poperr'); const er = e.errors || {};
+      if (box) { box.hidden = false; box.textContent = T(er.start_time?.[0] || er.end_time?.[0] || er.hours?.[0] || e.message); }
+      for (const k of Object.keys(er)) f.elements[k]?.classList?.add('bad');
+      toast(er.start_time?.[0] || er.end_time?.[0] || er.hours?.[0] || e.message, 'err'); return;
+    }
+    wkPopClose(); wkRelid(ln); flash('Entry saved.'); render();
   },
 });
 /* typing in a cell: the change stays pending (marked) until Save draft */
 document.addEventListener('input', e => {
   const i = e.target.closest?.('[data-cell]'); if (!i) return;
   i.classList.add('dirty'); WK().pend[i.dataset.cell] = i.value; wkRecalc();
+  const okv = wkMulti(i.value); i.classList.toggle('bad', !okv); if (okv) { i.removeAttribute('aria-invalid'); i.removeAttribute('title'); } else { i.setAttribute('aria-invalid', 'true'); i.title = T(wkIncMsg(wkInc())); }
 });
 document.addEventListener('change', e => {
   const i = e.target.closest?.('[data-cell]');
   if (i) {
     const C = S.cache.wkCtx; const st = WK(); let v = i.value === '' ? 0 : Number(i.value); let bad = '';
     if (!(v >= 0)) bad = 'Hours must be a number, zero or more.';
-    else { v = Math.round(v / C.inc) * C.inc; i.value = v ? h1(v) : ''; wkRecalc(); const di = +i.dataset.di; const dsum = [...document.querySelectorAll(`.wk .wkc[data-di="${di}"]`)].reduce((a, x) => a + (parseFloat(x.value) || 0), 0); if (dsum > C.maxDay) bad = 'The most hours you can enter for one day is ' + C.maxDay + '.'; }
-    if (bad) { i.value = i.dataset.orig; delete st.pend[i.dataset.cell]; i.classList.remove('dirty'); wkRecalc(); toast(bad, 'err'); return; }
+    else if (!wkMulti(i.value, C.inc)) {   // not a multiple of the increment: no rounding in silence; mark it red, warn, and keep it pending so Save draft refuses
+      st.pend[i.dataset.cell] = i.value; i.classList.add('dirty', 'bad'); i.setAttribute('aria-invalid', 'true'); i.title = T(wkIncMsg(C.inc)); wkRecalc(); toast(wkIncMsg(C.inc), 'err'); return;
+    }
+    else { i.classList.remove('bad'); i.removeAttribute('aria-invalid'); i.removeAttribute('title'); i.value = v ? h1(v) : ''; wkRecalc(); const di = +i.dataset.di; const dsum = [...document.querySelectorAll(`.wk .wkc[data-di="${di}"]`)].reduce((a, x) => a + (parseFloat(x.value) || 0), 0); if (dsum > C.maxDay) bad = 'The most hours you can enter for one day is ' + C.maxDay + '.'; }
+    if (bad) { i.value = i.dataset.orig; delete st.pend[i.dataset.cell]; i.classList.remove('dirty', 'bad'); i.removeAttribute('aria-invalid'); wkRecalc(); toast(bad, 'err'); return; }
     if (String(i.value) === String(i.dataset.orig)) { delete st.pend[i.dataset.cell]; i.classList.remove('dirty'); } else st.pend[i.dataset.cell] = i.value;
     return;
   }
@@ -1516,8 +1760,7 @@ document.addEventListener('change', e => {
   const f = el.closest('form'); const sel = f.elements.customer_id; sel.required = el.checked;
   const lb = sel.parentElement.querySelector('label'); lb.textContent = T('Client') + (el.checked ? ' *' : '');
 });
-document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="proj-internal"]'); if (el) el.closest('.intap').querySelector('.intap-body').hidden = !el.checked; });
-document.addEventListener('input', e => { const q = e.target.closest?.('[data-intap-q]'); if (!q) return; const v = q.value.trim().toLowerCase(); q.closest('.intap-body').querySelectorAll('.chip').forEach(c => { c.hidden = !!v && !c.dataset.nm.includes(v); }); });
+document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="proj-client"]'); if (el) { const w = el.parentElement.querySelector('[data-nocli]'); if (w) w.hidden = !!el.value; } });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="lang-pick"]'); if (el) guard(actions.lang)({ dataset: { to: el.value } }); });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="wk-pick"]'); if (el) { S.weekDate = el.value; render(); } });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="exp-refresh"]'); if (el) { const f = el.closest('form'); const o = formObj(f); S.cache.exp = { ...o, picked: ['customer_id', 'from', 'to', 'user_id'].includes(el.name) ? null : (o.project_ids || null) }; render(); } });

@@ -57,11 +57,16 @@ class User extends Authenticatable
         return $this->belongsToMany(Project::class, 'project_internal_approvers');
     }
 
-    /** Es aprobador interno si lo es de al menos un proyecto activo que exige aprobación interna. */
+    /** Servicios donde esta persona es supervisora (lista del servicio). */
+    public function internalServices(): BelongsToMany
+    {
+        return $this->belongsToMany(Service::class, 'service_internal_approvers');
+    }
+
+    /** Es aprobador interno si supervisa al menos un servicio activo (de un proyecto activo) que pide aprobación interna. */
     public function isInternalApprover(): bool
     {
-        return $this->internalProjects()->where('projects.active', true)->where('projects.requires_internal_approval', true)
-            ->where('projects.company_id', $this->company_id)->exists();
+        return app(\App\Services\InternalApprovalService::class)->supervisedServiceIds($this, true) !== [];
     }
 
     public function terms(): HasOne

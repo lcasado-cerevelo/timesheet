@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useT } from '../../src/i18n';
 import { ProjectSheet } from '../../src/pickers';
 import { elapsedMs, fmtElapsed } from '../../src/lib/clock';
-import { activeServices } from '../../src/lib/services';
+import { dayButtonRows, DAY_BUTTON_LABEL, DayButtonId } from '../../src/lib/dayButtons';
+import { checkStop, hmAligned, minimumMinutes, roundedNowHM, stepMinutes } from '../../src/lib/increment';
+import { minimumDialog } from '../../src/lib/minimumDialog';
+import { stepProject } from '../../src/lib/projectSearch';
 import { dayActionAllowed, visibleEntries } from '../../src/lib/access';
 import { kv } from '../../src/lib/storage';
 import { addDays, fmtHours, longDate, nowHM, to12h, today } from '../../src/lib/time';
@@ -17,7 +20,15 @@ import { api } from '../../src/lib/api';
 import { Badge, Btn, C, Chip, ClockPicker, GridBtn, Msg, Sheet, useBottomPad, useTheme } from '../../src/ui';
 import type { Entry } from '../../src/lib/types';
 
-type List = null | 'choose' | 'switch';
+/** Lupa dibujada con vistas (sin librerías de íconos). */
+function SearchIcon() {
+  return (
+    <View style={{ width: 24, height: 24 }}>
+      <View style={{ position: 'absolute', left: 2, top: 2, width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, borderColor: '#fff' }} />
+      <View style={{ position: 'absolute', left: 13, top: 17, width: 9, height: 3, borderRadius: 2, backgroundColor: '#fff', transform: [{ rotate: '45deg' }] }} />
+    </View>
+  );
+}
 
 export default function Day() {
   const router = useRouter();
@@ -26,18 +37,20 @@ export default function Day() {
   const bottom = useBottomPad(10);
   const decimal = useSettings((s) => s.decimal);
   const { entries, projects, selectedDate, setDate, remove, retry, discard, save, syncing, lastError } = useEntries();
-  const { clock, start, stop, switchTo } = useClock();
+  const { clock, start, stop, discard: discardClock } = useClock();
   const sel = useSelection();
   const cur = useCurrent();
   const limited = useAuth((s) => s.limited);
-  const [list, setList] = useState<List>(null);
-  const [switchTarget, setSwitchTarget] = useState<number | null>(null);
+  const [search, setSearch] = useState(false);
+  const [svcOpen, setSvcOpen] = useState(false);
   const [tmpl, setTmpl] = useState(false);
   const [ask, setAsk] = useState<null | { kind: 'in' | 'out'; initial: string }>(null);
   const [now, setNow] = useState(Date.now());
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [err, setErr] = useState('');
 
+  const me = useAuth((s) => s.me);
+  const inc = me?.rules.increment ?? 0.25;
   const fromTo = cur.mode === 'from_to';
 
   useEffect(() => {
@@ -74,18 +87,39 @@ export default function Day() {
   };
 
   const askIn = () => {
-    if (ready()) setAsk({ kind: 'in', initial: nowHM() });
+    if (ready()) setAsk({ kind: 'in', initial: roundedNowHM(inc) });
   };
-  const askOut = () => setAsk({ kind: 'out', initial: nowHM() });
+  const askOut = () => setAsk({ kind: 'out', initial: roundedNowHM(inc) });
+
+  /** Pasó menos del mínimo: se pide permiso para registrarlo como una entrada del mínimo. */
+  const askBelowMinimum = (elapsed: number, minimum: number, at: Date) => {
+    const d = minimumDialog(elapsed, minimum);
+    const register = () => fail(stop(at, { registerMinimum: true }));
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(d.message)) register();
+      return;
+    }
+    Alert.alert(d.title, d.message, [
+      { text: d.register, onPress: register },
+      { text: d.keep, style: 'cancel' },
+      { text: d.discard, style: 'destructive', onPress: () => { discardClock(); fail(null); } },
+    ]);
+  };
 
   const confirmClock = (hm: string) => {
     const kind = ask?.kind;
     setAsk(null);
+    if (!hmAligned(hm, inc)) return fail(t('rules.not_aligned', { n: stepMinutes(inc) }));
     const [h, m] = hm.split(':').map(Number);
     const at = new Date();
     at.setHours(h, m, 0, 0);
     if (kind === 'in' && cur.project) fail(start(cur.project.id, cur.service?.id ?? null, '', at));
-    if (kind === 'out') fail(stop(at));
+    if (kind === 'out') {
+      if (!clock || !me) return fail(stop(at));
+      const c = checkStop(new Date(clock.started_at), at, minimumMinutes(me.rules));
+      if (c.kind === 'below' && at.getTime() <= Date.now() + 60_000) return askBelowMinimum(c.elapsed, c.minimum, at);
+      fail(stop(at));
+    }
   };
 
   const recent = useMemo(() => {
@@ -138,31 +172,33 @@ export default function Day() {
     Alert.alert(t('day.delete_title'), t('day.delete_ask'), [{ text: t('common.cancel') }, { text: t('common.delete'), style: 'destructive', onPress: go }]);
   };
 
-  // Elegir proyecto en la lista. Con el reloj corriendo, "Cambiar proyecto" cierra el tramo y abre el nuevo.
+  // Escoger en el buscador, o con las flechas (uno a uno, en orden por código).
   const pickProject = (id: number) => {
-    const mode = list;
-    setList(null);
+    setSearch(false);
     sel.setProject(id);
     fail(null);
-    if (mode !== 'switch' || !clock) return;
-    const services = activeServices(project(id));
-    if (services.length > 1) {
-      setSwitchTarget(id); // hay que escoger servicio antes de cambiar
-      return;
-    }
-    fail(switchTo(id, services[0]?.id ?? null));
   };
 
-  const pickSwitchService = (serviceId: number) => {
-    const id = switchTarget;
-    setSwitchTarget(null);
-    if (!id) return;
-    sel.setService(id, serviceId);
-    fail(switchTo(id, serviceId));
+  const stepTo = (dir: -1 | 1) => {
+    const next = stepProject(cur.projects, cur.project?.id, dir);
+    if (next) {
+      sel.setProject(next.id, false);
+      fail(null);
+    }
+  };
+
+  const run = (id: DayButtonId) => {
+    if (id === 'check-in') askIn();
+    else if (id === 'check-out') askOut();
+    else if (id === 'add-entry' || id === 'add-hours') router.push({ pathname: '/entry', params: { date: selectedDate } });
+    else if (id === 'template') setTmpl(true);
+    else if (id === 'copy-prev') copyPrevious();
+    else setDate(today());
   };
 
   const chooseService = (serviceId: number) => {
     if (cur.project) sel.setService(cur.project.id, serviceId);
+    setSvcOpen(false);
     fail(null);
   };
 
@@ -174,14 +210,39 @@ export default function Day() {
       {/* 1. El día */}
       <View style={{ backgroundColor: th.primary, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10 }}>
         <Pressable testID="prev" onPress={() => setDate(addDays(selectedDate, -1))} style={{ padding: 8 }}><Text style={{ color: '#fff', fontSize: 22 }}>‹</Text></Pressable>
-        <Pressable style={{ flex: 1 }} onPress={() => setDate(today())}><Text testID="date" style={{ color: '#fff', fontSize: 17, fontWeight: '700', textAlign: 'center' }}>{longDate(selectedDate)}</Text></Pressable>
+        <Pressable style={{ flex: 1, minWidth: 0 }} onPress={() => setDate(today())}><Text testID="date" numberOfLines={1} adjustsFontSizeToFit style={{ color: '#fff', fontSize: 17, fontWeight: '700', textAlign: 'center' }}>{longDate(selectedDate)}</Text></Pressable>
         <Pressable testID="next" onPress={() => setDate(addDays(selectedDate, 1))} style={{ padding: 8 }}><Text style={{ color: '#fff', fontSize: 22 }}>›</Text></Pressable>
       </View>
 
+      {/* 2. El proyecto: igual que la fecha, con flechas (uno a uno, por código) y la lupa del buscador */}
+      {cur.projects.length === 0 ? (
+        <Text style={{ color: C.muted, paddingHorizontal: 12, paddingVertical: 8 }}>{t('day.no_projects')}</Text>
+      ) : (
+        <View testID="project-bar" style={{ backgroundColor: th.primary, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.35)' }}>
+          <Pressable testID="prev-project" accessibilityLabel={t('day.prev_project')} onPress={() => stepTo(-1)} style={{ padding: 8, opacity: cur.projects.length > 1 ? 1 : 0.4 }}><Text style={{ color: '#fff', fontSize: 22 }}>‹</Text></Pressable>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text testID="project-name" numberOfLines={1} ellipsizeMode="tail" style={{ color: '#fff', fontSize: 17, fontWeight: '700', textAlign: 'center' }}>
+              {cur.project ? `${cur.project.code} · ${cur.project.name}` : ''}
+            </Text>
+          </View>
+          <Pressable testID="next-project" accessibilityLabel={t('day.next_project')} onPress={() => stepTo(1)} style={{ padding: 8, opacity: cur.projects.length > 1 ? 1 : 0.4 }}><Text style={{ color: '#fff', fontSize: 22 }}>›</Text></Pressable>
+          <Pressable testID="project-search-open" accessibilityRole="button" accessibilityLabel={t('day.search')} hitSlop={6} onPress={() => setSearch(true)} style={{ padding: 8, marginLeft: 2 }}><SearchIcon /></Pressable>
+        </View>
+      )}
+
+      {/* 3. El servicio del proyecto escogido (con uno solo queda escogido y se muestra discreto) */}
+      {cur.project && cur.services.length > 1 ? (
+        <View style={{ paddingHorizontal: 12, paddingTop: 8, alignItems: 'flex-start', maxWidth: '100%' }}>
+          <Chip testID="service-pill" on={!!cur.service} label={cur.service ? `${t('day.service')}: ${cur.service.name}` : t('day.pick_service')} onPress={() => setSvcOpen(true)} />
+        </View>
+      ) : cur.project && cur.services.length === 1 ? (
+        <Text testID="service-single" numberOfLines={1} style={{ color: C.muted, fontSize: 12, paddingHorizontal: 14, paddingTop: 6 }}>{t('day.service')}: {cur.services[0].name}</Text>
+      ) : null}
+
       {clock && (
-        <View testID="running" style={{ backgroundColor: '#e6f4ea', borderBottomWidth: 1, borderColor: '#9bd1ac', padding: 10, flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontWeight: '700' }}>
+        <View testID="running" style={{ backgroundColor: '#e6f4ea', borderBottomWidth: 1, borderColor: '#9bd1ac', padding: 10, marginTop: 8, flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} style={{ fontWeight: '700' }}>
               {clockProject ? `${clockProject.code} · ${clockProject.name}` : t('day.clock_running')}{clockService ? ` · ${clockService.name}` : ''}
             </Text>
             <Text style={{ color: C.muted }}>{t('day.since', { time: to12h(nowHM(new Date(clock.started_at))) })}</Text>
@@ -190,56 +251,13 @@ export default function Day() {
         </View>
       )}
 
-      {/* 2. El proyecto actual: tira que se desliza hacia los lados; tocar el actual abre la lista */}
-      <View style={{ paddingTop: 8 }}>
-        {cur.projects.length === 0 ? (
-          <Text style={{ color: C.muted, paddingHorizontal: 12, paddingBottom: 6 }}>{t('day.no_projects')}</Text>
-        ) : (
-          <ScrollView testID="project-strip" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 6 }}>
-            {cur.projects.map((p) => (
-              <Chip
-                key={p.id}
-                testID={`proj-${p.code}`}
-                label={`${p.code} · ${p.name}`}
-                on={cur.project?.id === p.id}
-                onPress={() => {
-                  if (cur.project?.id === p.id) return setList('choose');
-                  sel.setProject(p.id);
-                  fail(null);
-                }}
-              />
-            ))}
-          </ScrollView>
-        )}
-
-        {/* 3. Los servicios del proyecto actual (con uno solo queda escogido y se muestra discreto) */}
-        {cur.services.length > 1 ? (
-          <ScrollView testID="service-strip" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-            {cur.services.map((s) => (
-              <Chip key={s.id} small testID={`svc-${s.id}`} label={s.name} on={cur.service?.id === s.id} onPress={() => chooseService(s.id)} />
-            ))}
-          </ScrollView>
-        ) : cur.services.length === 1 ? (
-          <Text testID="service-single" style={{ color: C.muted, fontSize: 12, paddingHorizontal: 14, paddingBottom: 8 }}>{t('day.service')}: {cur.services[0].name}</Text>
-        ) : null}
-      </View>
-
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.line }}>
-        {/* 4. Entrar ahora / Salir ahora (solo servicios por detalle) y 5. Agregar entrada */}
-        {fromTo && (
-          <>
-            <GridBtn testID="check-in" title={t('day.check_in')} disabled={!!clock} onPress={askIn} />
-            <GridBtn testID="check-out" title={t('day.check_out')} disabled={!clock} onPress={askOut} />
-            <GridBtn wide testID="add-entry" title={t('day.add_entry')} onPress={() => router.push({ pathname: '/entry', params: { date: selectedDate } })} />
-          </>
-        )}
-        {/* 6. Agregar horas (total del día; solo servicios por total) */}
-        {!fromTo && <GridBtn wide testID="add-hours" title={t('day.add_hours')} onPress={() => router.push({ pathname: '/entry', params: { date: selectedDate } })} />}
-        {/* 7. Cambiar proyecto y Repetir */}
-        <GridBtn testID="switch" title={t('day.change_project')} onPress={() => setList(clock ? 'switch' : 'choose')} />
-        {dayActionAllowed('repeat', limited) && <GridBtn testID="template" title={t('day.repeat')} onPress={() => setTmpl(true)} />}
-        {dayActionAllowed('copy_prev', limited) && <GridBtn testID="copy-prev" title={t('day.copy_prev')} onPress={copyPrevious} />}
-        <GridBtn testID="today" title={t('day.go_today')} onPress={() => setDate(today())} />
+      {/* 4. Botones (2 columnas): ver dayButtonRows */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.line, marginTop: 8 }}>
+        {dayButtonRows({ fromTo: fromTo || !!clock, repeat: dayActionAllowed('repeat', limited), copyPrev: dayActionAllowed('copy_prev', limited) })
+          .flat()
+          .map((b) => (
+            <GridBtn key={b.id} wide={b.wide} testID={b.id} title={t(DAY_BUTTON_LABEL[b.id])} disabled={b.id === 'check-in' ? !!clock : b.id === 'check-out' ? !clock : false} onPress={() => run(b.id)} />
+          ))}
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
@@ -288,12 +306,12 @@ export default function Day() {
         <TextInput testID="day-note" placeholder={t('day.note')} value={notes[selectedDate] ?? ''} onChangeText={saveNote} style={{ height: 44 }} multiline={false} />
       </View>
 
-      <ProjectSheet visible={list !== null} currentId={cur.project?.id} onPick={pickProject} onClose={() => setList(null)} />
+      <ProjectSheet visible={search} currentId={cur.project?.id} onPick={pickProject} onClose={() => setSearch(false)} />
 
-      <Sheet visible={switchTarget !== null} title={t('day.choose_service')} onClose={() => setSwitchTarget(null)}>
-        {activeServices(switchTarget ? project(switchTarget) : undefined).map((s) => (
-          <Pressable key={s.id} testID={`switch-svc-${s.id}`} onPress={() => pickSwitchService(s.id)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderColor: '#eee' }}>
-            <Text style={{ fontSize: 16, fontWeight: '600' }}>{s.name}</Text>
+      <Sheet visible={svcOpen} title={t('day.choose_service')} onClose={() => setSvcOpen(false)}>
+        {cur.services.map((sv) => (
+          <Pressable key={sv.id} testID={`pick-svc-${sv.id}`} onPress={() => chooseService(sv.id)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderColor: '#eee' }}>
+            <Text style={{ fontSize: 16, fontWeight: cur.service?.id === sv.id ? '800' : '600' }}>{sv.name}{cur.service?.id === sv.id ? '  ✓' : ''}</Text>
           </Pressable>
         ))}
       </Sheet>

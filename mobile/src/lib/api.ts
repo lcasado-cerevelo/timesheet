@@ -1,7 +1,7 @@
 import { getLocale, t } from '../i18n';
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public errors?: Record<string, string[]>, public code?: string) {
+  constructor(message: string, public status: number, public errors?: Record<string, string[]>, public code?: string, public minimumMinutes?: number) {
     super(message);
   }
 }
@@ -57,6 +57,10 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
     throw new ApiError(t('api.expired'), 401, undefined, data?.code ?? 'session_expired');
   }
   if (!res.ok) {
+    // El servidor rechaza un cierre de reloj por debajo del mínimo: se muestra igual que la validación local.
+    if (res.status === 422 && data?.code === 'below_minimum' && data?.minimum_minutes) {
+      throw new ApiError(t('rules.below_min', { m: data.minimum_minutes }), 422, data?.errors, 'below_minimum', data.minimum_minutes);
+    }
     const first = data?.errors ? (Object.values(data.errors).flat() as string[])[0] : undefined;
     throw new ApiError(first ?? data?.message ?? t('api.error', { n: res.status }), res.status, data?.errors, data?.code);
   }

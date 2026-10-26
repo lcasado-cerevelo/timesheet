@@ -41,7 +41,9 @@ class BrandTest extends TestCase
         $html = Mail::sent(BrandedMail::class)->last()->render();
         $this->assertStringContainsString('#7a1f1f', $html);
         $this->assertStringContainsString('EB Validation Services, Caguas PR', $html);
-        $this->assertStringContainsString('/storage/logos/', $html);
+        // Los correos no llevan imágenes (ayuda a que no caigan en spam): solo la franja de color de la marca.
+        $this->assertStringNotContainsString('<img', $html);
+        $this->assertStringNotContainsString('/storage/logos/', $html);
         $plain = $this->tokenFromMail($html);
         $this->get('/a/'.$plain)->assertSee('#7a1f1f', false)->assertSee('EB Validation Services, Caguas PR');
     }

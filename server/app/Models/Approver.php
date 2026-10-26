@@ -15,6 +15,12 @@ class Approver extends Model
         return ['require_code' => 'boolean', 'active' => 'boolean', 'can_login' => 'boolean'];
     }
 
+    /** Clientes a los que sirve este aprobador externo. */
+    public function customers(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Customer::class, 'approver_customer');
+    }
+
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);

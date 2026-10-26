@@ -78,6 +78,9 @@ export const en: Record<keyof typeof es, string> = {
   'rules.too_short': 'The duration is too short.',
   'rules.overlap': 'It overlaps another entry on the same day.',
   'rules.max_day': 'Over the maximum hours per day ({n}).',
+  'rules.not_aligned': 'Minutes must be multiples of {n}.',
+  'rules.hours_not_aligned': 'Hours must be multiples of {inc}.',
+  'rules.below_min': 'The minimum duration of an entry is {m} min.',
 
   // sync
   'sync.locked': 'The timesheet for that week is already approved.',
@@ -93,10 +96,22 @@ export const en: Record<keyof typeof es, string> = {
   'clock.end_before_start': 'The check-out time must be after the check-in time.',
   'clock.not_applicable': 'This service is logged with the total hours of the day; the clock does not apply.',
   'clock.segment_failed': 'Could not save segment {n}: {error}',
+  'clock.below_min': 'Only {n} min have passed. The minimum is {m} min.',
+  'clock.below_min_title': 'Below the minimum',
+  'clock.below_min_ask': 'Only {n} min have passed. The minimum is {m} min. Record it as a {m} min entry?',
+  'clock.register_min': 'Record {m} min',
+  'clock.keep_going': 'Keep the clock running',
+  'clock.discard': 'Discard',
 
   // Day screen
   'day.choose_project': 'Choose project',
   'day.choose_service': 'Choose service',
+  'day.search': 'Search project',
+  'day.prev_project': 'Previous project',
+  'day.next_project': 'Next project',
+  'day.pick_service': 'Choose service',
+  'picker.hour': 'Hour',
+  'picker.minute': 'Minutes',
   'day.no_projects': 'You have no assigned projects. Ask the company owner to assign you one.',
   'day.service': 'Service',
   'day.check_in': 'Check in now',

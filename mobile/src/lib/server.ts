@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 /**
  * Dirección del servidor.
@@ -18,7 +19,9 @@ export function fixedServerUrl(): string {
 
 /** Dirección de desarrollo por omisión (solo se usa en __DEV__). */
 export function devDefaultServerUrl(): string {
-  return process.env.EXPO_PUBLIC_API_URL ?? '';
+  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
+  // En el emulador de Android, 10.0.2.2 es la computadora; en iOS/web, localhost. El Docker de desarrollo publica el puerto 8180.
+  return Platform.OS === 'android' ? 'http://10.0.2.2:8180' : 'http://localhost:8180';
 }
 
 /** Limpia y valida. Devuelve null si no sirve: no es http(s), o es http:// fuera de desarrollo. */

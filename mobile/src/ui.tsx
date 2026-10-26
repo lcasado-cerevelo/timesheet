@@ -3,8 +3,8 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View, ViewStyle, Text
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from './i18n';
 import { useAuth } from './store/auth';
-import { isValidHM, nowHM, to12h } from './lib/time';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { isValidHM, nowHM, pad, to12h } from './lib/time';
+import { hmAligned, roundHM, stepMinutes } from './lib/increment';
 
 export const C = { bg: '#ececec', card: '#ffffff', text: '#1f2933', muted: '#6b7280', line: '#d9d9d9', danger: '#b00020', warn: '#b26a00', ok: '#1b7f3b' };
 
@@ -155,9 +155,10 @@ export function PasswordInput(props: { label: string; value: string; onChangeTex
   );
 }
 
-/** Hora con reloj: en el teléfono abre el reloj del sistema; en la web, un campo de hora. */
+/** Hora con reloj: en el teléfono abre el selector propio (minutos del incremento); en la web, un campo de hora. */
 export function TimeField(props: { label: string; value: string | null; onChange: (t: string) => void; testID?: string }) {
   const { t } = useT();
+  const inc = useIncrement();
   const [open, setOpen] = React.useState(false);
   const v = isValidHM(props.value) ? props.value : null;
   if (Platform.OS === 'web') {
@@ -165,33 +166,30 @@ export function TimeField(props: { label: string; value: string | null; onChange
       <View style={{ flex: 1, marginBottom: 12 }}>
         <Text style={s.label}>{props.label}</Text>
         {React.createElement('input', {
-          type: 'time', value: v ?? '', 'data-testid': props.testID,
+          type: 'time', value: v ?? '', step: stepMinutes(inc) * 60, 'data-testid': props.testID,
           onChange: (e: any) => props.onChange(e.target.value),
           style: { height: 42, borderRadius: 8, border: '1px solid #c9ced6', padding: '0 10px', fontSize: 16 },
         })}
       </View>
     );
   }
-  const date = new Date();
-  if (v) date.setHours(Number(v.slice(0, 2)), Number(v.slice(3)), 0, 0);
   return (
     <View style={{ flex: 1, marginBottom: 12 }}>
       <Text style={s.label}>{props.label}</Text>
       <Pressable testID={props.testID} style={[s.input, { justifyContent: 'center' }]} onPress={() => setOpen(true)}>
         <Text style={{ fontSize: 16, color: v ? C.text : C.muted }}>{v ? to12h(v) : t('ui.pick_time')}</Text>
       </Pressable>
-      {open && (
-        <DateTimePicker
-          value={date}
-          mode="time"
-          is24Hour={false}
-          display="clock"
-          onChange={(ev, d) => {
-            setOpen(false);
-            if (ev.type === 'set' && d) props.onChange(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
-          }}
-        />
-      )}
+      <StepTimeSheet
+        visible={open}
+        title={props.label}
+        initial={v ?? roundedNow(inc)}
+        inc={inc}
+        onConfirm={(hm) => {
+          setOpen(false);
+          props.onChange(hm);
+        }}
+        onCancel={() => setOpen(false)}
+      />
     </View>
   );
 }
@@ -225,50 +223,89 @@ export const s = StyleSheet.create({
   sheet: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, maxHeight: '80%' } as ViewStyle,
 });
 
+/** Incremento de la compañía en horas (0.25 si aún no se sabe). */
+export function useIncrement(): number {
+  return useAuth((st) => st.me?.rules.increment) ?? 0.25;
+}
+
+const roundedNow = (inc: number) => roundHM(nowHM(), inc);
+
+function Stepper(props: { testID: string; label: string; value: string; onDec: () => void; onInc: () => void; disabled?: boolean }) {
+  const btn = { width: 56, height: 52, borderRadius: 10, borderWidth: 1, borderColor: '#c9ced6', alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: '#fff', opacity: props.disabled ? 0.35 : 1 };
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <Text style={s.label}>{props.label}</Text>
+      <Pressable testID={props.testID + '-up'} accessibilityRole="button" accessibilityLabel={props.label + ' +'} disabled={props.disabled} onPress={props.onInc} style={btn}><Text style={{ fontSize: 26, fontWeight: '700' }}>+</Text></Pressable>
+      <Text testID={props.testID} style={{ fontSize: 34, fontWeight: '800', marginVertical: 6, fontVariant: ['tabular-nums'] }}>{props.value}</Text>
+      <Pressable testID={props.testID + '-down'} accessibilityRole="button" accessibilityLabel={props.label + ' -'} disabled={props.disabled} onPress={props.onDec} style={btn}><Text style={{ fontSize: 26, fontWeight: '700' }}>−</Text></Pressable>
+    </View>
+  );
+}
+
 /**
- * Reloj para fijar una hora (entrada o salida), como en Time Recording: se abre ya puesto en la hora indicada
- * (normalmente la actual), se ajusta y se confirma.
- *  - Android: el reloj del sistema (con Aceptar / Cancelar).
- *  - iOS y web: una hoja con el selector y el botón de confirmar.
+ * Selector propio de hora: la hora de 1 a 12 con AM/PM y los minutos SOLO en los múltiplos del incremento
+ * (0.25 -> 00/15/30/45). El selector nativo de Android no permite restringir los minutos.
+ */
+export function StepTimeSheet(props: { visible: boolean; title: string; initial: string; inc: number; confirmLabel?: string; onConfirm: (hm: string) => void; onCancel: () => void }) {
+  const { t } = useT();
+  const step = stepMinutes(props.inc);
+  const start = roundHM(isValidHM(props.initial) ? props.initial : nowHM(), props.inc);
+  const [h, setH] = React.useState(Number(start.slice(0, 2)));
+  const [m, setM] = React.useState(Number(start.slice(3)));
+  React.useEffect(() => {
+    if (props.visible) {
+      setH(Number(start.slice(0, 2)));
+      setM(Number(start.slice(3)));
+    }
+  }, [props.visible, start]);
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  const hm = `${pad(h)}:${pad(m)}`;
+  const nextM = (d: 1 | -1) => {
+    const steps = Math.floor(60 / step);
+    const i = (Math.round(m / step) + d + steps) % steps;
+    setM(i * step);
+  };
+  return (
+    <Sheet visible={props.visible} title={props.title} onClose={props.onCancel}>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 18, marginVertical: 10 }}>
+        <Stepper testID="step-hour" label={t('picker.hour')} value={String(h12)} onInc={() => setH((h + 1) % 24)} onDec={() => setH((h + 23) % 24)} />
+        <Text style={{ fontSize: 34, fontWeight: '800', marginTop: 40 }}>:</Text>
+        <Stepper testID="step-min" label={t('picker.minute')} value={pad(m)} onInc={() => nextM(1)} onDec={() => nextM(-1)} disabled={step >= 60} />
+        <Pressable testID="step-ampm" accessibilityRole="button" onPress={() => setH((h + 12) % 24)} style={{ marginTop: 40, height: 52, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: '#c9ced6', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 20, fontWeight: '800' }}>{h < 12 ? 'AM' : 'PM'}</Text>
+        </Pressable>
+      </View>
+      <Btn testID="clock-confirm" title={props.confirmLabel ?? t('common.confirm')} kind="pri" disabled={!hmAligned(hm, props.inc)} onPress={() => props.onConfirm(hm)} />
+    </Sheet>
+  );
+}
+
+/**
+ * Reloj para fijar una hora (entrada o salida): se abre ya puesto en la hora indicada (normalmente la actual
+ * redondeada al incremento), se ajusta y se confirma.
+ *  - Teléfono: el selector propio (minutos solo en múltiplos del incremento).
+ *  - Web: un campo de hora con ese paso; Día vuelve a validar la alineación al confirmar.
  */
 export function ClockPicker(props: { visible: boolean; title: string; initial: string; confirmLabel?: string; onConfirm: (hm: string) => void; onCancel: () => void }) {
   const { t } = useT();
+  const inc = useIncrement();
   const [val, setVal] = React.useState(props.initial);
   React.useEffect(() => {
-    if (props.visible) setVal(isValidHM(props.initial) ? props.initial : nowHM());
-  }, [props.visible, props.initial]);
-  if (!props.visible) return null;
-  const date = new Date();
-  if (isValidHM(val)) date.setHours(Number(val.slice(0, 2)), Number(val.slice(3)), 0, 0);
-  const hm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-
-  if (Platform.OS === 'android') {
-    return (
-      <DateTimePicker
-        value={date}
-        mode="time"
-        is24Hour={false}
-        display="clock"
-        onChange={(ev, d) => {
-          if (ev.type === 'set' && d) props.onConfirm(hm(d));
-          else props.onCancel();
-        }}
-      />
-    );
+    if (props.visible) setVal(isValidHM(props.initial) ? props.initial : roundedNow(inc));
+  }, [props.visible, props.initial, inc]);
+  if (Platform.OS !== 'web') {
+    return <StepTimeSheet visible={props.visible} title={props.title} initial={props.initial} inc={inc} confirmLabel={props.confirmLabel} onConfirm={props.onConfirm} onCancel={props.onCancel} />;
   }
+  if (!props.visible) return null;
   return (
     <Sheet visible title={props.title} onClose={props.onCancel}>
-      {Platform.OS === 'web' ? (
-        <View style={{ marginBottom: 12 }}>
-          {React.createElement('input', {
-            type: 'time', value: isValidHM(val) ? val : '', 'data-testid': 'clock-input',
-            onChange: (e: any) => setVal(e.target.value),
-            style: { height: 48, borderRadius: 8, border: '1px solid #c9ced6', padding: '0 10px', fontSize: 20 },
-          })}
-        </View>
-      ) : (
-        <DateTimePicker value={date} mode="time" display="spinner" onChange={(_ev, d) => d && setVal(hm(d))} />
-      )}
+      <View style={{ marginBottom: 12 }}>
+        {React.createElement('input', {
+          type: 'time', value: isValidHM(val) ? val : '', step: stepMinutes(inc) * 60, 'data-testid': 'clock-input',
+          onChange: (e: any) => setVal(e.target.value),
+          style: { height: 48, borderRadius: 8, border: '1px solid #c9ced6', padding: '0 10px', fontSize: 20 },
+        })}
+      </View>
       <Btn testID="clock-confirm" title={props.confirmLabel ?? t('common.confirm')} kind="pri" disabled={!isValidHM(val)} onPress={() => props.onConfirm(val)} />
     </Sheet>
   );

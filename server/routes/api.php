@@ -92,6 +92,7 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::post('/projects', [ProjectController::class, 'store']);
         Route::put('/projects/{project}', [ProjectController::class, 'update']);
         Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
+        Route::get('/projects/{project}/approver-options', [ProjectController::class, 'approverOptions']);
 
         Route::get('/users', [UserController::class, 'index']);
         Route::post('/users', [UserController::class, 'store']);

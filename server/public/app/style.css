@@ -122,3 +122,44 @@ input::-ms-reveal,input::-ms-clear{display:none}
 .hdr .brand.solo img{max-height:52px;max-width:260px}
 .loginband.solo{justify-content:center}.loginband.solo .logo img{max-height:52px;max-width:260px}
 .preview .ph img{vertical-align:middle}
+
+/* page header with an action button (Add approver, Add client, New project, Invite) */
+.pghead{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-start;justify-content:space-between}
+.pghead>div{min-width:0;flex:1 1 360px}.pghead>.btn{flex:0 0 auto}
+
+/* pop-up windows (modals): one component for every add / edit */
+body.mdl-open{overflow:hidden}
+.mdl{position:fixed;inset:0;background:rgba(20,22,25,.45);display:flex;align-items:center;justify-content:center;padding:20px;overflow:hidden}
+.mdl-box{background:#fff;border-radius:12px;width:100%;max-width:760px;max-height:calc(100vh - 40px);max-height:calc(100dvh - 40px);display:flex;flex-direction:column;box-shadow:0 18px 50px rgba(0,0,0,.3);border:1px solid var(--edge)}
+.mdl-box.sm{max-width:520px}.mdl-box.lg{max-width:820px}.mdl-box.xl{max-width:960px}
+.mdl-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 22px 14px;border-bottom:1px solid var(--line)}
+.mdl-head h2{margin:0;font-size:20px;font-weight:600}.mdl-sub{margin:2px 0 0;color:var(--muted);font-size:14px}
+.mdl-x{flex:none;width:44px;height:44px;margin:-6px -8px 0 0;border:0;background:transparent;border-radius:8px;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.mdl-x:hover{background:var(--hover);color:var(--text)}
+.mdl-form{display:flex;flex-direction:column;min-height:0;flex:1 1 auto}
+.mdl-body{padding:18px 22px;overflow-y:auto;overscroll-behavior:contain;flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:16px}
+.mdl-body>*{flex:none}
+.mdl-body .msg{margin:0}.mdl-body .msg[hidden]{display:none}
+.mdl-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--line);background:#fff;border-radius:0 0 12px 12px}
+.mdl-sec{border-top:1px solid var(--line);padding-top:14px}
+.mdl-sec h3,.mdl-sech h3{margin:0 0 8px;font-size:16px;font-weight:600}
+.mdl-sech{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px}.mdl-sech h3{margin:0}
+.mdl-body .row{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
+.mdl .bad{border-color:var(--danger)!important;background:#FFF6F5}
+.mdl .fe{display:block;color:var(--danger);font-size:12px;margin-top:3px}
+.mdl .svct th:last-child{width:1%}.mdl .svct td.r,.mdl .svct th.r{text-align:right}.mdl .svct td:last-child{white-space:nowrap}
+@media (max-width:640px){
+  .mdl{padding:0;align-items:flex-end}
+  .mdl-box,.mdl-box.sm,.mdl-box.lg,.mdl-box.xl{max-width:none;max-height:100dvh;height:100dvh;border-radius:0;border:0}
+  .mdl-head,.mdl-body,.mdl-foot{padding-left:16px;padding-right:16px}
+  .mdl-foot .btn{flex:1}
+}
+.mdl .grid{align-items:end}
+.mdl .grid small{margin-top:2px}
+/* Forms: the label is short and one line; any explanation goes BELOW the field in small gray text (.help), so every input in a row sits at the same height */
+.help{display:block;margin-top:4px;font-size:12px;line-height:1.35;letter-spacing:0;text-transform:none;font-weight:400;color:var(--muted)}
+.grid>div>label:not(.chk),.mdl-body>div>label:not(.chk){white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.grid,.mdl .grid{align-items:start}
+.mdl [hidden]{display:none!important}
+.svct .svap{font-size:13px;line-height:1.35}.svct .svap .muted{display:block;margin:0}
+.svct .svap+.svap{margin-top:2px}

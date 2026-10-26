@@ -51,7 +51,7 @@ class EntryService
             // El servicio manda: si permite las dos formas, decide la preferencia de la persona (la fija la gerencia).
             $service = $this->resolveService($project, $data['service_id'] ?? null, $entry);
             $mode = $service->effectiveMode($user);
-            $inc = (float) $rules->get('increment') ?: 0.25;
+            $inc = $rules->increment();
             $running = (bool) ($data['running'] ?? false);
             $start = $data['start_time'] ?? null;
             $end = $data['end_time'] ?? null;
@@ -64,7 +64,11 @@ class EntryService
                 if ($hours === null || $hours <= 0) {
                     $this->fail('hours', __('Escribe las horas del día.'));
                 }
-                $hours = $this->roundTo($hours, $inc);
+                // El incremento se aplica al entrar los datos: no se redondea en silencio.
+                if (! $this->isMultiple($hours, $inc)) {
+                    $this->fail('hours', __('Las horas deben ser múltiplos de :step', ['step' => $rules->incrementLabel()]));
+                }
+                $hours = round($hours, 2);
             } else { // from_to
                 if ($hours !== null && ! $start && ! $end) {
                     $this->fail('start_time', __('Este servicio se registra con hora desde y hasta.'));
@@ -72,6 +76,10 @@ class EntryService
                 if (! $this->validTime($start)) {
                     $this->fail('start_time', __('Hora de inicio inválida (HH:MM).'));
                 }
+                // Una hora que la entrada ya traía sin cambiar (guardada antes de este control) no se vuelve a exigir.
+                $this->assertAligned($rules, [
+                    'start_time' => $entry && substr((string) $entry->start_time, 0, 5) === $start ? null : $start,
+                ] + ($running ? [] : ['end_time' => $entry && substr((string) $entry->end_time, 0, 5) === $end ? null : $end]));
                 if ($running) {
                     $end = null;
                     $hours = 0.0;
@@ -113,6 +121,7 @@ class EntryService
             }
             $oldSheet = null;
             $before = null;
+            $oldServiceId = null;
             if ($entry) {
                 if ($entry->user_id !== $user->id) {
                     abort(403);
@@ -122,6 +131,7 @@ class EntryService
                     throw new SheetLockedException();
                 }
                 $before = $this->describe($entry);
+                $oldServiceId = $entry->service_id;
             }
 
             // El tipo de hora solo cuenta para empleados; los consultores siempre son 'reg'.
@@ -168,9 +178,9 @@ class EntryService
             $line = Lang::with($company->lang(), fn () => $before
                 ? __('Cambiada :before → :after', ['before' => $before, 'after' => $this->describe($entry)])
                 : __('Añadida :entry', ['entry' => $this->describe($entry)]));
-            $this->sheets->entriesChanged($newSheet->refresh(), $line, $user, $channel);
+            $this->sheets->entriesChanged($newSheet->refresh(), $line, $user, $channel, [$oldServiceId, $entry->service_id]);
             if ($oldSheet && $oldSheet->id !== $newSheet->id) {
-                $this->sheets->entriesChanged($oldSheet->refresh(), Lang::with($company->lang(), fn () => __('Movida fuera de esta semana: :entry', ['entry' => $before])), $user, $channel);
+                $this->sheets->entriesChanged($oldSheet->refresh(), Lang::with($company->lang(), fn () => __('Movida fuera de esta semana: :entry', ['entry' => $before])), $user, $channel, [$oldServiceId]);
             }
             return $entry->refresh();
         });
@@ -209,7 +219,7 @@ class EntryService
             }
             $line = Lang::with($user->company->lang(), fn () => __('Borrada :entry', ['entry' => $this->describe($entry)]));
             $entry->delete();
-            $this->sheets->entriesChanged($sheet->refresh(), $line, $user, $channel);
+            $this->sheets->entriesChanged($sheet->refresh(), $line, $user, $channel, [$entry->service_id]);
         });
     }
 
@@ -218,11 +228,16 @@ class EntryService
     {
         $tz = $user->company->timezone;
         $now = $at ? CarbonImmutable::parse($at)->setTimezone($tz) : CarbonImmutable::now($tz);
+        $start = $now->format('H:i');
+        if (! $at) {
+            // Sin 'at' el reloj empieza a la hora actual redondeada al múltiplo del incremento más cercano.
+            $start = $this->nearestAligned($user->company->rules(), $start);
+        }
         return $this->save($user, [
             'project_id' => $projectId,
             'service_id' => $serviceId,
             'work_date' => $now->toDateString(),
-            'start_time' => $now->format('H:i'),
+            'start_time' => $start,
             'running' => true,
             'note' => $note,
             'client_uuid' => $uuid,
@@ -241,6 +256,20 @@ class EntryService
         if ($now->toDateString() !== $entry->work_date->toDateString()) {
             $this->fail('end_time', __('El reloj pasó de medianoche; corrige la hora de salida a mano.'));
         }
+        $rules = $user->company->rules();
+        $end = $now->format('H:i');
+        $startMin = $this->minutes(substr($entry->start_time, 0, 5));
+        if (! $at) {
+            // Sin 'at' no se adivina: si pasó menos de un incremento, o la hora actual no está alineada, la app debe confirmar.
+            $elapsed = $this->minutes($end) - $startMin;
+            if ($elapsed < $rules->minimumMinutes()) {
+                $this->clockRefusal('below_minimum', __('La duración es demasiado corta.'), $rules, $end);
+            }
+            $step = $rules->stepMinutes();
+            if ($step !== null && $this->minutes($end) % $step !== 0) {
+                $this->clockRefusal('not_aligned', $step >= 60 ? __('Los minutos deben ser 00') : __('Los minutos deben ser múltiplos de :step', ['step' => $step]), $rules, $end);
+            }
+        }
         return $this->save($user, [
             'project_id' => $entry->project_id,
             'service_id' => $entry->service_id,
@@ -252,11 +281,57 @@ class EntryService
         ], $entry, 'clock');
     }
 
+    /** 422 del reloj con un código para que la app pregunte: below_minimum | not_aligned, más minimum_minutes. */
+    private function clockRefusal(string $code, string $message, \App\Support\Rules $rules, string $now): never
+    {
+        $payload = ['message' => $message, 'code' => $code, 'minimum_minutes' => $rules->minimumMinutes(),
+            'step_minutes' => $rules->stepMinutes(), 'suggested_end_time' => $this->nearestAligned($rules, $now),
+            'errors' => ['end_time' => [$message]]];
+        throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json($payload, 422));
+    }
+
+    /** La hora HH:MM redondeada al múltiplo del incremento más cercano (sin pasar de las 23:xx del mismo día). */
+    private function nearestAligned(\App\Support\Rules $rules, string $hhmm): string
+    {
+        $step = $rules->stepMinutes();
+        if ($step === null) {
+            return $hhmm;
+        }
+        $m = (int) round($this->minutes($hhmm) / $step) * $step;
+        while ($m >= 1440) {
+            $m -= $step;
+        }
+        return sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
+    }
+
     private function describe(TimeEntry $e): string
     {
         $e->loadMissing('project');
         $span = $e->start_time ? substr($e->start_time, 0, 5).'-'.($e->end_time ? substr($e->end_time, 0, 5) : '…') : '';
         return trim($e->work_date->toDateString().' '.$e->project->code.' '.$span).' '.number_format((float) $e->hours, 2).' h';
+    }
+
+    /** Los minutos de las horas desde/hasta deben ser múltiplos del incremento (0.01 no exige alineación). */
+    private function assertAligned(\App\Support\Rules $rules, array $times): void
+    {
+        $step = $rules->stepMinutes();
+        if ($step === null) {
+            return;
+        }
+        $errors = [];
+        foreach ($times as $field => $t) {
+            if ($this->validTime($t) && $this->minutes($t) % $step !== 0) {
+                $errors[$field] = $step >= 60 ? __('Los minutos deben ser 00') : __('Los minutos deben ser múltiplos de :step', ['step' => $step]);
+            }
+        }
+        if ($errors) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    private function isMultiple(float $v, float $inc): bool
+    {
+        return abs($v / $inc - round($v / $inc)) * $inc < 1e-6;
     }
 
     private function roundTo(float $v, float $inc): float

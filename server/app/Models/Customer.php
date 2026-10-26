@@ -14,6 +14,12 @@ class Customer extends Model
         return ['active' => 'boolean'];
     }
 
+    /** Aprobadores externos ligados a este cliente. */
+    public function approvers(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Approver::class, 'approver_customer');
+    }
+
     public function projects(): HasMany
     {
         return $this->hasMany(Project::class);

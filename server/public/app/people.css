@@ -45,3 +45,25 @@
 .pp .decided{display:flex;flex-wrap:wrap;gap:10px}
 .pp .edit h2{font-size:18px}
 .pp .empty{color:var(--muted);padding:12px 0}
+/* Searchable multi-select (msel): chips on top, search box, scrolling list (8 rows), count and Clear. One design for every long list. */
+.msel{display:flex;flex-direction:column;gap:8px}
+.msel-chips{display:flex;flex-wrap:wrap;gap:6px}.msel-chips:empty{display:none}
+.msel-chip{display:inline-flex;align-items:center;min-height:32px;padding:0 4px 0 12px;border-radius:999px;border:1px solid var(--primary);background:var(--tint);color:#085A88;font-size:13px;font-weight:600}
+.msel-x{width:28px;height:28px;min-height:0;margin:0 0 0 2px;padding:0;border:0;border-radius:50%;background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer}
+.msel-x:hover{background:rgba(8,90,136,.15)}.msel-x:disabled{opacity:.4;cursor:not-allowed}
+.msel-list{list-style:none;margin:0;padding:4px;border:1px solid var(--field);border-radius:8px;background:#fff;max-height:330px;overflow-y:auto;overscroll-behavior:contain}
+.msel-list[hidden],.msel-list li[hidden]{display:none}
+.msel-list li{display:flex;align-items:center;gap:8px;min-height:40px;padding:2px 10px;border-radius:6px;cursor:pointer;font-size:14px;color:var(--text)}
+.msel-list li.act{background:var(--hover)}
+.msel-list li[aria-selected=true]{background:var(--tint);font-weight:600}
+.msel-list li[aria-selected=true].act{background:#D3E9F6}
+.msel-list li[aria-disabled=true]{opacity:.5;cursor:not-allowed}
+.msel-list li.msel-none{cursor:default;color:var(--muted);font-weight:400}
+.msel-sub{color:var(--muted);font-weight:400;font-size:12px;overflow-wrap:anywhere}
+.msel-tick{margin-left:auto;visibility:hidden;color:var(--primary)}.msel-list li[aria-selected=true] .msel-tick{visibility:visible}
+.msel-foot{display:flex;justify-content:space-between;align-items:center;min-height:24px;font-size:13px;color:var(--muted)}
+.msel-clear{min-height:32px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--primary);font:inherit;font-size:13px;cursor:pointer}
+.msel-clear:hover{background:var(--hover)}.msel-clear[hidden]{display:none}
+.mdl .msel.bad{border:0!important;background:none}.msel.bad .msel-q{border-color:var(--danger)}
+.pchips{display:flex;flex-wrap:wrap;gap:4px}
+.pchip{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--tint);color:#085A88;white-space:nowrap}

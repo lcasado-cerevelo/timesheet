@@ -18,7 +18,8 @@ interface SelectionState {
   /** Últimos proyectos usados (hasta 5), el más reciente primero. */
   recent: number[];
   load: () => Promise<void>;
-  setProject: (id: number) => void;
+  /** remember=false: se recuerda el proyecto escogido pero no cuenta como reciente (flechas de la pantalla Día). */
+  setProject: (id: number, remember?: boolean) => void;
   setService: (projectId: number, serviceId: number) => void;
   reset: () => void;
 }
@@ -33,11 +34,11 @@ export const useSelection = create<SelectionState>((set, get) => ({
     const [projectId, services, recent] = await Promise.all([kv.get<number | null>(PROJECT_KEY, null), kv.get<Record<string, number>>(SERVICE_KEY, {}), kv.get<number[]>(RECENT_KEY, [])]);
     set({ projectId, services, recent, loaded: true });
   },
-  setProject(id) {
-    const recent = pushRecent(get().recent, id);
+  setProject(id, remember = true) {
+    const recent = remember ? pushRecent(get().recent, id) : get().recent;
     set({ projectId: id, recent });
     void kv.set(PROJECT_KEY, id);
-    void kv.set(RECENT_KEY, recent);
+    if (remember) void kv.set(RECENT_KEY, recent);
   },
   setService(projectId, serviceId) {
     const services = { ...get().services, [String(projectId)]: serviceId };

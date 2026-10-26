@@ -28,10 +28,8 @@ class AccountController extends Controller
         ]);
         $cid = $request->user()->company_id;
 
-        // Quien es aprobador interno de algún proyecto activo que exige aprobación interna.
-        $internal = \Illuminate\Support\Facades\DB::table('project_internal_approvers as pia')->join('projects', 'projects.id', '=', 'pia.project_id')
-            ->where('projects.company_id', $cid)->where('projects.active', true)->where('projects.requires_internal_approval', true)
-            ->pluck('pia.user_id')->unique()->all();
+        // Quien es aprobador interno de algún servicio activo que pide aprobación interna.
+        $internal = app(\App\Services\InternalApprovalService::class)->internalUserIds($cid);
         $rows = User::where('company_id', $cid)->get()->map(fn (User $u) => $this->fromUser($u, in_array($u->id, $internal, true)));
         // Aprobadores sin cuenta de entrada: también son una "cuenta" (sin acceso).
         $rows = $rows->concat(

@@ -171,7 +171,7 @@ class AuthController extends Controller
             'company' => ['id' => $company->id, 'name' => $company->name, 'timezone' => $company->timezone],
             // La app móvil lee la marca aquí: cambiarla en el servidor no requiere publicar la app.
             'brand' => $company->brand(),
-            'rules' => $company->rules()->all(),
+            'rules' => $company->rules()->all() + ['minimum_minutes' => $company->rules()->minimumMinutes()],
             'remember_days' => (int) $company->rules()->get('remember_days'),
         ];
     }

@@ -17,6 +17,8 @@ export interface Brand {
 export interface Rules {
   weeks_back: number;
   increment: number;
+  /** Duración mínima de una entrada en minutos (un incremento). Si el servidor aún no la manda, se calcula del incremento. */
+  minimum_minutes?: number;
   max_day_hours: number;
   deadline_dow: number;
   deadline_time: string;
@@ -109,6 +111,8 @@ export interface SyncResult {
   status: 'ok' | 'locked' | 'invalid';
   id?: number;
   message?: string;
+  code?: string;
+  minimum_minutes?: number;
   errors?: Record<string, string[]>;
 }
 

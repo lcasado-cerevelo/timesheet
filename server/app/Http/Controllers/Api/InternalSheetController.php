@@ -9,7 +9,7 @@ use App\Services\ReviewService;
 use App\Services\SheetService;
 use Illuminate\Http\Request;
 
-/** Hojas del aprobador interno (supervisor): solo ve y decide sobre las líneas de los proyectos que supervisa. */
+/** Hojas del aprobador interno (supervisor): solo ve y decide sobre las líneas de los servicios que supervisa. */
 class InternalSheetController extends Controller
 {
     public function __construct(private SheetService $sheets, private InternalApprovalService $internal, private SheetController $sheetCtl, private ReviewService $review)
@@ -49,19 +49,19 @@ class InternalSheetController extends Controller
         return response()->json($this->present($sheet, $user, false));
     }
 
-    /** La hoja debe tener al menos un proyecto que esta persona supervisa, y no ser suya. */
+    /** La hoja debe tener al menos un servicio que esta persona supervisa, y no ser suya. */
     private function authorizeSheet(Timesheet $sheet, $user): void
     {
-        $ids = $this->internal->supervisedProjectIds($user);
+        $ids = $this->internal->supervisedServiceIds($user);
         abort_unless($sheet->company_id === $user->company_id && $sheet->user_id !== $user->id
             && $sheet->status !== Timesheet::DRAFT
-            && $sheet->entries()->whereIn('project_id', $ids ?: [0])->exists(), 404);
+            && $sheet->entries()->whereIn('service_id', $ids ?: [0])->exists(), 404);
     }
 
-    /** La hoja con solo las líneas (y el total) de los proyectos que supervisa esta persona. */
+    /** La hoja con solo las líneas (y el total) de los servicios que supervisa esta persona. */
     private function present(Timesheet $sheet, $user, bool $withEntries): array
     {
-        $ids = $this->internal->supervisedProjectIds($user);
+        $ids = $this->internal->supervisedServiceIds($user);
         $info = $this->internal->info($sheet, $ids);
         $this->internal->restrictTo($sheet, $user);
         $out = $this->sheetCtl->payload($sheet, false);
