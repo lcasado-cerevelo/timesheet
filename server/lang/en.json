@@ -374,5 +374,6 @@
     "proyecto :name": "project :name",
     "Tarea": "Task",
     "Escoge la tarea.": "Choose the task.",
+    "Esta tarea ya tiene horas registradas: no se puede borrar. Márcala como completada.": "This task already has hours logged: it cannot be deleted. Mark it as completed.",
     "Esa tarea no existe en este proyecto o está desactivada.": "That task does not exist in this project or is deactivated."
 }

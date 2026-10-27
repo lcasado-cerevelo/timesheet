@@ -139,6 +139,7 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::put('/services/{service}', [ServiceController::class, 'update']);
         Route::post('/projects/{project}/tasks', [TaskController::class, 'store']);
         Route::put('/tasks/{task}', [TaskController::class, 'update']);
+        Route::delete('/tasks/{task}', [TaskController::class, 'destroy']);
 
         Route::get('/sheets-pending', [SheetController::class, 'pending']);
         Route::get('/review/sheets', [SheetController::class, 'review']);

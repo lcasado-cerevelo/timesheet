@@ -21,8 +21,24 @@ class TaskController extends Controller
     public function update(Request $request, Task $task)
     {
         abort_unless($task->company_id === $request->user()->company_id, 404);
-        $task->update($this->validated($request, $task->project, $task));
+        $data = $this->validated($request, $task->project, $task);
+        // Completar guarda la fecha; reabrir la quita.
+        if (array_key_exists('active', $data) && (bool) $data['active'] !== (bool) $task->active) {
+            $data['completed_on'] = $data['active'] ? null : now($task->project->company->timezone)->toDateString();
+        }
+        $task->update($data);
         return response()->json(self::payload($task->refresh(), true));
+    }
+
+    /** Solo se borra una tarea creada por error: sin horas registradas. Con horas se completa (active = false). */
+    public function destroy(Request $request, Task $task)
+    {
+        abort_unless($task->company_id === $request->user()->company_id, 404);
+        if ($task->entries()->exists()) {
+            abort(422, __('Esta tarea ya tiene horas registradas: no se puede borrar. Márcala como completada.'));
+        }
+        $task->delete();
+        return response()->json(['ok' => true]);
     }
 
     private function validated(Request $request, Project $project, ?Task $task): array
@@ -41,6 +57,8 @@ class TaskController extends Controller
     {
         $out = ['id' => $t->id, 'project_id' => $t->project_id, 'name' => $t->name, 'active' => $t->active, 'sort' => $t->sort];
         if ($owner) {
+            $out['completed_on'] = $t->completed_on?->toDateString();
+            $out['can_delete'] = ($t->entries_count ?? $t->entries()->count()) === 0;
             $out['budget_hours'] = $t->budget_hours === null ? null : (float) $t->budget_hours;
             $out['used_hours'] = round((float) ($t->used_hours ?? $t->entries()->sum('hours')), 2);
         }

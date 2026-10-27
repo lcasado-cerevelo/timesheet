@@ -180,6 +180,37 @@ class TaskTest extends TestCase
         $this->getJson('/api/projects')->assertJsonMissingPath('0.tasks.0.budget_hours')->assertJsonMissingPath('0.tasks.0.used_hours');
     }
 
+    public function test_a_task_without_hours_can_be_deleted_but_one_with_hours_can_only_be_completed(): void
+    {
+        $this->world();
+        $mistake = $this->task('Por error');
+        $used = $this->task('Diseño');
+        Sanctum::actingAs($this->worker);
+        $this->deleteJson('/api/tasks/'.$mistake->id)->assertForbidden();
+        $this->postJson('/api/entries', $this->entry(['task_id' => $used->id]))->assertCreated();
+
+        Sanctum::actingAs($this->owner);
+        $tasks = collect($this->getJson('/api/projects')->json('0.tasks'))->keyBy('name');
+        $this->assertTrue($tasks['Por error']['can_delete']);
+        $this->assertFalse($tasks['Diseño']['can_delete']);
+
+        $this->deleteJson('/api/tasks/'.$used->id)->assertStatus(422);
+        $this->assertDatabaseHas('tasks', ['id' => $used->id]);
+        $this->deleteJson('/api/tasks/'.$mistake->id)->assertOk();
+        $this->assertDatabaseMissing('tasks', ['id' => $mistake->id]);
+    }
+
+    public function test_completing_a_task_records_the_date_and_reopening_clears_it(): void
+    {
+        $this->world();
+        $t = $this->task('Diseño');
+        Sanctum::actingAs($this->owner);
+        $this->putJson('/api/tasks/'.$t->id, ['active' => false])->assertOk()->assertJsonPath('active', false)->assertJsonPath('completed_on', '2026-10-21');
+        // Guardar otra cosa (el nombre) no cambia la fecha de completada.
+        $this->putJson('/api/tasks/'.$t->id, ['name' => 'Diseño final', 'active' => false])->assertOk()->assertJsonPath('completed_on', '2026-10-21');
+        $this->putJson('/api/tasks/'.$t->id, ['active' => true])->assertOk()->assertJsonPath('active', true)->assertJsonPath('completed_on', null);
+    }
+
     public function test_the_approver_sees_the_task_on_the_page_and_in_the_account_api(): void
     {
         Mail::fake();

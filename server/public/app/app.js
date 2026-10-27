@@ -1266,11 +1266,11 @@ function taskBox(p) {
   const row = x => {
     const over = x.budget_hours != null && Number(x.used_hours) > Number(x.budget_hours);
     return `<tr><td><b>${esc(x.name)}</b></td><td class="r">${x.budget_hours != null ? h1(x.budget_hours) : '<span class="muted">—</span>'}</td>
-    <td class="r" ${over ? `style="color:var(--danger);font-weight:600" title="${esc(T('Over the budget'))}"` : ''}>${h1(x.used_hours || 0)}</td><td>${activePill(x.active)}</td>
-    <td class="r"><button type="button" class="btn ghost sm" data-act="task-edit" data-pid="${p.id}" data-id="${x.id}">Edit</button> <button type="button" class="btn ghost sm" data-act="task-toggle" data-pid="${p.id}" data-id="${x.id}">${x.active ? 'Deactivate' : 'Activate'}</button></td></tr>`;
+    <td class="r" ${over ? `style="color:var(--danger);font-weight:600" title="${esc(T('Over the budget'))}"` : ''}>${h1(x.used_hours || 0)}</td><td>${x.active ? pill('Open', 'green') : pill('Completed', 'gray')}${!x.active && x.completed_on ? ` <span class="muted">${esc(nice(x.completed_on))}</span>` : ''}</td>
+    <td class="r"><button type="button" class="btn ghost sm" data-act="task-edit" data-pid="${p.id}" data-id="${x.id}">Edit</button> <button type="button" class="btn ghost sm" data-act="task-toggle" data-pid="${p.id}" data-id="${x.id}">${x.active ? 'Complete' : 'Reopen'}</button>${x.can_delete ? ` <button type="button" class="btn ghost sm" data-act="task-del" data-pid="${p.id}" data-id="${x.id}">Delete</button>` : ''}</td></tr>`;
   };
   return `<div class="mdl-sech"><h3>Tasks</h3><button type="button" class="btn ghost sm" data-act="task-add" data-pid="${p.id}">Add task</button></div>
-    <p class="muted" style="margin:0 0 8px">A project may have no tasks. When it has active tasks, the person must pick one on each line of the week, and the approver sees it next to the project and the service. Deactivate a task when it is finished so nobody picks it any more.</p>
+    <p class="muted" style="margin:0 0 8px">A project may have no tasks. When it has active tasks, the person must pick one on each line of the week, and the approver sees it next to the project and the service. Mark a task as completed when it is finished so nobody picks it any more; a task created by mistake can be deleted while it has no hours.</p>
     ${list.length ? `<div class="scrollx"><table class="svct"><tr><th>Task</th><th class="r">Budget (h)</th><th class="r">Used (h)</th><th>Status</th><th></th></tr>${list.map(row).join('')}</table></div>` : '<p class="muted" style="margin:0">No tasks yet.</p>'}`;
 }
 function openTaskModal(pid, tid) {
@@ -1279,10 +1279,10 @@ function openTaskModal(pid, tid) {
   modalOpen({ title: t ? 'Edit task' : 'Add task', sub: `${p.code} · ${p.name}`, size: 'sm', save: t ? 'Save' : 'Add',
     body: `<div><label>Name</label><input name="name" required maxlength="120" value="${esc(t?.name)}"></div>
       <div><label>Estimated hours (budget)</label><input name="budget_hours" type="number" step="0.5" min="0" max="99999" value="${esc(t?.budget_hours)}"><small class="help">Optional. It only shows how many hours were used against it; it does not block anyone.</small></div>
-      <label class="chk"><input type="checkbox" name="active" ${t ? (t.active ? 'checked' : '') : 'checked'}> Active</label>
-      <small class="help">Deactivate a task when it is finished: people stop seeing it when they log hours. Hours already logged keep it.</small>`,
+      ${t ? `<label class="chk"><input type="checkbox" name="completed" ${t.active ? '' : 'checked'}> Completed</label>
+      <small class="help">A completed task stops showing when people log hours. Hours already logged keep it.</small>` : ''}`,
     async onSubmit(mm) {
-      const o = formObj(mm.form); o.active = !!o.active; o.budget_hours = o.budget_hours === '' || o.budget_hours == null ? null : Number(o.budget_hours);
+      const o = formObj(mm.form); if (t) o.active = !o.completed; delete o.completed; o.budget_hours = o.budget_hours === '' || o.budget_hours == null ? null : Number(o.budget_hours);
       if (t) await api('/tasks/' + t.id, { method: 'PUT', body: o }); else await api('/projects/' + p.id + '/tasks', { method: 'POST', body: o });
       await mm.finish('Task saved.', () => refreshSvcBox(p.id));
     } });
@@ -1381,7 +1381,12 @@ Object.assign(actions, {
   'task-add': el => openTaskModal(el.dataset.pid), 'task-edit': el => openTaskModal(el.dataset.pid, el.dataset.id),
   async 'task-toggle'(el) {
     const p = S.cache.pl.find(x => x.id === Number(el.dataset.pid)); const t = p.tasks.find(x => x.id === Number(el.dataset.id));
-    await api('/tasks/' + t.id, { method: 'PUT', body: { active: !t.active } }); await refreshSvcBox(p.id); toast(t.active ? 'Task deactivated.' : 'Task activated.');
+    await api('/tasks/' + t.id, { method: 'PUT', body: { active: !t.active } }); await refreshSvcBox(p.id); toast(t.active ? 'Task completed.' : 'Task reopened.');
+  },
+  async 'task-del'(el) {
+    const p = S.cache.pl.find(x => x.id === Number(el.dataset.pid)); const t = p.tasks.find(x => x.id === Number(el.dataset.id));
+    if (!confirm(T('Delete the task "' + t.name + '"? This cannot be undone.'))) return;
+    await api('/tasks/' + t.id, { method: 'DELETE' }); await refreshSvcBox(p.id); toast('Task deleted.');
   },
   async 'svc-toggle'(el) {
     const p = S.cache.pl.find(x => x.id === Number(el.dataset.pid)); const s = p.services.find(x => x.id === Number(el.dataset.id));
