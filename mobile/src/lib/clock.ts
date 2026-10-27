@@ -6,6 +6,8 @@ export interface ClockState {
   project_id: number;
   /** Servicio del tramo (las relojes viejos no lo tienen). */
   service_id?: number | null;
+  /** Tarea del tramo, opcional (los relojes viejos no la tienen). */
+  task_id?: number | null;
   /** ISO con zona; de aquí se calcula todo. */
   started_at: string;
   note: string;

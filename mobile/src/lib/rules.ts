@@ -7,6 +7,8 @@ import type { CaptureMode, Entry, Project, Rules } from './types';
 export interface EntryInput {
   project_id: number | null;
   service_id?: number | null;
+  /** undefined = conservar la de la entrada que se edita; null = sin tarea. */
+  task_id?: number | null;
   work_date: string;
   start_time?: string | null;
   end_time?: string | null;

@@ -108,6 +108,8 @@ export const es = {
   // pantalla Día
   'day.choose_project': 'Elegir proyecto',
   'day.choose_service': 'Elegir servicio',
+  'day.choose_task': 'Elegir tarea',
+  'day.task': 'Tarea',
   'day.search': 'Buscar proyecto',
   'day.prev_project': 'Proyecto anterior',
   'day.next_project': 'Proyecto siguiente',
@@ -167,6 +169,8 @@ export const es = {
   'entry.no_project': 'Sin proyecto',
   'entry.change': 'Cambiar',
   'entry.service': 'Servicio',
+  'entry.task': 'Tarea',
+  'entry.no_task': 'Sin tarea',
   'entry.pick_service': 'Escoge el servicio para ver qué datos pide.',
   'entry.from': 'Desde',
   'entry.to': 'Hasta',

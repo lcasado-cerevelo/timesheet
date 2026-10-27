@@ -56,6 +56,15 @@ export interface Service {
   mode?: CaptureMode;
 }
 
+/** Tarea de un proyecto. Es opcional: un proyecto puede no tener ninguna y una entrada puede no llevar tarea. */
+export interface Task {
+  id: number;
+  project_id: number;
+  name: string;
+  active: boolean;
+  sort: number;
+}
+
 export interface Project {
   id: number;
   code: string;
@@ -68,6 +77,8 @@ export interface Project {
   geo_radius_m: number | null;
   /** Servicios del proyecto (sin tarifas). Proyectos guardados antes de que existieran los servicios no lo traen. */
   services?: Service[];
+  /** Tareas del proyecto (solo las activas para quien no es dueño). Proyectos guardados antes de que existieran no lo traen. */
+  tasks?: Task[];
   /** Cliente del proyecto, si el servidor lo envía. */
   customer?: { id?: number; name: string } | null;
 }
@@ -82,6 +93,8 @@ export interface Entry {
   project_id: number;
   /** Las entradas viejas no lo tienen. */
   service_id?: number | null;
+  /** Tarea opcional. Las entradas viejas no lo tienen (undefined = el servidor conserva la que tenga). */
+  task_id?: number | null;
   work_date: string;
   start_time: string | null;
   end_time: string | null;
@@ -99,6 +112,8 @@ export interface ServerEntry {
   project_id: number;
   service_id?: number | null;
   service?: { id: number; name: string } | null;
+  task_id?: number | null;
+  task?: { id: number; name: string } | null;
   work_date: string;
   start_time: string | null;
   end_time: string | null;

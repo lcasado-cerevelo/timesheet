@@ -13,6 +13,8 @@ export function buildSyncPayload(local: Entry[]): Record<string, unknown>[] {
             project_id: e.project_id,
             // Las entradas viejas no tienen servicio: se omite y el servidor lo asigna si el proyecto tiene uno solo.
             service_id: e.service_id ?? undefined,
+            // Sin tarea se manda null (la quita); las entradas viejas no la tienen (undefined) y el servidor conserva la suya.
+            task_id: e.task_id,
             work_date: e.work_date,
             start_time: e.start_time,
             end_time: e.end_time,
@@ -66,6 +68,7 @@ export function mergeServer(local: Entry[], server: ServerEntry[], from: string,
       id: s.id,
       project_id: s.project_id,
       service_id: s.service_id ?? s.service?.id ?? null,
+      task_id: s.task_id ?? s.task?.id ?? null,
       work_date: s.work_date,
       start_time: s.start_time,
       end_time: s.end_time,

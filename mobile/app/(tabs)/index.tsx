@@ -8,6 +8,7 @@ import { dayButtonRows, DAY_BUTTON_LABEL, DayButtonId } from '../../src/lib/dayB
 import { checkStop, hmAligned, minimumMinutes, roundedNowHM, stepMinutes } from '../../src/lib/increment';
 import { minimumDialog } from '../../src/lib/minimumDialog';
 import { stepProject } from '../../src/lib/projectSearch';
+import { taskName } from '../../src/lib/tasks';
 import { dayActionAllowed, visibleEntries } from '../../src/lib/access';
 import { kv } from '../../src/lib/storage';
 import { addDays, fmtHours, longDate, nowHM, to12h, today } from '../../src/lib/time';
@@ -43,6 +44,7 @@ export default function Day() {
   const limited = useAuth((s) => s.limited);
   const [search, setSearch] = useState(false);
   const [svcOpen, setSvcOpen] = useState(false);
+  const [taskOpen, setTaskOpen] = useState(false);
   const [tmpl, setTmpl] = useState(false);
   const [ask, setAsk] = useState<null | { kind: 'in' | 'out'; initial: string }>(null);
   const [now, setNow] = useState(Date.now());
@@ -70,6 +72,7 @@ export default function Day() {
   const project = (id: number) => projects.find((p) => p.id === id);
   const serviceName = (e: { project_id: number; service_id?: number | null }) =>
     e.service_id ? project(e.project_id)?.services?.find((s) => s.id === e.service_id)?.name : undefined;
+  const taskOf = (e: { project_id: number; task_id?: number | null }) => taskName(project(e.project_id), e.task_id);
   const fail = (m: string | null) => setErr(m ?? '');
 
   /** Revisa que haya proyecto y servicio escogidos antes de abrir el reloj. */
@@ -113,7 +116,7 @@ export default function Day() {
     const [h, m] = hm.split(':').map(Number);
     const at = new Date();
     at.setHours(h, m, 0, 0);
-    if (kind === 'in' && cur.project) fail(start(cur.project.id, cur.service?.id ?? null, '', at));
+    if (kind === 'in' && cur.project) fail(start(cur.project.id, cur.service?.id ?? null, '', at, cur.task?.id ?? null));
     if (kind === 'out') {
       if (!clock || !me) return fail(stop(at));
       const c = checkStop(new Date(clock.started_at), at, minimumMinutes(me.rules));
@@ -126,7 +129,7 @@ export default function Day() {
     const seen = new Set<string>();
     const out: Entry[] = [];
     for (const e of [...entries].filter((x) => x.sync !== 'deleted').reverse()) {
-      const k = `${e.project_id}|${e.service_id ?? ''}|${e.start_time}|${e.end_time}|${e.start_time ? '' : e.hours}|${e.note}`;
+      const k = `${e.project_id}|${e.service_id ?? ''}|${e.task_id ?? ''}|${e.start_time}|${e.end_time}|${e.start_time ? '' : e.hours}|${e.note}`;
       if (!seen.has(k)) {
         seen.add(k);
         out.push(e);
@@ -137,7 +140,7 @@ export default function Day() {
   }, [entries]);
 
   const copyOf = (e: Entry) => ({
-    project_id: e.project_id, service_id: e.service_id ?? null, work_date: selectedDate,
+    project_id: e.project_id, service_id: e.service_id ?? null, task_id: e.task_id ?? null, work_date: selectedDate,
     start_time: e.start_time, end_time: e.end_time, hours: e.hours, note: e.note,
   });
 
@@ -202,6 +205,12 @@ export default function Day() {
     fail(null);
   };
 
+  const chooseTask = (taskId: number | null) => {
+    if (cur.project) sel.setTask(cur.project.id, taskId);
+    setTaskOpen(false);
+    fail(null);
+  };
+
   const clockProject = clock ? project(clock.project_id) : undefined;
   const clockService = clock?.service_id ? clockProject?.services?.find((s) => s.id === clock.service_id) : undefined;
 
@@ -239,11 +248,18 @@ export default function Day() {
         <Text testID="service-single" numberOfLines={1} style={{ color: C.muted, fontSize: 12, paddingHorizontal: 14, paddingTop: 6 }}>{t('day.service')}: {cur.services[0].name}</Text>
       ) : null}
 
+      {/* La tarea es opcional: solo se muestra si el proyecto escogido tiene tareas */}
+      {cur.project && cur.tasks.length > 0 ? (
+        <View style={{ paddingHorizontal: 12, paddingTop: 8, alignItems: 'flex-start', maxWidth: '100%' }}>
+          <Chip testID="task-pill" on={!!cur.task} label={`${t('day.task')}: ${cur.task?.name ?? t('entry.no_task')}`} onPress={() => setTaskOpen(true)} />
+        </View>
+      ) : null}
+
       {clock && (
         <View testID="running" style={{ backgroundColor: '#e6f4ea', borderBottomWidth: 1, borderColor: '#9bd1ac', padding: 10, marginTop: 8, flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text numberOfLines={1} style={{ fontWeight: '700' }}>
-              {clockProject ? `${clockProject.code} · ${clockProject.name}` : t('day.clock_running')}{clockService ? ` · ${clockService.name}` : ''}
+              {clockProject ? `${clockProject.code} · ${clockProject.name}` : t('day.clock_running')}{clockService ? ` · ${clockService.name}` : ''}{taskName(clockProject, clock.task_id) ? ` · ${taskName(clockProject, clock.task_id)}` : ''}
             </Text>
             <Text style={{ color: C.muted }}>{t('day.since', { time: to12h(nowHM(new Date(clock.started_at))) })}</Text>
           </View>
@@ -281,7 +297,7 @@ export default function Day() {
                   <Text style={[cell, { width: 82, color: '#0b84c6' }]}>{e.end_time ? to12h(e.end_time) : ''}</Text>
                   <Text style={[cell, { width: 62, color: '#0b84c6' }]}>{fmtHours(e.hours, decimal)}</Text>
                   <Text style={[cell, { flex: 1, color: C.muted }]} numberOfLines={1}>
-                    {project(e.project_id)?.code ?? '?'}{serviceName(e) ? ' · ' + serviceName(e) : ''}{e.note ? ' · ' + e.note : ''}
+                    {project(e.project_id)?.code ?? '?'}{serviceName(e) ? ' · ' + serviceName(e) : ''}{taskOf(e) ? ' · ' + taskOf(e) : ''}{e.note ? ' · ' + e.note : ''}
                   </Text>
                   <Pressable onPress={() => confirmDelete(e)} hitSlop={8} style={{ paddingHorizontal: 6 }}><Text style={{ color: C.danger, fontSize: 18 }}>✕</Text></Pressable>
                 </Pressable>
@@ -316,12 +332,23 @@ export default function Day() {
         ))}
       </Sheet>
 
+      <Sheet visible={taskOpen} title={t('day.choose_task')} onClose={() => setTaskOpen(false)}>
+        <Pressable testID="pick-task-none" onPress={() => chooseTask(null)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderColor: '#eee' }}>
+          <Text style={{ fontSize: 16, fontWeight: !cur.task ? '800' : '600' }}>{t('entry.no_task')}{!cur.task ? '  ✓' : ''}</Text>
+        </Pressable>
+        {cur.tasks.map((x) => (
+          <Pressable key={x.id} testID={`pick-task-${x.id}`} onPress={() => chooseTask(x.id)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderColor: '#eee' }}>
+            <Text style={{ fontSize: 16, fontWeight: cur.task?.id === x.id ? '800' : '600' }}>{x.name}{cur.task?.id === x.id ? '  ✓' : ''}</Text>
+          </Pressable>
+        ))}
+      </Sheet>
+
       <Sheet visible={tmpl} title={t('day.repeat_title')} onClose={() => setTmpl(false)}>
         {recent.length === 0 && <Text style={{ color: C.muted }}>{t('day.repeat_empty')}</Text>}
         {recent.map((e) => (
           <Pressable key={e.uuid} onPress={() => repeat(e)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderColor: '#eee' }}>
             <Text style={{ fontSize: 16, fontWeight: '600' }}>
-              {project(e.project_id)?.code}{serviceName(e) ? ' · ' + serviceName(e) : ''} · {e.start_time ? `${to12h(e.start_time)} – ${to12h(e.end_time ?? '00:00')}` : fmtHours(e.hours, decimal) + ' h'}
+              {project(e.project_id)?.code}{serviceName(e) ? ' · ' + serviceName(e) : ''}{taskOf(e) ? ' · ' + taskOf(e) : ''} · {e.start_time ? `${to12h(e.start_time)} – ${to12h(e.end_time ?? '00:00')}` : fmtHours(e.hours, decimal) + ' h'}
             </Text>
             {e.note ? <Text style={{ color: C.muted }}>{e.note}</Text> : null}
           </Pressable>

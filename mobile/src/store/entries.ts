@@ -3,6 +3,7 @@ import { t } from '../i18n';
 import { api, ApiError, NetworkError } from '../lib/api';
 import { computeHours, EntryInput, validateEntry } from '../lib/rules';
 import { effectiveMode, resolveService } from '../lib/services';
+import { resolveTask } from '../lib/tasks';
 import { kv } from '../lib/storage';
 import { applySyncResults, buildSyncPayload, mergeServer, pendingCount } from '../lib/sync';
 import { addDays, today, weekEnding, weekStarting } from '../lib/time';
@@ -85,6 +86,9 @@ export const useEntries = create<EntriesState>((set, get) => {
       });
       if (errors.length) return { errors };
 
+      // La tarea es opcional: la indicada (null = ninguna) o, si no se indicó, la que ya tenía la entrada en este mismo proyecto.
+      const keepTask = prev && prev.project_id === input.project_id ? prev.task_id ?? null : null;
+      const task = resolveTask(project, input.task_id === undefined ? keepTask : input.task_id, keepTask);
       const mode = effectiveMode(project, service?.id ?? null, me.capture_mode);
       const hours = computeHours(input, mode, me.rules.increment);
       const entry: Entry = {
@@ -92,6 +96,7 @@ export const useEntries = create<EntriesState>((set, get) => {
         id: prev?.id,
         project_id: input.project_id as number,
         service_id: service?.id ?? null,
+        task_id: task?.id ?? null,
         work_date: input.work_date,
         start_time: mode === 'full_day' ? null : input.start_time ?? null,
         end_time: mode === 'full_day' || input.running ? null : input.end_time ?? null,

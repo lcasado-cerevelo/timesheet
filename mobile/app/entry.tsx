@@ -6,6 +6,7 @@ import { ProjectSheet } from '../src/pickers';
 import { computeHours } from '../src/lib/rules';
 import { activeServices, needsService, resolveService, serviceMode } from '../src/lib/services';
 import { roundedNowHM } from '../src/lib/increment';
+import { activeTasks, resolveTask } from '../src/lib/tasks';
 import { fmtHours, longDate } from '../src/lib/time';
 import { useAuth } from '../src/store/auth';
 import { useEntries } from '../src/store/entries';
@@ -26,10 +27,11 @@ export default function EntryScreen() {
   const { entries, projects, selectedDate, save } = useEntries();
   const sel = useSelection();
   const editing = params.uuid ? entries.find((e) => e.uuid === params.uuid) : undefined;
-  const current = computeCurrent(projects, sel.projectId, sel.services, me.capture_mode);
+  const current = computeCurrent(projects, sel.projectId, sel.services, me.capture_mode, sel.tasks);
 
   const [projectId, setProjectId] = useState<number | null>(editing?.project_id ?? current.project?.id ?? null);
   const [serviceId, setServiceId] = useState<number | null>(editing ? editing.service_id ?? null : current.service?.id ?? null);
+  const [taskId, setTaskId] = useState<number | null>(editing ? editing.task_id ?? null : current.task?.id ?? null);
   const [pickProject, setPickProject] = useState(false);
   const [date] = useState(editing?.work_date ?? params.date ?? selectedDate);
   const [start, setStart] = useState<string | null>(editing?.start_time ?? roundedNowHM(me.rules.increment));
@@ -44,6 +46,13 @@ export default function EntryScreen() {
     const keep = editing && editing.project_id === projectId && editing.service_id ? project?.services?.find((s) => s.id === editing.service_id) : undefined;
     return keep && !list.some((s) => s.id === keep.id) ? [...list, keep] : list;
   }, [project, editing, projectId]);
+  // Tareas (opcionales): solo se muestran si el proyecto tiene; una desactivada se conserva únicamente en la entrada que ya la tenía.
+  const taskChoices = useMemo(() => {
+    const list = activeTasks(project);
+    const keep = editing && editing.project_id === projectId && editing.task_id ? project?.tasks?.find((x) => x.id === editing.task_id) : undefined;
+    return keep && !list.some((x) => x.id === keep.id) ? [...list, keep] : list;
+  }, [project, editing, projectId]);
+  const task = resolveTask(project, taskId, editing?.task_id);
   // Con un solo servicio no se pide escoger; con varios hay que escoger uno.
   const service = resolveService(project, serviceId, editing?.service_id);
   const mustChoose = needsService(project) && !service;
@@ -59,8 +68,14 @@ export default function EntryScreen() {
     setPickProject(false);
     setProjectId(id);
     sel.setProject(id);
-    const next = computeCurrent(projects, id, sel.services, me.capture_mode);
+    const next = computeCurrent(projects, id, sel.services, me.capture_mode, sel.tasks);
     setServiceId(next.service?.id ?? null);
+    setTaskId(next.task?.id ?? null);
+  };
+
+  const chooseTask = (id: number | null) => {
+    setTaskId(id);
+    if (projectId) sel.setTask(projectId, id);
   };
 
   const chooseService = (id: number) => {
@@ -71,7 +86,7 @@ export default function EntryScreen() {
   const submit = () => {
     const r = save(
       {
-        project_id: projectId, service_id: service?.id ?? serviceId, work_date: date,
+        project_id: projectId, service_id: service?.id ?? serviceId, task_id: task?.id ?? null, work_date: date,
         start_time: fromTo ? start : null, end_time: fromTo ? end : null, hours: fromTo ? null : Number(hours.replace(',', '.')) || 0, note,
       },
       editing?.uuid,
@@ -102,6 +117,16 @@ export default function EntryScreen() {
           </>
         ) : choices.length === 1 ? (
           <Text testID="svc-single" style={{ color: C.muted, marginBottom: 12 }}>{t('entry.service')}: {choices[0].name}</Text>
+        ) : null}
+
+        {taskChoices.length > 0 ? (
+          <>
+            <Text style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>{t('entry.task')}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 8, marginBottom: 12 }}>
+              <Chip testID="task-none" label={t('entry.no_task')} on={!task} onPress={() => chooseTask(null)} />
+              {taskChoices.map((x) => <Chip key={x.id} testID={`task-${x.id}`} label={x.name} on={task?.id === x.id} onPress={() => chooseTask(x.id)} />)}
+            </View>
+          </>
         ) : null}
 
         {mustChoose ? (

@@ -110,6 +110,8 @@ export const en: Record<keyof typeof es, string> = {
   // Day screen
   'day.choose_project': 'Choose project',
   'day.choose_service': 'Choose service',
+  'day.choose_task': 'Choose task',
+  'day.task': 'Task',
   'day.search': 'Search project',
   'day.prev_project': 'Previous project',
   'day.next_project': 'Next project',
@@ -169,6 +171,8 @@ export const en: Record<keyof typeof es, string> = {
   'entry.no_project': 'No project',
   'entry.change': 'Change',
   'entry.service': 'Service',
+  'entry.task': 'Task',
+  'entry.no_task': 'No task',
   'entry.pick_service': 'Choose the service to see what it asks for.',
   'entry.from': 'From',
   'entry.to': 'To',
