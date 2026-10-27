@@ -26,6 +26,8 @@ export interface RuleContext {
   today: string;
   /** Semanas que ya se sabe que están aprobadas ('YYYY-MM-DD' del domingo). */
   lockedWeeks?: Set<string>;
+  /** Días que ya se sabe que están aprobados (una semana enviada por partes tiene días aprobados y días abiertos). */
+  lockedDays?: Set<string>;
 }
 
 /** Normaliza una entrada según el modo y devuelve las horas que le tocan. */
@@ -56,6 +58,7 @@ export function validateEntry(input: EntryInput, ctx: RuleContext): string[] {
   const oldest = addDays(weekEnding(ctx.today), -7 * rules.weeks_back);
   if (weekEnding(input.work_date) < oldest) errors.push(t('rules.too_old'));
   if (ctx.lockedWeeks?.has(weekEnding(input.work_date))) errors.push(t('rules.locked_week'));
+  else if (ctx.lockedDays?.has(input.work_date)) errors.push(t('rules.locked_day'));
 
   if (mode === 'full_day') {
     if (input.start_time || input.end_time || input.running) errors.push(t('rules.total_no_times'));

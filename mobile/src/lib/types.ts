@@ -127,4 +127,30 @@ export interface Sheet {
   late: boolean;
   return_comment: string | null;
   warnings: { code: string; message: string }[];
+  /** Envío por partes: el servidor manda el estado de cada día y las hojas (partes) de la semana. Sin esto, la semana es una sola hoja. */
+  partial_submission?: boolean;
+  days?: SheetDay[];
+  parts?: SheetPart[];
+}
+
+export interface SheetDay {
+  date: string;
+  sheet_id: number;
+  part: number | null;
+  status: SheetStatus;
+  /** Aprobado: el día ya no se puede cambiar. */
+  locked: boolean;
+  /** Todavía no está en ninguna hoja enviada. */
+  open: boolean;
+}
+
+export interface SheetPart {
+  id: number;
+  part: number | null;
+  status: SheetStatus;
+  is_part: boolean;
+  period_starting: string;
+  period_ending: string;
+  total_hours: number;
+  return_comment: string | null;
 }

@@ -16,6 +16,8 @@ interface Persisted {
   entries: Entry[];
   projects: Project[];
   lockedWeeks: string[];
+  /** Días aprobados dentro de una semana enviada por partes. */
+  lockedDays: string[];
   lastSync: string | null;
 }
 
@@ -40,8 +42,8 @@ interface EntriesState extends Persisted {
 
 export const useEntries = create<EntriesState>((set, get) => {
   const persist = () => {
-    const { entries, projects, lockedWeeks, lastSync } = get();
-    void kv.set(KEY, { entries, projects, lockedWeeks, lastSync } satisfies Persisted);
+    const { entries, projects, lockedWeeks, lockedDays, lastSync } = get();
+    void kv.set(KEY, { entries, projects, lockedWeeks, lockedDays, lastSync } satisfies Persisted);
   };
   const update = (patch: Partial<EntriesState>) => {
     set(patch);
@@ -53,6 +55,7 @@ export const useEntries = create<EntriesState>((set, get) => {
     entries: [],
     projects: [],
     lockedWeeks: [],
+    lockedDays: [],
     lastSync: null,
     selectedDate: today(),
     sheets: {},
@@ -60,8 +63,8 @@ export const useEntries = create<EntriesState>((set, get) => {
     lastError: null,
 
     async load() {
-      const p = await kv.get<Persisted>(KEY, { entries: [], projects: [], lockedWeeks: [], lastSync: null });
-      set({ ...p, loaded: true });
+      const p = await kv.get<Persisted>(KEY, { entries: [], projects: [], lockedWeeks: [], lockedDays: [], lastSync: null });
+      set({ ...p, lockedDays: p.lockedDays ?? [], loaded: true });
     },
 
     setDate: (d) => set({ selectedDate: d }),
@@ -69,7 +72,7 @@ export const useEntries = create<EntriesState>((set, get) => {
     save(input, uuidToEdit) {
       const me = useAuth.getState().me;
       if (!me) return { errors: [t('common.sign_in_first')] };
-      const { entries, projects, lockedWeeks } = get();
+      const { entries, projects, lockedWeeks, lockedDays } = get();
       const project = projects.find((p) => p.id === input.project_id);
       const prev = uuidToEdit ? entries.find((e) => e.uuid === uuidToEdit) : undefined;
       const sameDay = entries.filter((e) => e.work_date === input.work_date && e.uuid !== uuidToEdit);
@@ -78,7 +81,7 @@ export const useEntries = create<EntriesState>((set, get) => {
       const service = resolveService(project, input.service_id ?? keep, keep);
       const withService: EntryInput = { ...input, service_id: service?.id ?? input.service_id ?? null };
       const errors = validateEntry(withService, {
-        pref: me.capture_mode, keepServiceId: keep, project, rules: me.rules, sameDay, today: today(), lockedWeeks: new Set(lockedWeeks),
+        pref: me.capture_mode, keepServiceId: keep, project, rules: me.rules, sameDay, today: today(), lockedWeeks: new Set(lockedWeeks), lockedDays: new Set(lockedDays),
       });
       if (errors.length) return { errors };
 
@@ -134,7 +137,11 @@ export const useEntries = create<EntriesState>((set, get) => {
           set({ entries: applySyncResults(get().entries, r.results) });
           // Si el servidor dijo que una semana está bloqueada, la recordamos para avisar antes de teclear.
           const locked = r.results.filter((x) => x.status === 'locked').map((x) => get().entries.find((e) => e.uuid === x.client_uuid)?.work_date).filter(Boolean) as string[];
-          if (locked.length) set({ lockedWeeks: [...new Set([...get().lockedWeeks, ...locked.map(weekEnding)])] });
+          if (locked.length) {
+            set({ lockedDays: [...new Set([...get().lockedDays, ...locked])] });
+            // El servidor dice si fue la semana entera (hoja aprobada) o solo esos días (partes): se lee la hoja de cada semana.
+            for (const w of new Set(locked.map(weekEnding))) void get().fetchSheet(w);
+          }
         }
         const to = today();
         const from = weekStarting(addDays(weekEnding(to), -7 * me.rules.weeks_back));
@@ -157,7 +164,14 @@ export const useEntries = create<EntriesState>((set, get) => {
         const locked = new Set(get().lockedWeeks);
         if (s.locked) locked.add(s.week_ending);
         else locked.delete(s.week_ending);
-        update({ sheets: { ...get().sheets, [s.week_ending]: s }, lockedWeeks: [...locked] });
+        // Los días de esa semana: los aprobados se bloquean, los demás se liberan (el servidor manda el estado de cada día).
+        const days = new Set(get().lockedDays);
+        for (const d of s.days ?? []) {
+          if (d.locked) days.add(d.date);
+          else days.delete(d.date);
+        }
+        if (!s.days) for (let i = 0; i < 7; i++) days.delete(addDays(weekStarting(s.week_ending), i));
+        update({ sheets: { ...get().sheets, [s.week_ending]: s }, lockedWeeks: [...locked], lockedDays: [...days] });
         return s;
       } catch {
         return get().sheets[weekEnding(date)] ?? null;
@@ -181,7 +195,7 @@ export const useEntries = create<EntriesState>((set, get) => {
 
     async reset() {
       await kv.del(KEY);
-      set({ entries: [], projects: [], lockedWeeks: [], lastSync: null, sheets: {}, loaded: true });
+      set({ entries: [], projects: [], lockedWeeks: [], lockedDays: [], lastSync: null, sheets: {}, loaded: true });
     },
   };
 });

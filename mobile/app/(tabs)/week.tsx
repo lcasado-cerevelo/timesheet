@@ -43,8 +43,12 @@ export default function Week() {
     }
   }, [selectedDate, submitWeek]);
 
-  const st = sheet ? STATUS[sheet.status] : null;
-  const canSubmit = sheet && (sheet.status === 'draft' || sheet.status === 'returned');
+  // Semana enviada por partes: cada día trae su estado, y las partes devueltas traen su comentario.
+  const dayState = new Map((sheet?.days ?? []).map((d) => [d.date, d]));
+  const returnedParts = (sheet?.parts ?? []).filter((p) => p.is_part && p.status === 'returned');
+  const hasOpen = (sheet?.days ?? []).some((d) => d.open || d.status === 'returned');
+  const st = sheet ? STATUS[returnedParts.length ? 'returned' : sheet.status] : null;
+  const canSubmit = sheet && (sheet.status === 'draft' || sheet.status === 'returned' || returnedParts.length > 0) && (!sheet.days || hasOpen);
   const over = me.worker_type === 'employee' && me.weekly_hours != null && weekTotal > Number(me.weekly_hours);
 
   return (
@@ -62,19 +66,29 @@ export default function Week() {
           <View style={{ flex: 1 }} />
           <Text testID="week-total" style={{ fontWeight: '800', fontSize: 16 }}>{fmtHours(weekTotal, decimal)} h</Text>
         </View>
-        {sheet?.status === 'returned' && sheet.return_comment ? <View style={{ marginTop: 10 }}><Msg kind="err" text={t('week.returned', { comment: sheet.return_comment })} /></View> : null}
+        {returnedParts.map((p) => (
+          <View key={p.id} style={{ marginTop: 10 }}>
+            <Msg kind="err" text={t('week.part_returned', { period: p.period_starting === p.period_ending ? dayLabel(p.period_starting) : `${dayLabel(p.period_starting)} – ${dayLabel(p.period_ending)}`, comment: p.return_comment ?? '' })} />
+          </View>
+        ))}
+        {!returnedParts.length && sheet?.status === 'returned' && sheet.return_comment ? <View style={{ marginTop: 10 }}><Msg kind="err" text={t('week.returned', { comment: sheet.return_comment })} /></View> : null}
         {sheet?.locked ? <View style={{ marginTop: 10 }}><Msg kind="ok" text={t('week.approved')} /></View> : null}
         {over ? <View style={{ marginTop: 10 }}><Msg kind="warn" text={t('week.over', { n: Number(me.weekly_hours) })} /></View> : null}
-        {sheet?.status === 'submitted' ? <Text style={{ color: C.muted, marginTop: 8 }}>{t('week.waiting')}</Text> : null}
+        {sheet?.status === 'submitted' || (sheet?.days ?? []).some((d) => d.status === 'submitted') ? <Text style={{ color: C.muted, marginTop: 8 }}>{t('week.waiting')}</Text> : null}
       </Card>
 
       <Card>
         {days.map((d) => {
           const list = entries.filter((e) => e.work_date === d && e.sync !== 'deleted');
+          const ds = dayState.get(d);
+          const dst = ds && !ds.open ? STATUS[ds.status] : null;   // enviado, aprobado o devuelto (un día abierto no lleva etiqueta)
           return (
             <Pressable key={d} testID={`day-${d}`} onPress={() => { setDate(d); router.navigate('/'); }} style={{ paddingVertical: 8, borderBottomWidth: 1, borderColor: '#eee' }}>
               <View style={{ flexDirection: 'row' }}>
-                <Text style={{ width: 90, fontWeight: '700' }}>{dayLabel(d)}</Text>
+                <View style={{ width: 90 }}>
+                  <Text style={{ fontWeight: '700' }}>{dayLabel(d)}</Text>
+                  {dst ? <View testID={`daystate-${d}`} style={{ marginTop: 2, alignSelf: 'flex-start' }}><Badge text={t(dst.key)} color={dst.color} bg={dst.bg} /></View> : null}
+                </View>
                 <View style={{ flex: 1 }}>
                   {list.length === 0 ? <Text style={{ color: '#9ca3af' }}>—</Text> : list.map((e) => (
                     <Text key={e.uuid} style={{ color: C.text }}>

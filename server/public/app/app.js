@@ -378,7 +378,7 @@ async function approverView() {
     ${filterBar('apr', [{ k: 'q', label: 'Search person', ph: 'Name' }])}
     ${rows.length ? `<table><tr><th>Person</th><th>Week ending</th><th class="r">Hours</th><th>${st === 'pending' ? 'Submitted' : 'Date'}</th>${st === 'all' ? '<th>Status</th>' : ''}</tr>
     ${rows.map(s => `<tr class="pick ${sel && s.id === sel.id ? 'sel' : ''}" data-act="apr-pick" data-id="${s.id}"><td><b>${esc(s.user?.name)}</b> ${s.late ? '<span class="badge returned">Late</span>' : ''}</td>
-    <td>${nice(s.week_ending)}</td><td class="r">${hrs(s.total_hours)}</td><td>${dateOf(s)}</td>${st === 'all' ? `<td>${pill(s.status === 'submitted' ? 'Pending' : STATUS[s.status] || s.status, { submitted: 'amber', approved: 'green', returned: 'red' }[s.status] || 'gray')}</td>` : ''}</tr>`).join('')}</table>`
+    <td>${wkWeekCell(s)}</td><td class="r">${hrs(s.total_hours)}</td><td>${dateOf(s)}</td>${st === 'all' ? `<td>${pill(s.status === 'submitted' ? 'Pending' : STATUS[s.status] || s.status, { submitted: 'amber', approved: 'green', returned: 'red' }[s.status] || 'gray')}</td>` : ''}</tr>`).join('')}</table>`
     : `<p class="muted">${all.length ? 'No timesheet matches the filter.' : st === 'pending' ? 'Nothing is waiting for approval.' : 'There are no timesheets here yet.'}</p>`}</div>${detail}</div>`;
 }
 function mountTurnstile(key) {
@@ -462,7 +462,7 @@ async function approvalsView() {
     ${exportBar('pending', activeF('pending'))}${filterBar('pending', [{ k: 'q', label: 'Search person', ph: 'Name' }, { k: 'user_id', label: 'Person', type: 'select', opts: [['', 'All'], ...people.map(p => [p.id, p.name])] }, { k: 'late', label: 'Submitted', type: 'select', opts: [['', 'All'], ['1', 'Late only']] }])}
     ${rows.length ? `<table><tr><th>Person</th><th>Week ending</th><th class="r">Hours</th><th>Submitted</th></tr>
     ${rows.map(s => `<tr class="pick ${sel && s.id === sel.id ? 'sel' : ''}" data-act="ap-pick" data-id="${s.id}"><td><b>${esc(s.user?.name)}</b> ${s.late ? '<span class="badge returned">Late</span>' : ''}</td>
-    <td>${nice(s.week_ending)}</td><td class="r">${hrs(s.total_hours)}</td><td>${esc((s.submitted_at || '').slice(0, 10))}</td></tr>`).join('')}</table>`
+    <td>${wkWeekCell(s)}</td><td class="r">${hrs(s.total_hours)}</td><td>${esc((s.submitted_at || '').slice(0, 10))}</td></tr>`).join('')}</table>`
     : `<p class="muted">${all.length ? 'No pending timesheet matches the filter.' : 'Nothing is waiting for approval.'}</p>`}</div>${detail}</div>`;
 }
 
@@ -985,7 +985,7 @@ async function reviewScreen() {
       <div class="decided"><button class="btn" data-act="${A[0]}" data-id="${sel.id}" data-v="${sel.version}">Approve</button><button class="btn danger" data-act="${A[1]}" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></div></div>`
       : (sel.decided_at ? `<p class="muted" style="margin:0">Decided on ${esc(String(sel.decided_at).slice(0, 10))}.</p>` : '');
     const cell = (v, extra = '') => `<div class="mono" style="text-align:center;${extra}">${v ? h1(v) : ''}</div>`;
-    detail = `<div class="card r"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><div><h2 style="font-size:19px">${esc(nameOf(sel))}</h2><p style="margin:0">${typeName(sel)} · week ending ${nice(sel.week_ending)}</p></div>${pill(stOf(sel), stColor[sel.status] || 'gray')}</div>${wkParts(d && (d.internal || d.external) ? d : sel, 'in') || waitTxt(sel)}
+    detail = `<div class="card r"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><div><h2 style="font-size:19px">${esc(nameOf(sel))}</h2><p style="margin:0">${typeName(sel)} · week ending ${nice(sel.week_ending)}${sel.is_part ? ' · ' + T('Part') + ' ' + sel.part + ' (' + nice(sel.period_starting) + (sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)) + ')' : ''}</p></div>${pill(stOf(sel), stColor[sel.status] || 'gray')}</div>${wkParts(d && (d.internal || d.external) ? d : sel, 'in') || waitTxt(sel)}
       ${(d?.warnings || sel.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('')}${ret}
       <div class="scrollx"><div style="min-width:440px"><div class="hd cols-det"><div class="th">Line</div>${days.map(x => `<div class="th c">${dow(parse(x).getDay())}</div>`).join('')}<div class="th r">Total</div></div>
       ${[...lines.values()].map(r => `<div class="rw cols-det"><div style="font-size:14px">${esc([r.p?.code, r.p?.name, r.s?.name].filter(Boolean).join(' · '))}</div>${days.map(x => cell(r.by[x])).join('')}<div class="mono" style="text-align:right;font-weight:500">${h1(Object.values(r.by).reduce((a, v) => a + v, 0))}</div></div>`).join('')}
@@ -995,7 +995,7 @@ async function reviewScreen() {
   const pillBtn = ([k, l]) => `<button type="button" class="pill ${k === R.status ? 'on' : ''}" aria-pressed="${k === R.status}" data-act="rv-status" data-s="${k}">${l} (${cnt[k] ?? 0})</button>`;
   const per = ([k, l]) => `<button type="button" class="pill ${R.period === k ? 'on' : ''}" data-act="rv-period" data-p="${k}" ${pend ? 'disabled' : ''}>${l}</button>`;
   const rows = sheets.map(s => `<button type="button" class="rowbtn cols-rev ${sel && s.id === sel.id ? 'sel' : ''}" data-act="rv-pick" data-id="${s.id}"><span><span style="font-weight:500">${esc(nameOf(s))}</span>${s.late ? ' <span class="bd amber">Late</span>' : ''}</span>
-    <span>${nice(s.week_ending)}</span><span>${typeName(s)}</span><span>${esc(projOf(s))}</span><span class="mono" style="text-align:right">${h1(s.total_hours)}</span><span>${pill(stOf(s), stColor[s.status] || 'gray')}</span></button>`).join('');
+    <span>${wkWeekCell(s)}</span><span>${typeName(s)}</span><span>${esc(projOf(s))}</span><span class="mono" style="text-align:right">${h1(s.total_hours)}</span><span>${pill(stOf(s), stColor[s.status] || 'gray')}</span></button>`).join('');
   return `<div class="pp"><div><h1>Approvals</h1><p class="sub">${inn ? 'These are hours waiting for your approval. After you approve, they go to the external approver.' : 'Approving replaces the manager signature. Weeks filled in after the deadline are flagged as late.'}</p></div>
     <div class="twin"><div class="card l"><div class="pillrow" style="margin-bottom:12px">${[['pending', 'Pending'], ['approved', 'Approved'], ['returned', 'Returned'], ['all', 'All']].map(pillBtn).join('')}</div>
       <div class="fpanel"><label class="flbl" style="flex:1 1 160px">Search person<input type="search" data-rv="q" placeholder="Name" value="${esc(R.q)}"></label>
@@ -1398,6 +1398,8 @@ function toast(text, kind = 'ok') {
   box.appendChild(t); run();
 }
 
+/* the week of a sheet in the lists; a part of the week says which days it covers */
+const wkWeekCell = s => nice(s.week_ending) + (s.is_part ? ` <span class="muted">· ${T('Part')} ${s.part} (${esc(dow(parse(s.period_starting).getDay()))}${s.period_starting === s.period_ending ? '' : '–' + esc(dow(parse(s.period_ending).getDay()))})</span>` : '');
 const wkNote = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>`;
 const DAY_STATE = { submitted: ['Sent', 'blue'], approved: ['Approved', 'green'], returned: ['Returned', 'red'] };
 /* header of one day: name and date; with partial sending on, its state (sent / approved / returned) or the "send through here" mark */

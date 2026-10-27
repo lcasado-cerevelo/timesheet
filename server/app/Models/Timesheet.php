@@ -150,10 +150,12 @@ class Timesheet extends Model
     {
         $w = [];
         $user = $this->user;
-        if ($user && $user->isEmployee() && $user->weekly_hours !== null
-            && (float) $this->total_hours > (float) $user->weekly_hours) {
+        // El límite es de la semana: cuentan todas las partes de la semana, no solo esta hoja.
+        $week = (float) self::where('user_id', $this->user_id)->where('week_ending', $this->week_ending->toDateString())->sum('total_hours');
+        $week = max($week, (float) $this->total_hours);
+        if ($user && $user->isEmployee() && $user->weekly_hours !== null && $week > (float) $user->weekly_hours) {
             $w[] = ['code' => 'over_weekly_hours', 'message' => __(
-                'Pasa de :limit h por semana (:hours h).', ['limit' => rtrim(rtrim((string) $user->weekly_hours, '0'), '.'), 'hours' => (float) $this->total_hours]
+                'Pasa de :limit h por semana (:hours h).', ['limit' => rtrim(rtrim((string) $user->weekly_hours, '0'), '.'), 'hours' => $week]
             )];
         }
         return $w;
