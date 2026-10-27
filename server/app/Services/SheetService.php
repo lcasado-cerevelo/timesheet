@@ -40,7 +40,7 @@ class SheetService
     public function forWeek(User $user, string $date): Timesheet
     {
         $day = CarbonImmutable::parse($date)->toDateString();
-        $end = Week::ending($day);
+        $end = Week::ending($day, $user->company->rules()->weekStart());
         $sheets = $this->weekSheets($user, $end);
         if ($cover = $sheets->first(fn (Timesheet $s) => $s->covers($day))) {
             return $cover;
@@ -70,7 +70,7 @@ class SheetService
         if ($through > $today) {
             throw ValidationException::withMessages(['through' => __('No se pueden enviar días futuros.')]);
         }
-        $end = Week::ending($through);
+        $end = Week::ending($through, $company->rules()->weekStart());
         $start = Week::starting($end);
 
         return DB::transaction(function () use ($user, $through, $note, $channel, $end, $start) {

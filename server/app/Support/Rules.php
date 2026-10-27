@@ -10,6 +10,7 @@ use Carbon\CarbonImmutable;
 class Rules
 {
     public const DEFAULTS = [
+        'week_starts_on' => 0,          // día en que empieza la semana (0 = domingo, 1 = lunes)
         'weeks_back' => 8,              // semanas hacia atrás que se pueden llenar
         'deadline_dow' => 1,            // día límite tras terminar la semana (1 = lunes)
         'deadline_time' => '12:00',
@@ -24,6 +25,9 @@ class Rules
         'remember_days' => 30,          // días que se recuerda un equipo de aprobador (0 = nunca)
         'second_approval_hours' => null,// hojas sobre estas horas: individual y con código
         'partial_submission' => false,  // permite enviar la semana por partes (días corridos)
+        'session_max_days_office' => 7, // vida máxima de la sesión del dueño y la oficina, aunque la usen (0 = sin tope)
+        'session_max_days' => 14,       // lo mismo para el resto de las personas
+        'two_step_office' => true,      // el dueño y la oficina también piden el código por correo al entrar
     ];
 
     public function __construct(private array $values)
@@ -44,6 +48,12 @@ class Rules
     public function all(): array
     {
         return $this->values;
+    }
+
+    /** Día en que empieza la semana: 0 (domingo) o 1 (lunes). */
+    public function weekStart(): int
+    {
+        return (int) $this->get('week_starts_on') === 1 ? 1 : 0;
     }
 
     /** Incremento de hora (horas); 0.25 si el valor guardado no sirve. */
@@ -71,13 +81,13 @@ class Rules
         return rtrim(rtrim(number_format($this->increment(), 2, '.', ''), '0'), '.');
     }
 
-    /** Fecha límite (en la zona de la compañía) de una semana que termina el domingo $weekEnding. */
+    /** Fecha límite (en la zona de la compañía) de una semana que termina el día $weekEnding: el primer día límite después de terminar. */
     public function deadlineFor(string $weekEnding, string $timezone): CarbonImmutable
     {
         [$h, $m] = array_map('intval', explode(':', $this->values['deadline_time']));
-        $sunday = CarbonImmutable::parse($weekEnding, $timezone);
-        $days = ((int) $this->values['deadline_dow'] - 7 + 7) % 7; // desde domingo
+        $end = CarbonImmutable::parse($weekEnding, $timezone);
+        $days = ((int) $this->values['deadline_dow'] - $end->dayOfWeek + 7) % 7;
         $days = $days === 0 ? 7 : $days;
-        return $sunday->addDays($days)->setTime($h, $m);
+        return $end->addDays($days)->setTime($h, $m);
     }
 }

@@ -95,7 +95,7 @@ class Datasets
         $projCode = ! empty($v['project_id']) ? Project::where('company_id', $u->company_id)->find($v['project_id'])?->code : null;
         $rows = $entries->groupBy(fn ($e) => match ($group) {
             'day' => $e->work_date->toDateString(),
-            'week' => Week::ending($e->work_date),
+            'week' => Week::ending($e->work_date, $u->company->rules()->weekStart()),
             'customer' => $e->project->customer?->name ?? __('(sin cliente)'),
             default => $e->project->code.' · '.$e->project->name,
         })->sortKeys()->map(fn ($g, $k) => [
@@ -115,7 +115,7 @@ class Datasets
     private function week(User $u, array $p): array
     {
         $date = validator($p, ['date' => 'required|date_format:Y-m-d'])->validate()['date'];
-        $end = Week::ending($date);
+        $end = Week::ending($date, $u->company->rules()->weekStart());
         $start = Week::starting($end);
         $sheet = Timesheet::where('user_id', $u->id)->where('week_ending', $end)->orderByDesc('part')->first();
         $entries = TimeEntry::with('project')->where('user_id', $u->id)->where('running', false)

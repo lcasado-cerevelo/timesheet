@@ -31,6 +31,9 @@ export const es = {
   // entrar
   'login.title': 'Entrar',
   'login.busy': 'Entrando…',
+  'login.code': 'Código de 6 dígitos',
+  'login.code_hint': 'Te enviamos un código a {email}. Escríbelo para entrar.',
+  'login.code_back': 'Volver',
   'login.server': 'Servidor',
   'login.email': 'Correo',
   'login.password': 'Contraseña',

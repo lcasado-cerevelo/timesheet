@@ -43,8 +43,8 @@ class EntryService
             if ($d->gt($today)) {
                 $this->fail('work_date', __('No se pueden registrar horas en fechas futuras.'));
             }
-            $oldestWeekEnd = $today->endOfWeek(CarbonImmutable::SUNDAY)->subWeeks((int) $rules->get('weeks_back'));
-            if (Week::ending($date) < $oldestWeekEnd->toDateString()) {
+            $oldestWeekEnd = $today->endOfWeek(($rules->weekStart() + 6) % 7)->subWeeks((int) $rules->get('weeks_back'));
+            if (Week::ending($date, $rules->weekStart()) < $oldestWeekEnd->toDateString()) {
                 $this->fail('work_date', __('Esa fecha queda más atrás de lo que se permite llenar.'));
             }
 

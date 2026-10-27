@@ -20,7 +20,7 @@ class PartialSubmissionTest extends TestCase
 
     private function enable(bool $on = true): void
     {
-        $this->company->update(['rules' => ['partial_submission' => $on]]);
+        $this->company->update(['rules' => ['week_starts_on' => 1, 'partial_submission' => $on]]);
     }
 
     private function hours(string $date, ?string $note = null, array $over = []): array

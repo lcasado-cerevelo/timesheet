@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { setWeekStart } from '../lib/time';
 import { api, configureApi } from '../lib/api';
 import { normalizeLocale, t } from '../i18n';
 import type { Locale } from '../i18n';
@@ -29,7 +30,10 @@ interface AuthState {
   brand: Brand;
   init: () => Promise<void>;
   /** devUrl solo se usa en desarrollo y sin servidor fijo. */
-  login: (email: string, password: string, devUrl?: string) => Promise<void>;
+  login: (email: string, password: string, devUrl?: string) => Promise<LoginCodeStep | null>;
+  /** Segundo paso: el código de 6 dígitos que llegó al correo. Recuerda este teléfono si el servidor lo permite. */
+  loginCode: (challenge: string, code: string) => Promise<void>;
+  finishLogin: (url: string, r: { token: string; user: Me }) => Promise<void>;
   /** Entra al modo limitado (solo anotar horas) si la regla es 0 y hay una sesión guardada en este teléfono. */
   enterLimited: () => boolean;
   /** Vuelve la señal: se sale del modo limitado y se pide la contraseña. */
@@ -40,6 +44,14 @@ interface AuthState {
   logout: () => Promise<void>;
   /** Cambia el idioma de la persona: se aplica y se guarda en el teléfono al instante; el servidor se avisa en cuanto haya conexión. */
   setLanguage: (l: Locale) => Promise<void>;
+}
+
+/** El servidor pide el código por correo antes de dar la sesión (dueño y oficina). */
+export interface LoginCodeStep {
+  challenge: string;
+  email_hint: string;
+  expires_in: number;
+  remember_days: number;
 }
 
 export const useAuth = create<AuthState>((set, get) => ({
@@ -74,7 +86,22 @@ export const useAuth = create<AuthState>((set, get) => ({
     const url = serverFixed ? current : __DEV__ ? normalizeServerUrl(devUrl ?? current, true) ?? '' : '';
     if (!url) throw new Error(t('login.no_server'));
     configureApi({ baseUrl: url, token: null });
-    const r = await api<{ token: string; user: Me }>('/login', { method: 'POST', body: { email, password, device: 'movil' } });
+    const deviceToken = await secure.get('device_token');
+    const r = await api<{ token?: string; user?: Me; step?: string } & Partial<LoginCodeStep>>('/login', { method: 'POST', body: { email, password, device: 'movil', ...(deviceToken ? { device_token: deviceToken } : {}) } });
+    if (r.step === 'code') return { challenge: r.challenge!, email_hint: r.email_hint ?? '', expires_in: Number(r.expires_in ?? 0), remember_days: Number(r.remember_days ?? 0) };
+    await get().finishLogin(url, r as { token: string; user: Me });
+    return null;
+  },
+
+  async loginCode(challenge, code) {
+    const url = get().baseUrl;
+    const r = await api<{ token: string; user: Me; device_token?: string }>('/login/code', { method: 'POST', body: { challenge, code, remember: true, device: 'movil' } });
+    if (r.device_token) await secure.set('device_token', r.device_token);
+    await get().finishLogin(url, r);
+  },
+
+  async finishLogin(url, r) {
+    const serverFixed = get().serverFixed;
     await Promise.all([secure.set('token', r.token), serverFixed ? Promise.resolve() : kv.set('baseUrl', url), kv.set('me', r.user)]);
     configureApi({ baseUrl: url, token: r.token });
     const l = normalizeLocale(r.user.locale);
@@ -145,3 +172,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     set({ token: null, me: null, brand: NEUTRAL, sessionClosed: false });
   },
 }));
+
+// La semana empieza el día que elige la compañía: los ayudantes de fechas lo leen de aquí.
+useAuth.subscribe((s) => setWeekStart(s.me?.rules?.week_starts_on));
+setWeekStart(useAuth.getState().me?.rules?.week_starts_on);

@@ -32,6 +32,9 @@ export const en: Record<keyof typeof es, string> = {
 
   // login
   'login.title': 'Sign in',
+  'login.code': '6-digit code',
+  'login.code_hint': 'We sent a code to {email}. Type it to sign in.',
+  'login.code_back': 'Back',
   'login.busy': 'Signing in…',
   'login.server': 'Server',
   'login.email': 'Email',

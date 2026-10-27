@@ -33,6 +33,10 @@ class AuthController extends Controller
         if ($user->isApprover()) {
             return response()->json(['message' => __('Las cuentas de aprobador solo entran por la web.'), 'code' => 'approver_web_only'], 403);
         }
+        // El dueño y la oficina también dan el código por correo (la app lo pide y recuerda el equipo).
+        if ($this->twoStep->required($user) && ! $this->twoStep->deviceIsValid($user, $request->input('device_token'))) {
+            return response()->json(['step' => 'code'] + $this->twoStep->start($user), 202);
+        }
         return $this->issue($user, $request->input('device'));
     }
 
@@ -43,7 +47,7 @@ class AuthController extends Controller
             throw ValidationException::withMessages(['turnstile' => __('No pudimos comprobar que eres una persona. Vuelve a intentarlo.')]);
         }
         $user = $this->credentials($request, true);
-        if ($user->isApprover() && ! $this->twoStep->deviceIsValid($user, $request->input('device_token'))) {
+        if ($this->twoStep->required($user) && ! $this->twoStep->deviceIsValid($user, $request->input('device_token'))) {
             return response()->json(['step' => 'code'] + $this->twoStep->start($user), 202);
         }
         return $this->issue($user, $request->input('device'));
@@ -52,7 +56,7 @@ class AuthController extends Controller
     /** Segundo paso: código de 6 dígitos enviado por correo. */
     public function loginCode(Request $request)
     {
-        $v = $request->validate(['challenge' => 'required|string', 'code' => 'required|string|max:12', 'remember' => 'sometimes|boolean']);
+        $v = $request->validate(['challenge' => 'required|string', 'code' => 'required|string|max:12', 'remember' => 'sometimes|boolean', 'device' => 'nullable|string|max:80']);
         $ch = $this->twoStep->find($v['challenge']);
         if (! $ch) {
             throw ValidationException::withMessages(['code' => __('El código venció. Inicia sesión de nuevo.')]);
@@ -62,7 +66,7 @@ class AuthController extends Controller
             throw ValidationException::withMessages(['code' => __('El código no es correcto.')]);
         }
         $device = ! empty($v['remember']) ? $this->twoStep->issueDevice($user) : null;
-        $res = $this->issue($user, 'web')->getData(true);
+        $res = $this->issue($user, $request->input('device') ?: 'web')->getData(true);
         return response()->json($res + ($device ? ['device_token' => $device] : []));
     }
 

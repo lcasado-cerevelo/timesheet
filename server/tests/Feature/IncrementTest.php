@@ -18,7 +18,7 @@ class IncrementTest extends TestCase
     private function inc(float $inc, array $worker = []): void
     {
         $this->world($worker);
-        $this->company->update(['rules' => ['increment' => $inc]]);
+        $this->company->update(['rules' => ['week_starts_on' => 1, 'increment' => $inc]]);
         Sanctum::actingAs($this->worker);
     }
 
@@ -76,10 +76,10 @@ class IncrementTest extends TestCase
     {
         $this->inc(0.25);
         $this->getJson('/api/me')->assertJsonPath('rules.increment', 0.25)->assertJsonPath('rules.minimum_minutes', 15);
-        $this->company->update(['rules' => ['increment' => 0.01]]);
+        $this->company->update(['rules' => ['week_starts_on' => 1, 'increment' => 0.01]]);
         Sanctum::actingAs($this->worker->fresh());
         $this->getJson('/api/me')->assertJsonPath('rules.minimum_minutes', 1);
-        $this->company->update(['rules' => ['increment' => 1]]);
+        $this->company->update(['rules' => ['week_starts_on' => 1, 'increment' => 1]]);
         Sanctum::actingAs($this->worker->fresh());
         $this->getJson('/api/me')->assertJsonPath('rules.minimum_minutes', 60);
     }

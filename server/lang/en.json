@@ -355,5 +355,13 @@
     "El envío por partes no está activado.": "Sending in parts is not turned on.",
     "No se pueden enviar días futuros.": "Future days cannot be sent.",
     "No hay horas para enviar hasta esa fecha.": "There are no hours to send up to that date.",
-    "Falta la nota en: :list. Escribe una nota en cada línea o una nota del envío.": "A note is missing on: :list. Write a note on each line or a submission note."
+    "Falta la nota en: :list. Escribe una nota en cada línea o una nota del envío.": "A note is missing on: :list. Write a note on each line or a submission note.",
+    "Tu sesión llegó a su duración máxima. Inicia sesión de nuevo.": "Your session reached its maximum length. Sign in again.",
+    "La contraseña no puede contener tu correo.": "The password cannot contain your email.",
+    "Esa contraseña es demasiado común. Escoge otra más difícil de adivinar.": "That password is too common. Choose one that is harder to guess.",
+    "Esa contraseña apareció en filtraciones de datos. Escoge otra que no hayas usado en ningún otro sitio.": "That password has appeared in data breaches. Choose one you have not used anywhere else.",
+    "Usa \"on\" u \"off\".": "Use \"on\" or \"off\".",
+    "Código por correo del dueño y la oficina: :state (:n compañía(s)).": "Emailed code for the owner and the office: :state (:n company(ies)).",
+    "activado": "on",
+    "apagado": "off"
 }

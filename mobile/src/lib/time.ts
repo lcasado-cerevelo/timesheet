@@ -25,11 +25,19 @@ export function addDays(s: string, n: number): string {
   return fmtDate(d);
 }
 
-/** La semana termina el domingo (igual que el servidor). */
+/** Día en que empieza la semana de la compañía (0 = domingo, 1 = lunes), según sus reglas; la fija la sesión al cargar el perfil. */
+let weekStartDow = 0;
+export function setWeekStart(n: number | null | undefined): void {
+  weekStartDow = n === 1 ? 1 : 0;
+}
+export function getWeekStart(): number {
+  return weekStartDow;
+}
+
+/** La semana dura siete días desde el día que elige la compañía (igual que el servidor). */
 export function weekEnding(s: string): string {
   const d = parseDate(s);
-  const fromMonday = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() + (6 - fromMonday));
+  d.setDate(d.getDate() + ((((weekStartDow + 6) % 7) - d.getDay() + 7) % 7));
   return fmtDate(d);
 }
 
@@ -46,7 +54,7 @@ export function monthGrid(s: string): (string | null)[][] {
   const d = parseDate(s);
   const first = new Date(d.getFullYear(), d.getMonth(), 1);
   const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  const lead = (first.getDay() + 6) % 7; // lunes primero
+  const lead = (first.getDay() - weekStartDow + 7) % 7; // el primer día de la semana de la compañía va primero
   const cells: (string | null)[] = Array(lead).fill(null);
   for (let day = 1; day <= last.getDate(); day++) cells.push(fmtDate(new Date(d.getFullYear(), d.getMonth(), day)));
   while (cells.length % 7) cells.push(null);

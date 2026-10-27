@@ -28,7 +28,7 @@ class ApproverPartsTest extends TestCase
         parent::setUp();
         Mail::fake();
         $this->world();
-        $this->company->update(['rules' => ['partial_submission' => true]]);
+        $this->company->update(['rules' => ['week_starts_on' => 1, 'partial_submission' => true]]);
         $this->clientWithApprover($this->project);
     }
 

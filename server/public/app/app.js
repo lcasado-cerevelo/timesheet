@@ -34,7 +34,9 @@ function today() { const d = new Date(); return fmt(d); }
 function fmt(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function parse(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
 function addDays(s, n) { const d = parse(s); d.setDate(d.getDate() + n); return fmt(d); }
-function weekEnd(s) { const d = parse(s); const idx = (d.getDay() + 6) % 7; d.setDate(d.getDate() + (6 - idx)); return fmt(d); }
+/* The week starts on the day the company chose in Rules (0 = Sunday, 1 = Monday) and lasts 7 days. */
+const weekStartDow = () => (Number(S.me?.rules?.week_starts_on) === 1 ? 1 : 0);
+function weekEnd(s) { const d = parse(s); const endDow = (weekStartDow() + 6) % 7; d.setDate(d.getDate() + ((endDow - d.getDay() + 7) % 7)); return fmt(d); }
 const DOWS = { en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], es: ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'] };
 const dow = i => DOWS[LANG() === 'es' ? 'es' : 'en'][i];
 const LOC = () => (LANG() === 'es' ? 'es-US' : 'en-US');
@@ -612,6 +614,7 @@ async function rulesView() {
     ${row('Default language', 'Used for people who have not chosen one, and for emails to external people.', `<select name="locale"><option value="en" ${c.locale === 'en' ? 'selected' : ''}>English</option><option value="es" ${c.locale === 'es' ? 'selected' : ''}>Español</option></select>`)}</div>
     <div class="card"><h2>Timesheets</h2><p class="muted" style="margin-top:-6px">How and when people enter hours.</p>
     ${row('Weeks back a worker may fill in', 'Older weeks are closed.', `<input name="weeks_back" type="number" min="0" max="52" value="${r.weeks_back}">`)}
+    ${row('The week starts on', 'Weeks run seven days from this day. Timesheets already created keep their dates.', `<select name="week_starts_on"><option value="0" ${Number(r.week_starts_on) !== 1 ? 'selected' : ''}>Sunday</option><option value="1" ${Number(r.week_starts_on) === 1 ? 'selected' : ''}>Monday</option></select>`)}
     ${row('Weekly submission deadline day', 'Timesheets submitted after it are flagged as late.', `<select name="deadline_dow">${days.map((d, i) => `<option value="${i}" ${r.deadline_dow === i ? 'selected' : ''}>${d}</option>`).join('')}</select>`)}
     ${row('Deadline time', 'Applies on the deadline day.', `<input name="deadline_time" type="time" value="${esc(r.deadline_time)}">`)}
     ${row('Hour increment', 'Applies to every hour cell.', `<select name="increment">${[0.25, 0.5, 1, 0.1].map(v => `<option ${Number(r.increment) === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`)}
@@ -625,7 +628,10 @@ async function rulesView() {
     ${row('Wait before notifying a change (minutes)', 'When a submitted timesheet is edited.', `<input name="change_notice_minutes" type="number" min="0" value="${r.change_notice_minutes}">`)}
     ${row('Timesheets above these hours need individual approval with a code', 'Leave empty for no limit.', `<input name="second_approval_hours" type="number" step="0.5" value="${esc(r.second_approval_hours)}" placeholder="no limit">`)}</div>
     <div class="card"><h2>Sign-in</h2><p class="muted" style="margin-top:-6px">How long people stay signed in.</p>
-    ${row('Remember for (days since last use)', 'Applies to everyone: how many days without using the app before asking for the password again. For approvers it is also how long a trusted device skips the emailed code. 0 = never remember: the browser session ends when it closes and the mobile app asks for the password every time it opens (it needs signal; without signal it only lets people record hours).', `<input name="remember_days" type="number" min="0" max="365" value="${esc(r.remember_days ?? 30)}">`)}</div>
+    ${row('Remember for (days since last use)', 'Applies to everyone: how many days without using the app before asking for the password again. For approvers it is also how long a trusted device skips the emailed code. 0 = never remember: the browser session ends when it closes and the mobile app asks for the password every time it opens (it needs signal; without signal it only lets people record hours).', `<input name="remember_days" type="number" min="0" max="365" value="${esc(r.remember_days ?? 30)}">`)}
+    ${row('Maximum session length, owner and office (days)', 'A session ends after this many days even if it was used every day, and the password is asked again. 0 = no limit.', `<input name="session_max_days_office" type="number" min="0" max="365" value="${esc(r.session_max_days_office ?? 7)}">`)}
+    ${row('Maximum session length, everyone else (days)', 'The same for workers and approvers. 0 = no limit.', `<input name="session_max_days" type="number" min="0" max="365" value="${esc(r.session_max_days ?? 14)}">`)}
+    ${row('Ask the owner and office for an emailed code', 'When they sign in on a new device they must type the 6-digit code sent to their email. It needs working email; without it nobody is blocked.', `<input type="checkbox" name="two_step_office" ${r.two_step_office !== false ? 'checked' : ''}>`, 'chkrow')}</div>
     <button class="btn pri" type="submit">Save rules</button></form>`;
 }
 
@@ -890,6 +896,7 @@ const forms = {
   async rules(f) {
     const o = formObj(f); const { name, invoice_prefix, flag_late, locale, domain, partial_submission } = o; delete o.partial_submission; delete o.name; delete o.invoice_prefix; delete o.locale; delete o.domain;
     const rules = {}; for (const [k, v] of Object.entries(o)) rules[k] = v;
+    rules.week_starts_on = Number(rules.week_starts_on); rules.session_max_days = Number(rules.session_max_days ?? 14); rules.session_max_days_office = Number(rules.session_max_days_office ?? 7); rules.two_step_office = !!o.two_step_office;
     rules.flag_late = !!flag_late; rules.partial_submission = !!partial_submission; rules.increment = Number(rules.increment); rules.remember_days = Number(rules.remember_days ?? 30);
     await api('/company', { method: 'PUT', body: { name, invoice_prefix, locale, domain: domain ? String(domain).trim().toLowerCase() : null, rules } }); S.me = null; flash('Rules saved.'); render();
   },
@@ -1473,7 +1480,7 @@ async function weekView() {
   weeks.sort().reverse();
   const picker = weeks.map(w => `<option value="${w}" ${w === end ? 'selected' : ''}>${nice(w)} · ${stateOf[w] ? T(stateOf[w]) : T('Not started')}${w === cur ? ' · ' + T('current') : ''}</option>`).join('');
   const nav = `<div class="card wknav"><button class="btn ghost" data-act="wk" data-n="-7" aria-label="Previous week (older)">←</button>
-    <label class="wkpick">Week ending (Sunday)<select data-act-change="wk-pick">${picker}</select></label>
+    <label class="wkpick">Week ending<select data-act-change="wk-pick">${picker}</select></label>
     <button class="btn ghost" data-act="wk" data-n="7" ${end >= cur ? 'disabled' : ''} aria-label="Next week (newer)">→</button>
     <button class="btn ghost" data-act="wk-now" ${end === cur ? 'disabled' : ''}>Current week</button></div>`;
 

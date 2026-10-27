@@ -90,7 +90,7 @@ class EntryRulesTest extends TestCase
         $this->postJson('/api/entries', $this->entry())->assertCreated();
         $this->postJson('/api/entries', $this->entry(['start_time' => '15:00', 'end_time' => '17:00']))
             ->assertStatus(422)->assertJsonValidationErrors('start_time');
-        $this->company->update(['rules' => ['max_day_hours' => 10]]);
+        $this->company->update(['rules' => ['week_starts_on' => 1, 'max_day_hours' => 10]]);
         $this->worker->unsetRelation('company');
         $this->postJson('/api/entries', $this->entry(['start_time' => '16:00', 'end_time' => '23:45']))
             ->assertStatus(422)->assertJsonValidationErrors('hours');

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { dayTotals } from '../../src/lib/report';
-import { addDays, fmtDate, fmtHours, monthGrid, monthLabel, parseDate, today } from '../../src/lib/time';
+import { addDays, fmtDate, fmtHours, getWeekStart, monthGrid, monthLabel, parseDate, today } from '../../src/lib/time';
 import { useT } from '../../src/i18n';
 import { useEntries } from '../../src/store/entries';
 import { useSettings } from '../../src/store/settings';
@@ -14,7 +14,8 @@ export default function Month() {
   const th = useTheme();
   const { t } = useT();
   const bottom = useBottomPad(12);
-  const HEAD = t('month.head').split(',');
+  const monday = t('month.head').split(',');   // lunes primero
+  const HEAD = getWeekStart() === 1 ? monday : [monday[6], ...monday.slice(0, 6)];
   const decimal = useSettings((s) => s.decimal);
   const { entries, selectedDate, setDate } = useEntries();
   const grid = useMemo(() => monthGrid(selectedDate), [selectedDate]);

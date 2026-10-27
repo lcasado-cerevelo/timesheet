@@ -25,7 +25,7 @@ class ReportController extends Controller
         $rows = $entries->groupBy(function ($e) use ($group) {
             return match ($group) {
                 'day' => $e->work_date->toDateString(),
-                'week' => \App\Support\Week::ending($e->work_date),
+                'week' => \App\Support\Week::ending($e->work_date, $request->user()->company->rules()->weekStart()),
                 'customer' => $e->project->customer?->name ?? __('(sin cliente)'),
                 default => $e->project->code.' · '.$e->project->name,
             };

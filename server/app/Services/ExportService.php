@@ -286,14 +286,15 @@ class ExportService
             $q->where('billable', true);
         }
 
-        $flat = $q->get()->map(function (TimeEntry $e) {
+        $weekStart = $actor->company->rules()->weekStart();
+        $flat = $q->get()->map(function (TimeEntry $e) use ($weekStart) {
             $p = $e->project;
             $rate = $e->saleRate();
             // El nombre del servicio solo se muestra si el proyecto tiene más de uno; con uno solo es implícito.
             $service = $p->services->count() > 1 ? (string) $e->service?->name : '';
             return [
                 'date' => $e->work_date->toDateString(),
-                'week_ending' => Week::ending($e->work_date),
+                'week_ending' => Week::ending($e->work_date, $weekStart),
                 'worker' => $e->user->name,
                 'project_id' => $p->id,
                 'project' => $p,

@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
             $middleware->trustProxies(at: $trusted === '*' ? '*' : array_map('trim', explode(',', $trusted)));
         }
 
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
         $middleware->appendToGroup('api', \App\Http\Middleware\SetLocale::class);
         $middleware->appendToGroup('web', \App\Http\Middleware\SetLocale::class);
 

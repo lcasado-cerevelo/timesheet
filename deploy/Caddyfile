@@ -25,6 +25,15 @@
 {$DOMAIN} {
 	encode zstd gzip
 
+	# Cabeceras de seguridad (las mismas de app/Http/Middleware/SecurityHeaders.php); Caddy ya manda HSTS solo con HTTPS automático.
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
 	# Lo que sube la gente (logos) no pasa de unos MB
 	request_body {
 		max_size 12MB

@@ -6,11 +6,14 @@ use Carbon\CarbonImmutable;
 
 class Week
 {
-    /** La semana termina el domingo. Devuelve Y-m-d del domingo de la semana de $date. */
-    public static function ending(string|\DateTimeInterface $date): string
+    /**
+     * Devuelve Y-m-d del último día de la semana de $date. $startDow es el día en que empieza la semana de la compañía
+     * (0 = domingo, 1 = lunes); la semana siempre dura 7 días.
+     */
+    public static function ending(string|\DateTimeInterface $date, int $startDow = 0): string
     {
         $d = CarbonImmutable::parse($date);
-        return $d->endOfWeek(CarbonImmutable::SUNDAY)->toDateString();
+        return $d->endOfWeek(($startDow + 6) % 7)->toDateString();
     }
 
     public static function starting(string $weekEnding): string

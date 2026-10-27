@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\User;
 use App\Services\AccountService;
+use App\Support\PasswordPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -31,7 +32,7 @@ class PasswordController extends Controller
         $v = $request->validate(['token' => 'required|string', 'password' => 'required|string|min:10|max:200']);
         $t = $this->accounts->findToken($v['token']);
         abort_unless($t, 404, __('Este enlace ya no es válido o venció. Pide uno nuevo.'));
-        $this->assertNotEmail($v['password'], $t->user->email);
+        PasswordPolicy::assert($v['password'], $t->user->email);
         $this->accounts->redeem($t, $v['password']);
         return response()->json(['ok' => true]);
     }
@@ -46,7 +47,7 @@ class PasswordController extends Controller
         if (! Hash::check($v['current_password'], $user->password)) {
             throw ValidationException::withMessages(['current_password' => __('La contraseña actual no es correcta.')]);
         }
-        $this->assertNotEmail($v['password'], $user->email);
+        PasswordPolicy::assert($v['password'], $user->email);
         $user->forceFill(['password' => $v['password']])->save();
         $current = $user->currentAccessToken();
         $keep = $current instanceof PersonalAccessToken ? $current->id : null;
@@ -62,12 +63,5 @@ class PasswordController extends Controller
         return Company::where('domain', $d)->exists() && $d !== ''
             ? response()->json(['ok' => true])
             : response()->json(['ok' => false], 404);
-    }
-
-    private function assertNotEmail(string $password, string $email): void
-    {
-        if (mb_strtolower($password) === mb_strtolower($email)) {
-            throw ValidationException::withMessages(['password' => __('La contraseña no puede ser igual al correo.')]);
-        }
     }
 }

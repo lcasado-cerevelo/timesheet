@@ -6,6 +6,7 @@ jest.mock('../src/lib/api', () => {
   return { ...actual, api: jest.fn() };
 });
 
+import { setWeekStart } from '../src/lib/time';
 import { setLocaleValue } from '../src/i18n';
 import { api } from '../src/lib/api';
 import { validateEntry, RuleContext } from '../src/lib/rules';
@@ -44,6 +45,9 @@ const week = (over: Partial<Sheet> = {}): Sheet => ({
   ...over,
 });
 
+setWeekStart(1);   // estas pruebas cuentan la semana de lunes a domingo
+beforeEach(() => setWeekStart(1));
+
 describe('el móvil reconoce el día aprobado', () => {
   test('un día aprobado no se puede cambiar, pero los otros días de la misma semana sí', () => {
     const lockedDays = new Set(['2026-10-19']);
@@ -60,7 +64,7 @@ describe('el móvil reconoce el día aprobado', () => {
 });
 
 describe('la hoja de la semana trae el estado de cada día (store)', () => {
-  const me = { id: 1, capture_mode: 'from_to', rules: { increment: 0.25, minimum_minutes: 15, max_day_hours: 16, weeks_back: 52 } } as unknown as Me;
+  const me = { id: 1, capture_mode: 'from_to', rules: { week_starts_on: 1, increment: 0.25, minimum_minutes: 15, max_day_hours: 16, weeks_back: 52 } } as unknown as Me;
   beforeEach(() => {
     (api as jest.Mock).mockReset();
     useAuth.setState({ me, token: 't' } as any);

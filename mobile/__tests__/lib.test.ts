@@ -4,7 +4,7 @@ import { pickRegions } from '../src/lib/geo';
 import { dayTotals, summarize } from '../src/lib/report';
 import { computeHours, validateEntry, RuleContext } from '../src/lib/rules';
 import { applySyncResults, buildSyncPayload, mergeServer, pendingCount } from '../src/lib/sync';
-import { addDays, hoursBetween, hoursToHM, monthGrid, roundTo, to12h, weekDays, weekEnding, weekStarting } from '../src/lib/time';
+import { addDays, hoursBetween, hoursToHM, monthGrid, roundTo, setWeekStart, to12h, weekDays, weekEnding, weekStarting } from '../src/lib/time';
 import type { Entry, Project, ServerEntry } from '../src/lib/types';
 import { uuid } from '../src/lib/uuid';
 
@@ -19,8 +19,17 @@ const entry = (over: Partial<Entry> = {}): Entry => ({
   billable: true, running: false, sync: 'dirty', ...over,
 });
 
+beforeEach(() => setWeekStart(1));   // las pruebas históricas cuentan la semana de lunes a domingo
+
 describe('tiempo', () => {
-  test('la semana termina el domingo y empieza el lunes', () => {
+  test('la semana empieza el domingo (por defecto) o el lunes, según las reglas', () => {
+    setWeekStart(0);
+    expect(weekEnding('2026-10-21')).toBe('2026-10-24');
+    expect(weekEnding('2026-10-18')).toBe('2026-10-24');
+    expect(weekEnding('2026-10-25')).toBe('2026-10-31');
+    expect(weekStarting('2026-10-21')).toBe('2026-10-18');
+    expect(monthGrid('2026-11-15')[0][0]).toBe('2026-11-01');   // el 1 de noviembre cae en domingo
+    setWeekStart(1);
     expect(weekEnding('2026-10-21')).toBe('2026-10-25');
     expect(weekEnding('2026-10-25')).toBe('2026-10-25');
     expect(weekEnding('2026-10-26')).toBe('2026-11-01');

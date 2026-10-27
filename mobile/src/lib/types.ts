@@ -15,6 +15,8 @@ export interface Brand {
 }
 
 export interface Rules {
+  /** Día en que empieza la semana: 0 = domingo, 1 = lunes. */
+  week_starts_on?: number;
   weeks_back: number;
   increment: number;
   /** Duración mínima de una entrada en minutos (un incremento). Si el servidor aún no la manda, se calcula del incremento. */

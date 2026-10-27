@@ -452,7 +452,7 @@ class AccountsTest extends TestCase
     public function test_sheets_over_the_second_approval_limit_need_a_code_even_without_the_checkbox(): void
     {
         $this->approverAccount();
-        $this->company->update(['rules' => ['second_approval_hours' => 4]]);
+        $this->company->update(['rules' => ['week_starts_on' => 1, 'second_approval_hours' => 4]]);
         $id = $this->submitSheet();                 // 8 h
         Sanctum::actingAs(User::where('email', 'jorge@cliente.test')->first());
         $v = Timesheet::find($id)->version;

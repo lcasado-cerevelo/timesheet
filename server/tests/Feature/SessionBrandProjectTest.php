@@ -75,7 +75,7 @@ class SessionBrandProjectTest extends TestCase
     private function token(int $days = 30): string
     {
         $this->world();
-        $this->company->update(['rules' => ['remember_days' => $days]]);
+        $this->company->update(['rules' => ['remember_days' => $days, 'session_max_days' => 0, 'session_max_days_office' => 0]]);
         return $this->worker->createToken('app')->plainTextToken;
     }
 
@@ -120,11 +120,11 @@ class SessionBrandProjectTest extends TestCase
     {
         $t = $this->token(30);
         Carbon::setTestNow(now()->addDays(20));
-        $this->company->update(['rules' => ['remember_days' => 7]]);
+        $this->company->update(['rules' => ['remember_days' => 7, 'session_max_days' => 0, 'session_max_days_office' => 0]]);
         $this->me($t)->assertStatus(401)->assertJsonPath('code', 'session_expired');
 
         $t2 = $this->worker->createToken('app')->plainTextToken;
-        $this->company->update(['rules' => ['remember_days' => 365]]);
+        $this->company->update(['rules' => ['remember_days' => 365, 'session_max_days' => 0, 'session_max_days_office' => 0]]);
         Carbon::setTestNow(now()->addDays(200));
         $this->me($t2)->assertOk()->assertJsonPath('remember_days', 365);
     }

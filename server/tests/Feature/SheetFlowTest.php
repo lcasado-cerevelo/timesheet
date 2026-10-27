@@ -151,7 +151,7 @@ class SheetFlowTest extends TestCase
     public function test_second_code_is_required_above_the_hours_limit(): void
     {
         [$sheet] = $this->submitted();
-        $this->company->update(['rules' => ['second_approval_hours' => 4]]);
+        $this->company->update(['rules' => ['week_starts_on' => 1, 'second_approval_hours' => 4]]);
         $plain = $this->tokenFromMail($this->lastMailHtml('mail.approval-request'));
 
         $this->get('/a/'.$plain)->assertOk()->assertSee('Verifica que eres tú');
@@ -233,7 +233,7 @@ class SheetFlowTest extends TestCase
         $this->get('/b/'.$plain)->assertOk()->assertSee('Ana Torres')->assertSee('Pedro')->assertSee('Aprobar todas (2)');
 
         // Un límite: Pedro (11 h) queda fuera del bloque; Ana cambia después de verse.
-        $this->company->update(['rules' => ['second_approval_hours' => 9]]);
+        $this->company->update(['rules' => ['week_starts_on' => 1, 'second_approval_hours' => 9]]);
         $this->actingAs($this->worker);
         Sanctum::actingAs($this->worker);
         $this->putJson('/api/entries/'.$e1['id'], $this->entry(['end_time' => '15:00']))->assertOk();   // Ana: versión 2
@@ -243,7 +243,7 @@ class SheetFlowTest extends TestCase
         $this->assertSame('submitted', Timesheet::find($e2['timesheet_id'])->status);
 
         // Sin límite, y con la versión vigente, sí se aprueba en bloque.
-        $this->company->update(['rules' => ['second_approval_hours' => null]]);
+        $this->company->update(['rules' => ['week_starts_on' => 1, 'second_approval_hours' => null]]);
         $this->post('/b/'.$plain.'/approve-all', ['items' => [$s1->id.':'.$s1->fresh()->version, $e2['timesheet_id'].':1']])
             ->assertOk()->assertSee('Aprobadas: 2');
         $this->assertSame('approved', $s1->fresh()->status);

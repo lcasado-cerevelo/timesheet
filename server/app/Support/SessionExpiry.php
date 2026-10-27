@@ -17,7 +17,17 @@ class SessionExpiry
 
     public static function message(): string
     {
+        if (request()->attributes->get('session_expired_reason') === 'max') {
+            return __('Tu sesión llegó a su duración máxima. Inicia sesión de nuevo.');
+        }
         return __('Tu sesión venció por inactividad. Inicia sesión de nuevo.');
+    }
+
+    /** Días que puede durar una sesión desde que se inició (0 = sin tope): más corto para el dueño y la oficina. */
+    public static function capDays(?\App\Models\User $user): int
+    {
+        $rules = $user?->company?->rules();
+        return $rules ? (int) $rules->get($user->isOwner() ? 'session_max_days_office' : 'session_max_days') : 0;
     }
 
     public static function check(PersonalAccessToken $token, bool $valid): bool
@@ -33,6 +43,14 @@ class SessionExpiry
         if ($last->lt($limit)) {
             $token->delete();
             request()->attributes->set('session_expired', true);
+            return false;
+        }
+        // Tope absoluto: cuenta desde que se escribió la contraseña, se haya usado o no la sesión.
+        $cap = self::capDays($token->tokenable);
+        if ($cap > 0 && $token->created_at->lt(now()->subDays($cap))) {
+            $token->delete();
+            request()->attributes->set('session_expired', true);
+            request()->attributes->set('session_expired_reason', 'max');
             return false;
         }
         if (! $token->last_used_at || $token->last_used_at->lt(now()->subMinutes(self::TOUCH_MINUTES))) {

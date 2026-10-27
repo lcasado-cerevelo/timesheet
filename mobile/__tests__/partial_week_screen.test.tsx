@@ -8,6 +8,7 @@ jest.mock('../src/lib/api', () => {
   return { ...actual, api: jest.fn() };
 });
 
+import { setWeekStart } from '../src/lib/time';
 import React from 'react';
 const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
@@ -48,11 +49,14 @@ const sheet = (): Sheet => ({
 const hosts = (root: any, id: string) => root.findAll((n: any) => typeof n.type === 'string' && n.props.testID === id);
 const texts = (root: any): string[] => root.findAll((n: any) => typeof n.type === 'string' && n.type === 'Text').map((n: any) => [].concat(n.props.children).flat(3).join(''));
 
+setWeekStart(1);   // estas pruebas cuentan la semana de lunes a domingo
+beforeEach(() => setWeekStart(1));
+
 describe('pantalla de la semana con partes', () => {
   beforeEach(() => {
     (api as jest.Mock).mockReset();
     (api as jest.Mock).mockResolvedValue(sheet());
-    useAuth.setState({ me: { id: 1, capture_mode: 'from_to', worker_type: 'consultant', weekly_hours: null, rules: { increment: 0.25, max_day_hours: 16, weeks_back: 52 } } as unknown as Me, token: 't' } as any);
+    useAuth.setState({ me: { id: 1, capture_mode: 'from_to', worker_type: 'consultant', weekly_hours: null, rules: { week_starts_on: 1, increment: 0.25, max_day_hours: 16, weeks_back: 52 } } as unknown as Me, token: 't' } as any);
     useEntries.setState({ entries: [], projects: [proj(1, 'P-1')], lockedWeeks: [], lockedDays: [], selectedDate: '2026-10-22', sheets: {} });
   });
 

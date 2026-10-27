@@ -18,6 +18,19 @@ class TwoStepService
     public const MAX_SENDS = 5;
     public const CODE_MINUTES = 10;
 
+    /**
+     * ¿Esta cuenta debe dar el código por correo al entrar? Siempre las de aprobador; el dueño y la oficina también si la regla
+     * está activa y el correo está configurado (sin correo no podrían recibir el código y quedarían fuera).
+     */
+    public function required(User $user): bool
+    {
+        if ($user->isApprover()) {
+            return true;
+        }
+        return $user->isOwner() && (bool) $user->company->rules()->get('two_step_office')
+            && ! in_array(config('mail.default'), ['log', 'array'], true);
+    }
+
     /** @return array{challenge:string,email_hint:string,expires_in:int,remember_days:int} */
     public function start(User $user): array
     {
@@ -92,6 +105,11 @@ class TwoStepService
         $days = (int) $user->company->rules()->get('remember_days');
         if ($days <= 0) {
             return null;
+        }
+        // Un equipo recordado no vale más que lo que dura la sesión de esa cuenta.
+        $cap = \App\Support\SessionExpiry::capDays($user);
+        if ($cap > 0) {
+            $days = min($days, $cap);
         }
         $plain = Str::random(60);
         TrustedDevice::create(['user_id' => $user->id, 'token_hash' => TrustedDevice::hash($plain),
