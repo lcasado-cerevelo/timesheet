@@ -4,9 +4,11 @@ window.I18N_ES = {
   exact: {
     // --- v2: edit approvers/clients, brand, sign-in rule ---
     // --- tasks (optional, per project) ---
-    'Tasks': 'Tareas', 'Add task': 'Añadir tarea', 'Rename task': 'Renombrar tarea', 'Rename': 'Renombrar', 'Task': 'Tarea', 'No task': 'Sin tarea', 'No tasks yet.': 'Aún no hay tareas.',
+    'Tasks': 'Tareas', 'Add task': 'Añadir tarea', 'Edit task': 'Editar tarea', 'Budget (h)': 'Presupuesto (h)', 'Used (h)': 'Usadas (h)', 'Over the budget': 'Pasa del presupuesto', 'Estimated hours (budget)': 'Horas estimadas (presupuesto)',
+    'Optional. It only shows how many hours were used against it; it does not block anyone.': 'Opcional. Solo muestra cuántas horas se han usado contra ella; no bloquea a nadie.',
+    'Deactivate a task when it is finished: people stop seeing it when they log hours. Hours already logged keep it.': 'Desactiva una tarea cuando se termine: la gente deja de verla al registrar horas. Las horas ya registradas la conservan.', 'Task': 'Tarea', 'No task': 'Sin tarea', 'No tasks yet.': 'Aún no hay tareas.',
     'Task saved.': 'Tarea guardada.', 'Task deactivated.': 'Tarea desactivada.', 'Task activated.': 'Tarea activada.',
-    'A project may have no tasks. When it has active tasks, the person must pick one on each line of the week, and the approver sees it next to the project and the service.': 'Un proyecto puede no tener tareas. Si tiene tareas activas, la persona debe escoger una en cada línea de la semana y el aprobador la ve junto al proyecto y al servicio.',
+    'A project may have no tasks. When it has active tasks, the person must pick one on each line of the week, and the approver sees it next to the project and the service. Deactivate a task when it is finished so nobody picks it any more.': 'Un proyecto puede no tener tareas. Si tiene tareas activas, la persona debe escoger una en cada línea de la semana y el aprobador la ve junto al proyecto y al servicio. Desactiva una tarea cuando termine para que nadie la escoja más.',
     'A project may have no tasks. Save the project, then open it with Edit to add tasks: once it has an active task, people must pick one when they log hours.': 'Un proyecto puede no tener tareas. Guarda el proyecto y ábrelo con Editar para añadir tareas: cuando tenga una tarea activa, la gente debe escoger una al registrar horas.',
     'Choose task': 'Escoger tarea', 'Task *': 'Tarea *', 'Choose the task on this line first.': 'Escoge primero la tarea de esta línea.',
     'Choose the task on the lines of projects that have tasks.': 'Escoge la tarea en las líneas de los proyectos que tienen tareas.',

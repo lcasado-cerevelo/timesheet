@@ -123,7 +123,7 @@ class ProjectController extends Controller
             ->map(fn ($s) => ServiceController::payload($s, $owner, $for, $p))->all();
         // Tareas (opcionales): el dueño ve todas; los demás solo las activas.
         $out['tasks'] = $p->tasks->when(! $owner, fn ($c) => $c->where('active', true))->values()
-            ->map(fn ($t) => TaskController::payload($t))->all();
+            ->map(fn ($t) => TaskController::payload($t, $owner))->all();
         if ($owner) {
             $out += ['bill_rate' => $p->bill_rate, 'approver_id' => $p->approver_id, 'user_ids' => $p->users->pluck('id'),
                 'accountisi_id' => $p->accountisi_id,

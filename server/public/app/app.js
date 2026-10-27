@@ -1263,19 +1263,26 @@ function svcBox(p) {
 /* the project's tasks (optional): the person may pick one when logging hours; the approver sees it next to the service */
 function taskBox(p) {
   const list = p.tasks || [];
+  const row = x => {
+    const over = x.budget_hours != null && Number(x.used_hours) > Number(x.budget_hours);
+    return `<tr><td><b>${esc(x.name)}</b></td><td class="r">${x.budget_hours != null ? h1(x.budget_hours) : '<span class="muted">—</span>'}</td>
+    <td class="r" ${over ? `style="color:var(--danger);font-weight:600" title="${esc(T('Over the budget'))}"` : ''}>${h1(x.used_hours || 0)}</td><td>${activePill(x.active)}</td>
+    <td class="r"><button type="button" class="btn ghost sm" data-act="task-edit" data-pid="${p.id}" data-id="${x.id}">Edit</button> <button type="button" class="btn ghost sm" data-act="task-toggle" data-pid="${p.id}" data-id="${x.id}">${x.active ? 'Deactivate' : 'Activate'}</button></td></tr>`;
+  };
   return `<div class="mdl-sech"><h3>Tasks</h3><button type="button" class="btn ghost sm" data-act="task-add" data-pid="${p.id}">Add task</button></div>
-    <p class="muted" style="margin:0 0 8px">A project may have no tasks. When it has active tasks, the person must pick one on each line of the week, and the approver sees it next to the project and the service.</p>
-    ${list.length ? `<div class="scrollx"><table class="svct"><tr><th>Task</th><th>Status</th><th></th></tr>
-    ${list.map(x => `<tr><td><b>${esc(x.name)}</b></td><td>${activePill(x.active)}</td>
-    <td class="r"><button type="button" class="btn ghost sm" data-act="task-edit" data-pid="${p.id}" data-id="${x.id}">Rename</button> <button type="button" class="btn ghost sm" data-act="task-toggle" data-pid="${p.id}" data-id="${x.id}">${x.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table></div>` : '<p class="muted" style="margin:0">No tasks yet.</p>'}`;
+    <p class="muted" style="margin:0 0 8px">A project may have no tasks. When it has active tasks, the person must pick one on each line of the week, and the approver sees it next to the project and the service. Deactivate a task when it is finished so nobody picks it any more.</p>
+    ${list.length ? `<div class="scrollx"><table class="svct"><tr><th>Task</th><th class="r">Budget (h)</th><th class="r">Used (h)</th><th>Status</th><th></th></tr>${list.map(row).join('')}</table></div>` : '<p class="muted" style="margin:0">No tasks yet.</p>'}`;
 }
 function openTaskModal(pid, tid) {
   const p = (S.cache.pl || []).find(x => x.id === Number(pid)); if (!p) return;
   const t = tid ? (p.tasks || []).find(x => x.id === Number(tid)) : null;
-  modalOpen({ title: t ? 'Rename task' : 'Add task', sub: `${p.code} · ${p.name}`, size: 'sm', save: t ? 'Save' : 'Add',
-    body: `<div><label>Name</label><input name="name" required maxlength="120" value="${esc(t?.name)}"></div>`,
+  modalOpen({ title: t ? 'Edit task' : 'Add task', sub: `${p.code} · ${p.name}`, size: 'sm', save: t ? 'Save' : 'Add',
+    body: `<div><label>Name</label><input name="name" required maxlength="120" value="${esc(t?.name)}"></div>
+      <div><label>Estimated hours (budget)</label><input name="budget_hours" type="number" step="0.5" min="0" max="99999" value="${esc(t?.budget_hours)}"><small class="help">Optional. It only shows how many hours were used against it; it does not block anyone.</small></div>
+      <label class="chk"><input type="checkbox" name="active" ${t ? (t.active ? 'checked' : '') : 'checked'}> Active</label>
+      <small class="help">Deactivate a task when it is finished: people stop seeing it when they log hours. Hours already logged keep it.</small>`,
     async onSubmit(mm) {
-      const o = formObj(mm.form);
+      const o = formObj(mm.form); o.active = !!o.active; o.budget_hours = o.budget_hours === '' || o.budget_hours == null ? null : Number(o.budget_hours);
       if (t) await api('/tasks/' + t.id, { method: 'PUT', body: o }); else await api('/projects/' + p.id + '/tasks', { method: 'POST', body: o });
       await mm.finish('Task saved.', () => refreshSvcBox(p.id));
     } });

@@ -15,14 +15,14 @@ class TaskController extends Controller
     {
         abort_unless($project->company_id === $request->user()->company_id, 404);
         $task = Task::create($this->validated($request, $project, null) + ['company_id' => $project->company_id, 'project_id' => $project->id]);
-        return response()->json(self::payload($task->refresh()), 201);
+        return response()->json(self::payload($task->refresh(), true), 201);
     }
 
     public function update(Request $request, Task $task)
     {
         abort_unless($task->company_id === $request->user()->company_id, 404);
         $task->update($this->validated($request, $task->project, $task));
-        return response()->json(self::payload($task->refresh()));
+        return response()->json(self::payload($task->refresh(), true));
     }
 
     private function validated(Request $request, Project $project, ?Task $task): array
@@ -31,12 +31,19 @@ class TaskController extends Controller
         return $request->validate([
             'name' => [...$required, 'string', 'max:120', Rule::unique('tasks')->where('project_id', $project->id)->ignore($task?->id)],
             'active' => 'boolean',
+            'budget_hours' => 'nullable|numeric|min:0|max:99999',
             'sort' => 'nullable|integer|min:0|max:65000',
         ]);
     }
 
-    public static function payload(Task $t): array
+    /** $owner: el dueño ve además el presupuesto de horas y las horas ya usadas; los demás solo lo que necesitan para escoger. */
+    public static function payload(Task $t, bool $owner = false): array
     {
-        return ['id' => $t->id, 'project_id' => $t->project_id, 'name' => $t->name, 'active' => $t->active, 'sort' => $t->sort];
+        $out = ['id' => $t->id, 'project_id' => $t->project_id, 'name' => $t->name, 'active' => $t->active, 'sort' => $t->sort];
+        if ($owner) {
+            $out['budget_hours'] = $t->budget_hours === null ? null : (float) $t->budget_hours;
+            $out['used_hours'] = round((float) ($t->used_hours ?? $t->entries()->sum('hours')), 2);
+        }
+        return $out;
     }
 }

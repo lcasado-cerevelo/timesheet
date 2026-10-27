@@ -156,6 +156,30 @@ class TaskTest extends TestCase
         $this->postJson('/api/clock/stop', ['at' => '2026-10-21T10:00:00-04:00'])->assertOk()->assertJsonPath('task.name', 'Diseño');
     }
 
+    public function test_a_task_has_an_optional_budget_and_the_owner_sees_the_hours_used_against_it(): void
+    {
+        $this->world();
+        Sanctum::actingAs($this->owner);
+        $t = $this->postJson('/api/projects/'.$this->project->id.'/tasks', ['name' => 'Diseño', 'budget_hours' => 20])->assertCreated()
+            ->assertJsonPath('budget_hours', 20)->assertJsonPath('used_hours', 0)->json();
+        $this->postJson('/api/projects/'.$this->project->id.'/tasks', ['name' => 'Pruebas'])->assertCreated()->assertJsonPath('budget_hours', null);
+        $this->postJson('/api/projects/'.$this->project->id.'/tasks', ['name' => 'Mala', 'budget_hours' => -1])->assertStatus(422)->assertJsonValidationErrors('budget_hours');
+
+        Sanctum::actingAs($this->worker);
+        $this->postJson('/api/entries', $this->entry(['task_id' => $t['id']]))->assertCreated();   // 8 h (08:00-16:00)
+
+        Sanctum::actingAs($this->owner);
+        $tasks = collect($this->getJson('/api/projects')->json('0.tasks'))->keyBy('name');
+        $this->assertEquals(8, $tasks['Diseño']['used_hours']);
+        $this->assertEquals(20, $tasks['Diseño']['budget_hours']);
+        $this->assertEquals(0, $tasks['Pruebas']['used_hours']);
+        $this->putJson('/api/tasks/'.$t['id'], ['budget_hours' => null])->assertOk()->assertJsonPath('budget_hours', null)->assertJsonPath('used_hours', 8);
+
+        // Quien registra horas no ve presupuesto ni horas usadas.
+        Sanctum::actingAs($this->worker);
+        $this->getJson('/api/projects')->assertJsonMissingPath('0.tasks.0.budget_hours')->assertJsonMissingPath('0.tasks.0.used_hours');
+    }
+
     public function test_the_approver_sees_the_task_on_the_page_and_in_the_account_api(): void
     {
         Mail::fake();

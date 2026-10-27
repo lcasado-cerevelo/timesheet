@@ -60,7 +60,7 @@ class Project extends Model
 
     public function tasks(): HasMany
     {
-        return $this->hasMany(Task::class)->orderBy('sort')->orderBy('name');
+        return $this->hasMany(Task::class)->orderBy('sort')->orderBy('name')->withSum('entries as used_hours', 'hours');
     }
 
     /** Todo proyecto tiene siempre al menos un servicio; el primero se crea solo y se comporta como antes. */
