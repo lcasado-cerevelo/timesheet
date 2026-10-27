@@ -52,6 +52,12 @@ class EntryService
             // El servicio manda: si permite las dos formas, decide la preferencia de la persona (la fija la gerencia).
             $service = $this->resolveService($project, $data['service_id'] ?? null, $entry);
             $task = $this->resolveTask($project, $data, $entry);
+            // Si el proyecto tiene tareas activas, la tarea es obligatoria. Una entrada vieja que ya estaba sin tarea en este
+            // mismo proyecto puede seguir editándose sin ella (no se rompen las horas de antes de que existieran las tareas).
+            if (! $task && $project->tasks()->where('active', true)->exists()
+                && ! ($entry && (int) $entry->project_id === $project->id && ! $entry->task_id)) {
+                $this->fail('task_id', __('Escoge la tarea.'));
+            }
             $mode = $service->effectiveMode($user);
             $inc = $rules->increment();
             $running = (bool) ($data['running'] ?? false);
@@ -212,7 +218,7 @@ class EntryService
     }
 
     /**
-     * La tarea es opcional. Si viene, debe ser de este proyecto y estar activa (una entrada vieja puede conservar una desactivada).
+     * La tarea solo es obligatoria si el proyecto tiene tareas activas (se exige arriba). Si viene, debe ser de este proyecto y estar activa (una entrada vieja puede conservar una desactivada).
      * Si no viene la clave, la entrada conserva la que tenía (siempre que siga siendo del mismo proyecto); si viene vacía, se quita.
      */
     private function resolveTask(Project $project, array $data, ?TimeEntry $entry): ?Task

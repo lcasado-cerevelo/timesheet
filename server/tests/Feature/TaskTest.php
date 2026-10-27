@@ -12,7 +12,10 @@ use Laravel\Sanctum\Sanctum;
 use Tests\Concerns\BuildsWorld;
 use Tests\TestCase;
 
-/** Tareas de un proyecto: opcionales en el proyecto y en cada entrada de horas; el aprobador las ve junto al proyecto y al servicio. */
+/**
+ * Tareas de un proyecto: un proyecto puede no tener ninguna (y entonces las horas no llevan tarea); si tiene tareas activas, cada entrada
+ * debe escoger una. El aprobador las ve junto al proyecto y al servicio.
+ */
 class TaskTest extends TestCase
 {
     use RefreshDatabase, BuildsWorld;
@@ -63,15 +66,34 @@ class TaskTest extends TestCase
         $this->assertSame(['Diseño'], collect($this->getJson('/api/projects')->json('0.tasks'))->pluck('name')->all());
     }
 
-    public function test_a_project_without_tasks_works_as_before_and_the_task_is_optional_in_an_entry(): void
+    public function test_a_project_without_tasks_works_as_before_and_with_tasks_the_entry_must_pick_one(): void
     {
         $this->world();
         Sanctum::actingAs($this->worker);
         $this->assertSame([], $this->getJson('/api/projects')->json('0.tasks'));
         $this->postJson('/api/entries', $this->entry())->assertCreated()->assertJsonPath('task_id', null)->assertJsonPath('task', null);
 
-        $this->task('Diseño');   // aunque el proyecto tenga tareas, la entrada no está obligada a llevar una
-        $this->postJson('/api/entries', $this->entry(['work_date' => '2026-10-19']))->assertCreated()->assertJsonPath('task', null);
+        $t = $this->task('Diseño');   // ahora el proyecto tiene una tarea activa: es obligatoria
+        $this->postJson('/api/entries', $this->entry(['work_date' => '2026-10-19']))->assertStatus(422)->assertJsonValidationErrors('task_id');
+        $this->postJson('/api/entries', $this->entry(['work_date' => '2026-10-19', 'task_id' => null]))->assertStatus(422)->assertJsonValidationErrors('task_id');
+        $this->postJson('/api/entries', $this->entry(['work_date' => '2026-10-19', 'task_id' => $t->id]))->assertCreated();
+
+        // Si todas sus tareas están desactivadas, el proyecto vuelve a no exigir tarea.
+        $t->update(['active' => false]);
+        $this->postJson('/api/entries', $this->entry(['work_date' => '2026-10-18']))->assertCreated()->assertJsonPath('task', null);
+    }
+
+    public function test_an_old_entry_without_task_can_still_be_edited_after_the_project_gets_tasks(): void
+    {
+        $this->world();
+        Sanctum::actingAs($this->worker);
+        $old = $this->postJson('/api/entries', $this->entry())->assertCreated()->json();
+        $t = $this->task('Diseño');
+
+        $this->putJson('/api/entries/'.$old['id'], $this->entry(['note' => 'corregida']))->assertOk()->assertJsonPath('task', null);
+        $this->postJson('/api/entries', $this->entry(['work_date' => '2026-10-19']))->assertStatus(422)->assertJsonValidationErrors('task_id');
+        // Y puede ganar tarea cuando la persona la escoge.
+        $this->putJson('/api/entries/'.$old['id'], $this->entry(['task_id' => $t->id]))->assertOk()->assertJsonPath('task.name', 'Diseño');
     }
 
     public function test_an_entry_can_carry_a_task_of_its_own_project_only(): void
@@ -106,7 +128,7 @@ class TaskTest extends TestCase
         $this->putJson('/api/entries/'.$e['id'], $this->entry(['note' => 'b']))->assertOk()->assertJsonPath('task_id', $t->id);
     }
 
-    public function test_the_task_can_be_changed_removed_and_does_not_follow_a_project_change(): void
+    public function test_the_task_can_be_changed_but_not_removed_and_does_not_follow_a_project_change(): void
     {
         $this->world();
         $a = $this->task('Diseño');
@@ -117,7 +139,8 @@ class TaskTest extends TestCase
         $e = $this->postJson('/api/entries', $this->entry(['task_id' => $a->id]))->assertCreated()->json();
 
         $this->putJson('/api/entries/'.$e['id'], $this->entry(['task_id' => $b->id]))->assertOk()->assertJsonPath('task.name', 'Pruebas');
-        $this->putJson('/api/entries/'.$e['id'], $this->entry(['task_id' => null]))->assertOk()->assertJsonPath('task', null);
+        // Con tareas en el proyecto no se puede quitar la tarea, solo cambiarla.
+        $this->putJson('/api/entries/'.$e['id'], $this->entry(['task_id' => null]))->assertStatus(422)->assertJsonValidationErrors('task_id');
 
         $this->putJson('/api/entries/'.$e['id'], $this->entry(['task_id' => $a->id]))->assertOk();
         $this->putJson('/api/entries/'.$e['id'], $this->entry(['project_id' => $other->id]))->assertOk()->assertJsonPath('task', null);
@@ -141,7 +164,7 @@ class TaskTest extends TestCase
         $t = $this->task('Diseño');
         Sanctum::actingAs($this->worker);
         $id = $this->postJson('/api/entries', $this->entry(['task_id' => $t->id]))->assertCreated()->json('timesheet_id');
-        $this->postJson('/api/entries', $this->entry(['work_date' => '2026-10-19', 'start_time' => '08:00', 'end_time' => '09:00']))->assertCreated();
+        $this->postJson('/api/entries', $this->entry(['work_date' => '2026-10-19', 'start_time' => '08:00', 'end_time' => '09:00', 'task_id' => $t->id]))->assertCreated();
         $this->postJson('/api/sheets/'.$id.'/submit')->assertOk();
 
         $mail = Mail::sent(BrandedMail::class, fn ($m) => $m->viewName === 'mail.approval-request' && $m->hasTo('jorge@cliente.test'))->last();
@@ -152,6 +175,6 @@ class TaskTest extends TestCase
             'role' => 'approver', 'worker_type' => 'employee', 'capture_mode' => 'full_day', 'approver_profile_id' => $this->approver->id]);
         Sanctum::actingAs($account);
         $entries = collect($this->getJson('/api/approver/sheets/'.$id)->assertOk()->json('entries'));
-        $this->assertSame(['Diseño', null], $entries->sortBy('work_date')->reverse()->pluck('task.name')->all());
+        $this->assertSame(['Diseño', 'Diseño'], $entries->pluck('task.name')->all());
     }
 }

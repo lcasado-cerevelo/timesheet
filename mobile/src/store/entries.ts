@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { api, ApiError, NetworkError } from '../lib/api';
 import { computeHours, EntryInput, validateEntry } from '../lib/rules';
 import { effectiveMode, resolveService } from '../lib/services';
-import { resolveTask } from '../lib/tasks';
+import { activeTasks, resolveTask } from '../lib/tasks';
 import { kv } from '../lib/storage';
 import { applySyncResults, buildSyncPayload, mergeServer, pendingCount } from '../lib/sync';
 import { addDays, today, weekEnding, weekStarting } from '../lib/time';
@@ -81,14 +81,18 @@ export const useEntries = create<EntriesState>((set, get) => {
       const keep = prev && prev.project_id === input.project_id ? prev.service_id ?? null : null;
       const service = resolveService(project, input.service_id ?? keep, keep);
       const withService: EntryInput = { ...input, service_id: service?.id ?? input.service_id ?? null };
+      // La tarea: la indicada (null = ninguna) o, si no se indicó, la que ya tenía la entrada en este mismo proyecto.
+      const keepTask = prev && prev.project_id === input.project_id ? prev.task_id ?? null : null;
+      const task = resolveTask(project, input.task_id === undefined ? keepTask : input.task_id, keepTask);
       const errors = validateEntry(withService, {
         pref: me.capture_mode, keepServiceId: keep, project, rules: me.rules, sameDay, today: today(), lockedWeeks: new Set(lockedWeeks), lockedDays: new Set(lockedDays),
       });
+      // Si el proyecto tiene tareas activas, la tarea es obligatoria (igual que en el servidor). Una entrada vieja que ya estaba
+      // sin tarea en este mismo proyecto se puede seguir editando sin ella.
+      const legacy = !!prev && prev.project_id === input.project_id && !prev.task_id;
+      if (project && !task && !legacy && activeTasks(project).length > 0) errors.push(t('rules.task_required'));
       if (errors.length) return { errors };
 
-      // La tarea es opcional: la indicada (null = ninguna) o, si no se indicó, la que ya tenía la entrada en este mismo proyecto.
-      const keepTask = prev && prev.project_id === input.project_id ? prev.task_id ?? null : null;
-      const task = resolveTask(project, input.task_id === undefined ? keepTask : input.task_id, keepTask);
       const mode = effectiveMode(project, service?.id ?? null, me.capture_mode);
       const hours = computeHours(input, mode, me.rules.increment);
       const entry: Entry = {

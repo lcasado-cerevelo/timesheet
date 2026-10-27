@@ -6,8 +6,10 @@ window.I18N_ES = {
     // --- tasks (optional, per project) ---
     'Tasks': 'Tareas', 'Add task': 'Añadir tarea', 'Rename task': 'Renombrar tarea', 'Rename': 'Renombrar', 'Task': 'Tarea', 'No task': 'Sin tarea', 'No tasks yet.': 'Aún no hay tareas.',
     'Task saved.': 'Tarea guardada.', 'Task deactivated.': 'Tarea desactivada.', 'Task activated.': 'Tarea activada.',
-    'Optional. A project may have no tasks. When it has some, the person can pick one on each line of the week and the approver sees it next to the project and the service.': 'Opcional. Un proyecto puede no tener tareas. Si las tiene, la persona puede escoger una en cada línea de la semana y el aprobador la ve junto al proyecto y al servicio.',
-    'Tasks are optional. Save the project, then open it with Edit to add the tasks people can pick when they log hours.': 'Las tareas son opcionales. Guarda el proyecto y ábrelo con Editar para añadir las tareas que la gente puede escoger al registrar horas.',
+    'A project may have no tasks. When it has active tasks, the person must pick one on each line of the week, and the approver sees it next to the project and the service.': 'Un proyecto puede no tener tareas. Si tiene tareas activas, la persona debe escoger una en cada línea de la semana y el aprobador la ve junto al proyecto y al servicio.',
+    'A project may have no tasks. Save the project, then open it with Edit to add tasks: once it has an active task, people must pick one when they log hours.': 'Un proyecto puede no tener tareas. Guarda el proyecto y ábrelo con Editar para añadir tareas: cuando tenga una tarea activa, la gente debe escoger una al registrar horas.',
+    'Choose task': 'Escoger tarea', 'Task *': 'Tarea *', 'Choose the task on this line first.': 'Escoge primero la tarea de esta línea.',
+    'Choose the task on the lines of projects that have tasks.': 'Escoge la tarea en las líneas de los proyectos que tienen tareas.',
     'Approver saved.': 'Aprobador guardado.', 'Client saved.': 'Cliente guardado.',
     'A billable project needs a client. Non-billable (internal) projects can have none.': 'Un proyecto facturable necesita un cliente. Los no facturables (internos) pueden quedar sin cliente.',
     'Pick a client: a billable project needs one.': 'Escoge un cliente: un proyecto facturable lo necesita.',

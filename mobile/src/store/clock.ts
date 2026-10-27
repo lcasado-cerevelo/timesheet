@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { ClockState, segmentsFor } from '../lib/clock';
 import { checkStop, minimumMinutes } from '../lib/increment';
 import { effectiveMode, needsService, resolveService } from '../lib/services';
-import { resolveTask } from '../lib/tasks';
+import { activeTasks, resolveTask } from '../lib/tasks';
 import { kv } from '../lib/storage';
 import { uuid } from '../lib/uuid';
 import { cancelClockNotification, showClockNotification } from '../lib/notify';
@@ -30,7 +30,7 @@ interface ClockStore {
 }
 
 /** Revisa que se pueda prender el reloj en ese proyecto y servicio. */
-function checkStart(projectId: number, serviceId: number | null, at: Date, ignoreRunning: boolean) {
+function checkStart(projectId: number, serviceId: number | null, taskId: number | null, at: Date, ignoreRunning: boolean) {
   const me = useAuth.getState().me;
   if (!me) return { error: t('common.sign_in_first') };
   if (!ignoreRunning && useClock.getState().clock) return { error: t('clock.already') };
@@ -39,6 +39,7 @@ function checkStart(projectId: number, serviceId: number | null, at: Date, ignor
   if (!project || !project.active) return { error: t('rules.pick_project') };
   const service = resolveService(project, serviceId);
   if (needsService(project) && !service) return { error: t('rules.service_required') };
+  if (activeTasks(project).length > 0 && !resolveTask(project, taskId)) return { error: t('rules.task_required') };
   // El reloj solo sirve en servicios que se entran por detalle (desde/hasta).
   if (effectiveMode(project, service?.id ?? null, me.capture_mode) !== 'from_to') return { error: t('clock.not_applicable') };
   return { error: null as string | null, project, service };
@@ -53,7 +54,7 @@ export const useClock = create<ClockStore>((set, get) => ({
 
   start(projectId, serviceId = null, note = '', at = new Date(), taskId = null) {
     const me = useAuth.getState().me;
-    const check = checkStart(projectId, serviceId, at, false);
+    const check = checkStart(projectId, serviceId, taskId, at, false);
     if (check.error || !check.project || !me) return check.error ?? t('common.sign_in_first');
     const { project, service } = check;
     const task = resolveTask(project, taskId);
@@ -107,7 +108,7 @@ export const useClock = create<ClockStore>((set, get) => ({
     const clock = get().clock;
     if (clock?.project_id === projectId && (clock.service_id ?? null) === (serviceId ?? clock.service_id ?? null)) return null;
     // Se comprueba que el nuevo reloj pueda arrancar ANTES de parar el actual, para no perder el tramo en curso.
-    const check = checkStart(projectId, serviceId, new Date(), true);
+    const check = checkStart(projectId, serviceId, taskId, new Date(), true);
     if (check.error) return check.error;
     if (clock) {
       const err = get().stop();

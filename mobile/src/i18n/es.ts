@@ -65,6 +65,7 @@ export const es = {
   // reglas locales (las mismas del servidor)
   'rules.pick_project': 'Elige un proyecto.',
   'rules.service_required': 'Escoge el servicio.',
+  'rules.task_required': 'Escoge la tarea: este proyecto tiene tareas.',
   'rules.service_invalid': 'Ese servicio no existe en este proyecto o está desactivado.',
   'rules.bad_date': 'Fecha inválida.',
   'rules.future': 'No se pueden registrar horas en fechas futuras.',
@@ -110,6 +111,7 @@ export const es = {
   'day.choose_service': 'Elegir servicio',
   'day.choose_task': 'Elegir tarea',
   'day.task': 'Tarea',
+  'day.pick_task': 'Escoger tarea',
   'day.search': 'Buscar proyecto',
   'day.prev_project': 'Proyecto anterior',
   'day.next_project': 'Proyecto siguiente',

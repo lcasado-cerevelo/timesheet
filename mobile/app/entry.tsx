@@ -121,9 +121,8 @@ export default function EntryScreen() {
 
         {taskChoices.length > 0 ? (
           <>
-            <Text style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>{t('entry.task')}</Text>
+            <Text style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>{t('entry.task')} *</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 8, marginBottom: 12 }}>
-              <Chip testID="task-none" label={t('entry.no_task')} on={!task} onPress={() => chooseTask(null)} />
               {taskChoices.map((x) => <Chip key={x.id} testID={`task-${x.id}`} label={x.name} on={task?.id === x.id} onPress={() => chooseTask(x.id)} />)}
             </View>
           </>

@@ -744,7 +744,7 @@ function syncClockForm(f) {
   f.elements.service_id.innerHTML = svcs.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
   f.elements.service_id.hidden = svcs.length <= 1;
   const tasks = wkTasks(p), tw = f.querySelector('[data-clk-task]');   // optional: the project may have no tasks
-  if (tw) { f.elements.task_id.innerHTML = `<option value="">${esc(T('No task'))}</option>` + tasks.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join(''); tw.hidden = !tasks.length; }
+  if (tw) { f.elements.task_id.innerHTML = tasks.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join(''); f.elements.task_id.required = tasks.length > 0; tw.hidden = !tasks.length; }
 }
 function afterRender() {
   document.querySelectorAll('form[data-form=entry]').forEach(f => syncEntryForm(f));
@@ -1264,7 +1264,7 @@ function svcBox(p) {
 function taskBox(p) {
   const list = p.tasks || [];
   return `<div class="mdl-sech"><h3>Tasks</h3><button type="button" class="btn ghost sm" data-act="task-add" data-pid="${p.id}">Add task</button></div>
-    <p class="muted" style="margin:0 0 8px">Optional. A project may have no tasks. When it has some, the person can pick one on each line of the week and the approver sees it next to the project and the service.</p>
+    <p class="muted" style="margin:0 0 8px">A project may have no tasks. When it has active tasks, the person must pick one on each line of the week, and the approver sees it next to the project and the service.</p>
     ${list.length ? `<div class="scrollx"><table class="svct"><tr><th>Task</th><th>Status</th><th></th></tr>
     ${list.map(x => `<tr><td><b>${esc(x.name)}</b></td><td>${activePill(x.active)}</td>
     <td class="r"><button type="button" class="btn ghost sm" data-act="task-edit" data-pid="${p.id}" data-id="${x.id}">Rename</button> <button type="button" class="btn ghost sm" data-act="task-toggle" data-pid="${p.id}" data-id="${x.id}">${x.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table></div>` : '<p class="muted" style="margin:0">No tasks yet.</p>'}`;
@@ -1300,7 +1300,7 @@ async function openProjectModal(id) {
       <div><label>Fields (key=value, one per line)</label><textarea name="meta" rows="3">${esc(metaTxt)}</textarea></div>
       <div class="mdl-sec"><h3>Assigned people</h3>${msel({ name: 'user_ids', ef: 'user_ids', label: 'Assigned people', empty: 'There are no people yet.', selected: p?.user_ids, options: users.filter(u => u.active || p?.user_ids?.includes(u.id)).map(u => ({ id: u.id, label: u.name, sub: u.email })) })}</div>
       <div class="mdl-sec" data-svc-box>${p ? svcBox(p) : `<div class="mdl-sech"><h3>Services</h3></div><p class="muted" style="margin:0">A new project starts with one service called General. Save the project, then open it with Edit to rename that service or add more services (each one with its own rate, entry mode and approval).</p>`}</div>
-      <div class="mdl-sec" data-task-box>${p ? taskBox(p) : `<div class="mdl-sech"><h3>Tasks</h3></div><p class="muted" style="margin:0">Tasks are optional. Save the project, then open it with Edit to add the tasks people can pick when they log hours.</p>`}</div>`,
+      <div class="mdl-sec" data-task-box>${p ? taskBox(p) : `<div class="mdl-sech"><h3>Tasks</h3></div><p class="muted" style="margin:0">A project may have no tasks. Save the project, then open it with Edit to add tasks: once it has an active task, people must pick one when they log hours.</p>`}</div>`,
     async onSubmit(mm) {
       const o = formObj(mm.form); o.meta = parseMeta(o.meta); o.user_ids = o.user_ids || [];
       for (const k of ['customer_id', 'approver_id']) if (o[k] != null) o[k] = Number(o[k]);
@@ -1399,6 +1399,8 @@ const weekAgg = list => {
 const WK = () => ((S.cache.wkst ??= {})[S.weekDate] ??= { extra: [], edits: {}, pend: {}, pnote: {}, n: 0, cert: false, through: null, snote: null });
 const wkSvcs = p => (p?.services || []).filter(s => s.active);
 const wkTasks = p => (p?.tasks || []).filter(t => t.active);   // optional: a project may have none
+/* a project that has active tasks needs one on every new entry; a line with none chosen is marked and Save draft refuses new hours on it */
+const wkNeedTask = ln => wkTasks((S.cache.projects || []).find(x => x.id === Number(ln.project_id))).length > 0 && !ln.task_id;
 const wkTaskName = (p, id) => (p?.tasks || []).find(t => t.id === Number(id))?.name || '';
 const wkMode = (p, sid) => { const s = (p?.services || []).find(x => x.id === Number(sid)); return (s && s.mode) || (S.me.capture_mode === 'from_to' ? 'from_to' : 'full_day'); };
 /* "Submitted · waiting for Ana" (internal stage) or "Submitted · waiting for client approval" (external stage). */
@@ -1550,7 +1552,7 @@ async function weekView() {
     const svcs = (p?.services || []).filter(s => s.active || s.id === Number(ln.service_id));
     const sSel = wkSvcs(p).length > 1 ? `<select class="wksvc" data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="service_id" aria-label="Service" ${locked ? 'disabled' : ''}>${svcs.map(s => `<option value="${s.id}" ${s.id === Number(ln.service_id) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>` : '';
     const tasks = (p?.tasks || []).filter(t => t.active || t.id === Number(ln.task_id));
-    const kSel = tasks.length ? `<select class="wksvc" data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="task_id" aria-label="Task" ${locked ? 'disabled' : ''}><option value="">${esc(T('No task'))}</option>${tasks.map(t => `<option value="${t.id}" ${t.id === Number(ln.task_id) ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>` : '';
+    const kSel = tasks.length ? `<select class="wksvc ${wkTasks(p).length && !ln.task_id ? 'bad' : ''}" data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="task_id" aria-label="Task" ${wkTasks(p).length && !ln.task_id ? 'aria-invalid="true"' : ''} ${locked ? 'disabled' : ''}><option value="">${esc(T(wkTasks(p).length ? 'Choose task' : 'No task'))}</option>${tasks.map(t => `<option value="${t.id}" ${t.id === Number(ln.task_id) ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>` : '';
     const tSel = emp ? `<select data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="hour_type" aria-label="Code" ${locked ? 'disabled' : ''}>${HOUR_TYPES.map(([v, l]) => `<option value="${v}" ${v === ln.hour_type ? 'selected' : ''}>${l}</option>`).join('')}</select>` : '';
     let lt = 0;
     const cells = days.map((d, di) => {
@@ -1654,6 +1656,7 @@ async function wkSave() {
         const e = es[0]; const nt = Object.prototype.hasOwnProperty.call(st.pnote, key) ? { note: st.pnote[key] || null } : {};
         if (e && n === 0) del.push(e.id);
         else if (e) { if (n !== Number(e.hours) || changed || 'note' in nt) put.push([e.id, wkBody(e, ln, { hours: n, ...nt })]); }
+        else if (n > 0 && wkNeedTask(ln)) throw new Error('Choose the task on the lines of projects that have tasks.');
         else if (n > 0) post.push(wkBody({ work_date: d, note: null }, ln, { hours: n, ...nt }));
       } else if (changed || Object.prototype.hasOwnProperty.call(st.pnote, key)) { const nt = Object.prototype.hasOwnProperty.call(st.pnote, key) ? { note: st.pnote[key] || null } : {}; for (const e of es) put.push([e.id, wkBody(e, ln, nt)]); }
     }
@@ -1813,7 +1816,7 @@ Object.assign(actions, {
     if (!ps.length) { wkModalOpen(`<h2 id="clk-t">Clock</h2><p class="muted">There are no projects where the clock can be used.</p><div class="fb"><button class="btn ghost" type="button" data-act="wk-modal-close">Close</button></div>`); return; }
     const m = wkModalOpen(`<h2 id="clk-t">Clock</h2><form data-form="clock"><div><label>Project</label><select name="project_id" data-act-change="clock-project">${ps.map(x => `<option value="${x.id}">${esc(wkPL(x))}</option>`).join('')}</select></div>
       <div><label>Service</label><select name="service_id"></select></div>
-      <div data-clk-task hidden><label>Task</label><select name="task_id"></select></div>
+      <div data-clk-task hidden><label>Task *</label><select name="task_id"></select></div>
       <div class="fb"><button class="btn pri" type="submit">Start</button><button class="btn ghost" type="button" data-act="wk-modal-close">Cancel</button></div></form>`);
     const f = m.querySelector('form'); syncClockForm(f); f.elements.service_id.parentElement.hidden = f.elements.service_id.hidden;
   },
@@ -1838,13 +1841,14 @@ Object.assign(forms, {
     const b = { work_date: o.d, project_id: Number(ln.project_id), note: o.note || null };
     if (ln.service_id) b.service_id = Number(ln.service_id); b.task_id = ln.task_id ? Number(ln.task_id) : null; if (C.emp) b.hour_type = ln.hour_type;
     if (mode === 'from_to') { b.start_time = o.start_time; b.end_time = o.end_time; } else b.hours = o.hours;
+    if (!o.id && wkNeedTask(ln)) { const box = f.querySelector('.poperr'); if (box) { box.hidden = false; box.textContent = T('Choose the task on this line first.'); } return; }
     try {
       await wkApplyEdits(ln);
       if (o.id) await api('/entries/' + o.id, { method: 'PUT', body: b }); else await api('/entries', { method: 'POST', body: b });
     } catch (e) {   // the server refused (422 start_time / end_time / hours): shown in the box, which stays open
       if (e.message === 'Session expired') throw e;
       const box = f.querySelector('.poperr'); const er = e.errors || {};
-      if (box) { box.hidden = false; box.textContent = T(er.start_time?.[0] || er.end_time?.[0] || er.hours?.[0] || e.message); }
+      if (box) { box.hidden = false; box.textContent = T(er.start_time?.[0] || er.end_time?.[0] || er.hours?.[0] || er.task_id?.[0] || e.message); }
       for (const k of Object.keys(er)) f.elements[k]?.classList?.add('bad');
       toast(er.start_time?.[0] || er.end_time?.[0] || er.hours?.[0] || e.message, 'err'); return;
     }

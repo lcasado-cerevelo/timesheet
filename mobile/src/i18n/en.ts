@@ -67,6 +67,7 @@ export const en: Record<keyof typeof es, string> = {
   // local rules (same as the server)
   'rules.pick_project': 'Choose a project.',
   'rules.service_required': 'Choose the service.',
+  'rules.task_required': 'Choose the task: this project has tasks.',
   'rules.service_invalid': 'That service does not exist in this project or is inactive.',
   'rules.bad_date': 'Invalid date.',
   'rules.future': 'Hours cannot be logged on future dates.',
@@ -112,6 +113,7 @@ export const en: Record<keyof typeof es, string> = {
   'day.choose_service': 'Choose service',
   'day.choose_task': 'Choose task',
   'day.task': 'Task',
+  'day.pick_task': 'Choose task',
   'day.search': 'Search project',
   'day.prev_project': 'Previous project',
   'day.next_project': 'Next project',

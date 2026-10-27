@@ -43,7 +43,7 @@
       ],
       ["expo-notifications", { "color": "#1f4e79" }]
     ],
-    "extra": { "serverUrl": "" },
+    "extra": { "serverUrl": "https://timesheet.cerevelo.com" },
     "experiments": { "typedRoutes": false }
   }
 }

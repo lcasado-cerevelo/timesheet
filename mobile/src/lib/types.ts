@@ -56,7 +56,7 @@ export interface Service {
   mode?: CaptureMode;
 }
 
-/** Tarea de un proyecto. Es opcional: un proyecto puede no tener ninguna y una entrada puede no llevar tarea. */
+/** Tarea de un proyecto. Un proyecto puede no tener ninguna; si tiene tareas activas, cada entrada debe llevar una. */
 export interface Task {
   id: number;
   project_id: number;

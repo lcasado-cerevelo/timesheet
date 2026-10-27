@@ -85,6 +85,10 @@ export default function Day() {
       fail(t('rules.service_required'));
       return false;
     }
+    if (cur.tasks.length > 0 && !cur.task) {
+      fail(t('rules.task_required'));
+      return false;
+    }
     fail(null);
     return true;
   };
@@ -248,10 +252,10 @@ export default function Day() {
         <Text testID="service-single" numberOfLines={1} style={{ color: C.muted, fontSize: 12, paddingHorizontal: 14, paddingTop: 6 }}>{t('day.service')}: {cur.services[0].name}</Text>
       ) : null}
 
-      {/* La tarea es opcional: solo se muestra si el proyecto escogido tiene tareas */}
+      {/* La tarea es obligatoria si el proyecto escogido tiene tareas; si no tiene, no se muestra nada */}
       {cur.project && cur.tasks.length > 0 ? (
         <View style={{ paddingHorizontal: 12, paddingTop: 8, alignItems: 'flex-start', maxWidth: '100%' }}>
-          <Chip testID="task-pill" on={!!cur.task} label={`${t('day.task')}: ${cur.task?.name ?? t('entry.no_task')}`} onPress={() => setTaskOpen(true)} />
+          <Chip testID="task-pill" on={!!cur.task} label={cur.task ? `${t('day.task')}: ${cur.task.name}` : t('day.pick_task')} onPress={() => setTaskOpen(true)} />
         </View>
       ) : null}
 
@@ -333,9 +337,6 @@ export default function Day() {
       </Sheet>
 
       <Sheet visible={taskOpen} title={t('day.choose_task')} onClose={() => setTaskOpen(false)}>
-        <Pressable testID="pick-task-none" onPress={() => chooseTask(null)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderColor: '#eee' }}>
-          <Text style={{ fontSize: 16, fontWeight: !cur.task ? '800' : '600' }}>{t('entry.no_task')}{!cur.task ? '  ✓' : ''}</Text>
-        </Pressable>
         {cur.tasks.map((x) => (
           <Pressable key={x.id} testID={`pick-task-${x.id}`} onPress={() => chooseTask(x.id)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderColor: '#eee' }}>
             <Text style={{ fontSize: 16, fontWeight: cur.task?.id === x.id ? '800' : '600' }}>{x.name}{cur.task?.id === x.id ? '  ✓' : ''}</Text>

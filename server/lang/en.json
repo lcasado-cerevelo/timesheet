@@ -373,5 +373,6 @@
     "Servicio": "Service",
     "proyecto :name": "project :name",
     "Tarea": "Task",
+    "Escoge la tarea.": "Choose the task.",
     "Esa tarea no existe en este proyecto o está desactivada.": "That task does not exist in this project or is deactivated."
 }

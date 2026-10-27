@@ -1,6 +1,6 @@
 import type { Project, Task } from './types';
 
-/** Tareas activas del proyecto, en el orden del servidor. Vacío = el proyecto no usa tareas y no se muestra nada. */
+/** Tareas activas del proyecto, en el orden del servidor. Vacío = el proyecto no usa tareas: no se muestra nada ni se exige. */
 export function activeTasks(project: Project | undefined): Task[] {
   return (project?.tasks ?? []).filter((x) => x.active).sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name));
 }
