@@ -41,7 +41,7 @@ class SheetController extends Controller
     {
         $end = $working->week_ending->toDateString();
         $sheets = $this->sheets->weekSheets($user, $end);
-        $entries = TimeEntry::with('project:id,code,name', 'service:id,name')->whereIn('timesheet_id', $sheets->pluck('id'))
+        $entries = TimeEntry::with('project:id,code,name', 'service:id,name', 'task:id,name')->whereIn('timesheet_id', $sheets->pluck('id'))
             ->orderBy('work_date')->orderBy('start_time')->orderBy('id')->get();
         $out = $this->payload($working, true);
         $out['entries'] = $entries->map(fn ($e) => EntryController::payload($e));
@@ -143,7 +143,7 @@ class SheetController extends Controller
     public function payload(Timesheet $s, bool $withEntries = false): array
     {
         $s->loadMissing('user', 'approver');
-        $entries = $withEntries ? $s->entries()->with('project:id,code,name', 'service:id,name')->get() : null;
+        $entries = $withEntries ? $s->entries()->with('project:id,code,name', 'service:id,name', 'task:id,name')->get() : null;
         $out = [
             'id' => $s->id,
             'user_id' => $s->user_id,

@@ -293,7 +293,7 @@ class InternalApprovalService
     public function restrictTo(Timesheet $s, User $user): Timesheet
     {
         $ids = $this->supervisedServiceIds($user);
-        $s->setRelation('entries', $s->entries()->with('project:id,code,name', 'service:id,name')->whereIn('service_id', $ids ?: [0])->get());
+        $s->setRelation('entries', $s->entries()->with('project:id,code,name', 'service:id,name', 'task:id,name')->whereIn('service_id', $ids ?: [0])->get());
         $s->total_hours = (float) $s->entries->sum('hours');
         return $s;
     }

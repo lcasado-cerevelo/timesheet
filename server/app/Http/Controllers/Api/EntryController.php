@@ -19,7 +19,7 @@ class EntryController extends Controller
     public function index(Request $request)
     {
         $data = $request->validate(['from' => 'required|date', 'to' => 'required|date|after_or_equal:from']);
-        $rows = TimeEntry::with('project:id,code,name', 'service:id,name')
+        $rows = TimeEntry::with('project:id,code,name', 'service:id,name', 'task:id,name')
             ->where('user_id', $request->user()->id)
             ->whereBetween('work_date', [$data['from'], $data['to']])
             ->orderBy('work_date')->orderBy('start_time')->orderBy('id')->get();
@@ -31,14 +31,14 @@ class EntryController extends Controller
     public function store(Request $request)
     {
         $entry = $this->entries->save($request->user(), $this->input($request), null, 'app');
-        return response()->json($this->payload($entry->load('project:id,code,name', 'service:id,name')), 201);
+        return response()->json($this->payload($entry->load('project:id,code,name', 'service:id,name', 'task:id,name')), 201);
     }
 
     public function update(Request $request, TimeEntry $entry)
     {
         $this->owns($request, $entry);
         $entry = $this->entries->save($request->user(), $this->input($request), $entry, 'app');
-        return response()->json($this->payload($entry->load('project:id,code,name', 'service:id,name')));
+        return response()->json($this->payload($entry->load('project:id,code,name', 'service:id,name', 'task:id,name')));
     }
 
     public function destroy(Request $request, TimeEntry $entry)
@@ -51,16 +51,16 @@ class EntryController extends Controller
     public function startClock(Request $request)
     {
         $d = $request->validate(['project_id' => 'required|integer', 'service_id' => 'nullable|integer', 'note' => 'nullable|string|max:1000',
-            'client_uuid' => 'nullable|uuid', 'at' => 'nullable|date']);
-        $e = $this->entries->startClock($request->user(), $d['project_id'], $d['note'] ?? null, $d['client_uuid'] ?? null, $d['at'] ?? null, $d['service_id'] ?? null);
-        return response()->json($this->payload($e->load('project:id,code,name', 'service:id,name')), 201);
+            'client_uuid' => 'nullable|uuid', 'at' => 'nullable|date', 'task_id' => 'nullable|integer']);
+        $e = $this->entries->startClock($request->user(), $d['project_id'], $d['note'] ?? null, $d['client_uuid'] ?? null, $d['at'] ?? null, $d['service_id'] ?? null, $d['task_id'] ?? null);
+        return response()->json($this->payload($e->load('project:id,code,name', 'service:id,name', 'task:id,name')), 201);
     }
 
     public function stopClock(Request $request)
     {
         $d = $request->validate(['at' => 'nullable|date']);
         $e = $this->entries->stopClock($request->user(), $d['at'] ?? null);
-        return response()->json($this->payload($e->load('project:id,code,name', 'service:id,name')));
+        return response()->json($this->payload($e->load('project:id,code,name', 'service:id,name', 'task:id,name')));
     }
 
     public function dayNote(Request $request)
@@ -116,6 +116,7 @@ class EntryController extends Controller
         $request->validate([
             'project_id' => 'required|integer',
             'service_id' => 'nullable|integer',
+            'task_id' => 'nullable|integer',
             'work_date' => 'required|date_format:Y-m-d',
             'start_time' => 'nullable|string|max:5',
             'end_time' => 'nullable|string|max:5',
@@ -130,7 +131,7 @@ class EntryController extends Controller
 
     private function normalize(array $in): array
     {
-        $keys = ['project_id', 'service_id', 'work_date', 'start_time', 'end_time', 'hours', 'note', 'billable', 'hour_type', 'running'];
+        $keys = ['project_id', 'service_id', 'task_id', 'work_date', 'start_time', 'end_time', 'hours', 'note', 'billable', 'hour_type', 'running'];
         return array_intersect_key($in, array_flip($keys));
     }
 
@@ -148,6 +149,8 @@ class EntryController extends Controller
             'project' => $e->relationLoaded('project') ? $e->project : null,
             'service_id' => $e->service_id,
             'service' => $e->relationLoaded('service') && $e->service ? ['id' => $e->service->id, 'name' => $e->service->name] : null,
+            'task_id' => $e->task_id,
+            'task' => $e->relationLoaded('task') && $e->task ? ['id' => $e->task->id, 'name' => $e->task->name] : null,
             'timesheet_id' => $e->timesheet_id,
             'work_date' => $e->work_date->toDateString(),
             'start_time' => $e->start_time ? substr($e->start_time, 0, 5) : null,

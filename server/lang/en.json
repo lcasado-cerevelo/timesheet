@@ -371,5 +371,7 @@
     "Nota del envío": "Submission note",
     "Parte": "Part",
     "Servicio": "Service",
-    "proyecto :name": "project :name"
+    "proyecto :name": "project :name",
+    "Tarea": "Task",
+    "Esa tarea no existe en este proyecto o está desactivada.": "That task does not exist in this project or is deactivated."
 }

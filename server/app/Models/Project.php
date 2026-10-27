@@ -58,6 +58,11 @@ class Project extends Model
         return $this->hasMany(Service::class)->orderBy('sort')->orderBy('id');
     }
 
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(Task::class)->orderBy('sort')->orderBy('name');
+    }
+
     /** Todo proyecto tiene siempre al menos un servicio; el primero se crea solo y se comporta como antes. */
     protected static function booted(): void
     {

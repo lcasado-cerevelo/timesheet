@@ -358,7 +358,7 @@ async function approverView() {
     const days = Array.from({ length: wkSpan(start, d.period_ending || sel.period_ending) }, (_, i) => addDays(start, i));
     const svcs = new Map(); for (const e of d.entries || []) { if (!svcs.has(e.project_id)) svcs.set(e.project_id, new Set()); svcs.get(e.project_id).add(e.service_id); }
     const lines = new Map();
-    for (const e of d.entries || []) { const multi = (svcs.get(e.project_id)?.size || 0) > 1; const k = e.project_id + '|' + (multi ? e.service_id : ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi ? e.service : null, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
+    for (const e of d.entries || []) { const multi = (svcs.get(e.project_id)?.size || 0) > 1; const k = e.project_id + '|' + (multi ? e.service_id : '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi ? e.service : null, t: e.task, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
     const dr = S.cache.apDraft && S.cache.apDraft.id === sel.id ? S.cache.apDraft : { comment: '', code: '' };
     const open = sel.status === 'submitted';
     const needs = open && (d.needs_code || sel.needs_code || (S.cache.apCode || {})[sel.id]);
@@ -375,7 +375,7 @@ async function approverView() {
     detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}${sel.is_part ? ` · ${T('Part')} ${sel.part} (${nice(sel.period_starting)}${sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)})` : ''}</span></div><span class="spacer"></span>${pill(label, color)}${sel.late ? ' ' + pill('Late', 'red') : ''}</div>
       ${wkParts(d.internal || d.external ? d : sel, 'in')}${(sel.warnings || []).map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${ret}
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
-      ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
+      ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}${r.t ? ' · ' + esc(r.t.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
       <p class="row" style="margin:10px 0"><b>Total hours</b><span class="spacer"></span><b>${h1(sel.total_hours)}</b></p>
       ${aprNotes(d?.entries, sel)}${acts}</div>`;
   }
@@ -456,11 +456,11 @@ async function approvalsView() {
     const days = Array.from({ length: wkSpan(d.period_starting || d.week_starting, d.period_ending) }, (_, i) => addDays(d.period_starting || d.week_starting, i));
     const lines = new Map();
     const multi = id => (S.cache.allProjects?.find(p => p.id === id)?.services || []).length > 1;
-    for (const e of d.entries) { const k = e.project_id + '|' + (multi(e.project_id) ? e.service_id : ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi(e.project_id) ? e.service : null, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
+    for (const e of d.entries) { const k = e.project_id + '|' + (multi(e.project_id) ? e.service_id : '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi(e.project_id) ? e.service : null, t: e.task, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
     detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}${sel.is_part ? ` · ${T('Part')} ${sel.part} (${nice(sel.period_starting)}${sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)})` : ''}</span></div><span class="spacer"></span><span class="badge submitted">Pending</span>${sel.late ? ' <span class="badge returned">Late</span>' : ''}</div>
       ${sel.warnings.map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
-      ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
+      ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}${r.t ? ' · ' + esc(r.t.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
       <p class="row" style="margin:10px 0"><b>Total hours</b><span class="spacer"></span><b>${h1(sel.total_hours)}</b></p>
       ${aprNotes(d?.entries, sel)}
       <label>Comment (required when returning)</label><textarea id="ap-comment" rows="3" placeholder="Example: Thursday should be OT, please fix and resubmit."></textarea>
@@ -743,6 +743,8 @@ function syncClockForm(f) {
   const svcs = (p?.services || []).filter(s => s.active && s.mode === 'from_to');
   f.elements.service_id.innerHTML = svcs.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
   f.elements.service_id.hidden = svcs.length <= 1;
+  const tasks = wkTasks(p), tw = f.querySelector('[data-clk-task]');   // optional: the project may have no tasks
+  if (tw) { f.elements.task_id.innerHTML = `<option value="">${esc(T('No task'))}</option>` + tasks.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join(''); tw.hidden = !tasks.length; }
 }
 function afterRender() {
   document.querySelectorAll('form[data-form=entry]').forEach(f => syncEntryForm(f));
@@ -991,7 +993,7 @@ async function reviewScreen() {
     let d = null; try { d = await api((ap ? '/approver/sheets/' : inn ? '/internal/sheets/' : '/sheets/') + sel.id); } catch (e) { if (e.message === 'Session expired') throw e; }
     const days = Array.from({ length: wkSpan(d?.period_starting || addDays(sel.week_ending, -6), d?.period_ending || sel.week_ending) }, (_, i) => addDays(d?.period_starting || addDays(sel.week_ending, -6), i));
     const lines = new Map();
-    for (const e of (d?.entries || [])) { const k = e.project_id + '|' + (e.service_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: e.service, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
+    for (const e of (d?.entries || [])) { const k = e.project_id + '|' + (e.service_id || '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: e.service, t: e.task, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
     const open = sel.status === 'submitted' || sel.status === 'pending';
     const dr = S.cache.apDraft && S.cache.apDraft.id === sel.id ? S.cache.apDraft : { comment: '', code: '' };
     const needs = ap && open && (d?.needs_code || sel.needs_code || (S.cache.apCode || {})[sel.id]);
@@ -1006,7 +1008,7 @@ async function reviewScreen() {
     detail = `<div class="card r"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><div><h2 style="font-size:19px">${esc(nameOf(sel))}</h2><p style="margin:0">${typeName(sel)} · week ending ${nice(sel.week_ending)}${sel.is_part ? ' · ' + T('Part') + ' ' + sel.part + ' (' + nice(sel.period_starting) + (sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)) + ')' : ''}</p></div>${pill(stOf(sel), stColor[sel.status] || 'gray')}</div>${wkParts(d && (d.internal || d.external) ? d : sel, 'in') || waitTxt(sel)}
       ${(d?.warnings || sel.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('')}${ret}
       <div class="scrollx"><div style="min-width:440px"><div class="hd cols-det"><div class="th">Line</div>${days.map(x => `<div class="th c">${dow(parse(x).getDay())}</div>`).join('')}<div class="th r">Total</div></div>
-      ${[...lines.values()].map(r => `<div class="rw cols-det"><div style="font-size:14px">${esc([r.p?.code, r.p?.name, r.s?.name].filter(Boolean).join(' · '))}</div>${days.map(x => cell(r.by[x])).join('')}<div class="mono" style="text-align:right;font-weight:500">${h1(Object.values(r.by).reduce((a, v) => a + v, 0))}</div></div>`).join('')}
+      ${[...lines.values()].map(r => `<div class="rw cols-det"><div style="font-size:14px">${esc([r.p?.code, r.p?.name, r.s?.name, r.t?.name].filter(Boolean).join(' · '))}</div>${days.map(x => cell(r.by[x])).join('')}<div class="mono" style="text-align:right;font-weight:500">${h1(Object.values(r.by).reduce((a, v) => a + v, 0))}</div></div>`).join('')}
       <div class="tot"><span>Total hours</span><span class="mono">${h1(sel.total_hours)}</span></div></div></div>
       ${aprNotes(d?.entries, d || sel)}${acts}</div>`;
   }
@@ -1258,6 +1260,26 @@ function svcBox(p) {
     <td>${x.billable ? pill('Billable', 'green') : pill('Non-billable', 'amber')}</td><td>${CAPTURE_NAMES[x.capture_mode] || ''}</td><td>${approvalPill(x.approval_mode)}</td><td>${svcApprovers(x)}</td><td>${activePill(x.active)}</td>
     <td class="r"><button type="button" class="btn ghost sm" data-act="svc-edit" data-pid="${p.id}" data-id="${x.id}">Edit</button> <button type="button" class="btn ghost sm" data-act="svc-toggle" data-pid="${p.id}" data-id="${x.id}">${x.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table></div>`;
 }
+/* the project's tasks (optional): the person may pick one when logging hours; the approver sees it next to the service */
+function taskBox(p) {
+  const list = p.tasks || [];
+  return `<div class="mdl-sech"><h3>Tasks</h3><button type="button" class="btn ghost sm" data-act="task-add" data-pid="${p.id}">Add task</button></div>
+    <p class="muted" style="margin:0 0 8px">Optional. A project may have no tasks. When it has some, the person can pick one on each line of the week and the approver sees it next to the project and the service.</p>
+    ${list.length ? `<div class="scrollx"><table class="svct"><tr><th>Task</th><th>Status</th><th></th></tr>
+    ${list.map(x => `<tr><td><b>${esc(x.name)}</b></td><td>${activePill(x.active)}</td>
+    <td class="r"><button type="button" class="btn ghost sm" data-act="task-edit" data-pid="${p.id}" data-id="${x.id}">Rename</button> <button type="button" class="btn ghost sm" data-act="task-toggle" data-pid="${p.id}" data-id="${x.id}">${x.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table></div>` : '<p class="muted" style="margin:0">No tasks yet.</p>'}`;
+}
+function openTaskModal(pid, tid) {
+  const p = (S.cache.pl || []).find(x => x.id === Number(pid)); if (!p) return;
+  const t = tid ? (p.tasks || []).find(x => x.id === Number(tid)) : null;
+  modalOpen({ title: t ? 'Rename task' : 'Add task', sub: `${p.code} · ${p.name}`, size: 'sm', save: t ? 'Save' : 'Add',
+    body: `<div><label>Name</label><input name="name" required maxlength="120" value="${esc(t?.name)}"></div>`,
+    async onSubmit(mm) {
+      const o = formObj(mm.form);
+      if (t) await api('/tasks/' + t.id, { method: 'PUT', body: o }); else await api('/projects/' + p.id + '/tasks', { method: 'POST', body: o });
+      await mm.finish('Task saved.', () => refreshSvcBox(p.id));
+    } });
+}
 async function openProjectModal(id) {
   const [list, customers, approvers, users] = await Promise.all([api('/projects'), api('/customers'), api('/approvers'), api('/users')]);
   S.cache.pl = list; const p = id ? list.find(x => x.id === Number(id)) : null; if (id && !p) throw new Error('That project no longer exists.');
@@ -1277,7 +1299,8 @@ async function openProjectModal(id) {
       <label class="chk"><input type="checkbox" name="active" ${p ? (p.active ? 'checked' : '') : 'checked'}> Active</label></p>
       <div><label>Fields (key=value, one per line)</label><textarea name="meta" rows="3">${esc(metaTxt)}</textarea></div>
       <div class="mdl-sec"><h3>Assigned people</h3>${msel({ name: 'user_ids', ef: 'user_ids', label: 'Assigned people', empty: 'There are no people yet.', selected: p?.user_ids, options: users.filter(u => u.active || p?.user_ids?.includes(u.id)).map(u => ({ id: u.id, label: u.name, sub: u.email })) })}</div>
-      <div class="mdl-sec" data-svc-box>${p ? svcBox(p) : `<div class="mdl-sech"><h3>Services</h3></div><p class="muted" style="margin:0">A new project starts with one service called General. Save the project, then open it with Edit to rename that service or add more services (each one with its own rate, entry mode and approval).</p>`}</div>`,
+      <div class="mdl-sec" data-svc-box>${p ? svcBox(p) : `<div class="mdl-sech"><h3>Services</h3></div><p class="muted" style="margin:0">A new project starts with one service called General. Save the project, then open it with Edit to rename that service or add more services (each one with its own rate, entry mode and approval).</p>`}</div>
+      <div class="mdl-sec" data-task-box>${p ? taskBox(p) : `<div class="mdl-sech"><h3>Tasks</h3></div><p class="muted" style="margin:0">Tasks are optional. Save the project, then open it with Edit to add the tasks people can pick when they log hours.</p>`}</div>`,
     async onSubmit(mm) {
       const o = formObj(mm.form); o.meta = parseMeta(o.meta); o.user_ids = o.user_ids || [];
       for (const k of ['customer_id', 'approver_id']) if (o[k] != null) o[k] = Number(o[k]);
@@ -1338,6 +1361,7 @@ async function refreshSvcBox(pid) {
   S.cache.pl = await api('/projects'); const p = S.cache.pl.find(x => x.id === Number(pid));
   const pm = MDL.find(x => x.el.dataset.pid === String(pid)); if (!p || !pm) return;
   pm.el.querySelector('[data-svc-box]').innerHTML = localizeHtml(svcBox(p)); pm.svcChanged = true;
+  const tb = pm.el.querySelector('[data-task-box]'); if (tb) tb.innerHTML = localizeHtml(taskBox(p));
 }
 Object.assign(actions, {
   'inv-open': () => openInviteModal(),
@@ -1347,6 +1371,11 @@ Object.assign(actions, {
   'customer-new': () => openCustomerModal(), 'edit-customer': el => openCustomerModal(el.dataset.id),
   'project-new': () => openProjectModal(), 'edit-project': el => openProjectModal(el.dataset.id),
   'svc-add': el => openServiceModal(el.dataset.pid), 'svc-edit': el => openServiceModal(el.dataset.pid, el.dataset.id),
+  'task-add': el => openTaskModal(el.dataset.pid), 'task-edit': el => openTaskModal(el.dataset.pid, el.dataset.id),
+  async 'task-toggle'(el) {
+    const p = S.cache.pl.find(x => x.id === Number(el.dataset.pid)); const t = p.tasks.find(x => x.id === Number(el.dataset.id));
+    await api('/tasks/' + t.id, { method: 'PUT', body: { active: !t.active } }); await refreshSvcBox(p.id); toast(t.active ? 'Task deactivated.' : 'Task activated.');
+  },
   async 'svc-toggle'(el) {
     const p = S.cache.pl.find(x => x.id === Number(el.dataset.pid)); const s = p.services.find(x => x.id === Number(el.dataset.id));
     await api('/services/' + s.id, { method: 'PUT', body: { active: !s.active } }); await refreshSvcBox(p.id); toast(s.active ? 'Service deactivated.' : 'Service activated.');
@@ -1369,6 +1398,8 @@ const weekAgg = list => {
 };
 const WK = () => ((S.cache.wkst ??= {})[S.weekDate] ??= { extra: [], edits: {}, pend: {}, pnote: {}, n: 0, cert: false, through: null, snote: null });
 const wkSvcs = p => (p?.services || []).filter(s => s.active);
+const wkTasks = p => (p?.tasks || []).filter(t => t.active);   // optional: a project may have none
+const wkTaskName = (p, id) => (p?.tasks || []).find(t => t.id === Number(id))?.name || '';
 const wkMode = (p, sid) => { const s = (p?.services || []).find(x => x.id === Number(sid)); return (s && s.mode) || (S.me.capture_mode === 'from_to' ? 'from_to' : 'full_day'); };
 /* "Submitted · waiting for Ana" (internal stage) or "Submitted · waiting for client approval" (external stage). */
 const wkNames = (l, max = 3) => { const n = (l || []).map(a => a.name || a).filter(Boolean); return n.slice(0, max).join(', ') + (n.length > max ? ' +' + (n.length - max) : ''); };
@@ -1468,11 +1499,11 @@ async function weekView() {
   // Lines: one per project + service + hour type that has entries this week, plus the ones added on screen
   const map = new Map();
   for (const e of list) {
-    const lid = [e.project_id, e.service_id ?? '', e.hour_type || 'reg'].join('|');
-    if (!map.has(lid)) map.set(lid, { lid, project_id: e.project_id, service_id: e.service_id ?? null, hour_type: e.hour_type || 'reg', ents: [] });
+    const lid = [e.project_id, e.service_id ?? '', e.task_id ?? '', e.hour_type || 'reg'].join('|');
+    if (!map.has(lid)) map.set(lid, { lid, project_id: e.project_id, service_id: e.service_id ?? null, task_id: e.task_id ?? null, hour_type: e.hour_type || 'reg', ents: [] });
     map.get(lid).ents.push(e);
   }
-  if (!locked && !map.size && !st.extra.length) { const p = projects.find(x => x.active && wkSvcs(x).length); if (p) st.extra.push({ lid: 'n' + (++st.n), project_id: p.id, service_id: wkSvcs(p)[0].id, hour_type: 'reg' }); }
+  if (!locked && !map.size && !st.extra.length) { const p = projects.find(x => x.active && wkSvcs(x).length); if (p) st.extra.push({ lid: 'n' + (++st.n), project_id: p.id, service_id: wkSvcs(p)[0].id, task_id: null, hour_type: 'reg' }); }
   for (const x of st.extra) if (!map.has(x.lid)) map.set(x.lid, { ...x, ents: [] });
   const lines = [...map.values()].map(l => ({ ...l, ...(st.edits[l.lid] || {}), ents: l.ents }));
   S.cache.wkLines = lines; S.cache.wkCtx = { days, emp, inc, maxDay, locked, dayLocked };
@@ -1518,6 +1549,8 @@ async function weekView() {
     const pOpts = projects.filter(x => x.active || x.id === Number(ln.project_id)).map(x => `<option value="${x.id}" ${x.id === Number(ln.project_id) ? 'selected' : ''}>${esc(wkPL(x))}</option>`).join('');
     const svcs = (p?.services || []).filter(s => s.active || s.id === Number(ln.service_id));
     const sSel = wkSvcs(p).length > 1 ? `<select class="wksvc" data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="service_id" aria-label="Service" ${locked ? 'disabled' : ''}>${svcs.map(s => `<option value="${s.id}" ${s.id === Number(ln.service_id) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>` : '';
+    const tasks = (p?.tasks || []).filter(t => t.active || t.id === Number(ln.task_id));
+    const kSel = tasks.length ? `<select class="wksvc" data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="task_id" aria-label="Task" ${locked ? 'disabled' : ''}><option value="">${esc(T('No task'))}</option>${tasks.map(t => `<option value="${t.id}" ${t.id === Number(ln.task_id) ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>` : '';
     const tSel = emp ? `<select data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="hour_type" aria-label="Code" ${locked ? 'disabled' : ''}>${HOUR_TYPES.map(([v, l]) => `<option value="${v}" ${v === ln.hour_type ? 'selected' : ''}>${l}</option>`).join('')}</select>` : '';
     let lt = 0;
     const cells = days.map((d, di) => {
@@ -1534,7 +1567,7 @@ async function weekView() {
       return `<div class="wkcw"><input class="inp num wkc ${dirty ? 'dirty' : ''} ${badc ? 'bad' : ''} ${dl ? 'lk' : ''}" type="number" min="0" max="${maxDay}" step="${inc}" data-di="${di}" data-cell="${esc(key)}" data-orig="${orig}" aria-label="${aria}" ${badc ? `aria-invalid="true" title="${esc(wkIncMsg(inc))}"` : ''} value="${esc(v)}" ${dl ? 'readonly' : ''}>${noteBtn}</div>`;
     }).join('');
     tot.all += lt;
-    return `<div class="wkrow wkg ${emp ? 'emp' : ''}"><div class="wkproj"><select data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="project_id" aria-label="Project" ${locked ? 'disabled' : ''}>${pOpts}</select>${sSel}</div>${tSel}${cells}
+    return `<div class="wkrow wkg ${emp ? 'emp' : ''}"><div class="wkproj"><select data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="project_id" aria-label="Project" ${locked ? 'disabled' : ''}>${pOpts}</select>${sSel}${kSel}</div>${tSel}${cells}
       <div class="mono wktot">${h1(lt)}</div><button class="icon" type="button" data-act="wk-del" data-lid="${esc(ln.lid)}" aria-label="Remove line" ${locked ? 'disabled' : ''}>${wkClose}</button></div>`;
   }).join('');
   const grid = `<div class="card wkcard"><div class="wkscroll"><div class="wkmin">
@@ -1577,7 +1610,7 @@ function wkRecalc() {
   const sub = root.querySelector('[data-act="wk-submit"]'); if (sub) sub.disabled = !(WK().cert && all > 0);
   const sd = root.querySelector('[data-act="wk-send-days"]'); if (sd) sd.disabled = !(WK().cert && WK().through);
 }
-const wkIdKey = ln => [ln.project_id, ln.service_id ?? '', ln.hour_type].join('|');
+const wkIdKey = ln => [ln.project_id, ln.service_id ?? '', ln.task_id ?? '', ln.hour_type].join('|');
 /* Hour increment (rules.increment): applied when typing, never rounded in silence. 0.25 -> 15 min, 0.5 -> 30, 1 -> 60, 0.1 -> 6, 0.05 -> 3, 0.01 -> no alignment. */
 const wkInc = () => Number(S.me?.rules?.increment) || 0.25;
 const wkMulti = (v, inc = wkInc()) => { const n = parseFloat(v); if (v === '' || v == null || !Number.isFinite(n) || n === 0) return true; const q = n / inc; return Math.abs(q - Math.round(q)) < 1e-6; };
@@ -1599,6 +1632,7 @@ function wkBadMsg(list) { return T('Fix the hours marked in red before saving. H
 function wkBody(e, ln, over = {}) {
   const b = { work_date: e.work_date, project_id: Number(ln.project_id), note: e.note || null };
   if (ln.service_id) b.service_id = Number(ln.service_id);
+  b.task_id = ln.task_id ? Number(ln.task_id) : null;
   if (S.cache.wkCtx.emp) b.hour_type = ln.hour_type;
   if (over.note !== undefined) b.note = over.note;
   if (over.hours !== undefined) b.hours = over.hours; else if (e.start_time) { b.start_time = e.start_time; b.end_time = e.end_time; } else b.hours = e.hours;
@@ -1674,7 +1708,7 @@ function wkPop(lid, d, anchor, editId) {
     <div><label>Note</label><input name="note" maxlength="1000" value="${esc(ed?.note || '')}"></div>
     <div class="fb"><button class="btn pri sm" type="submit">${ed ? 'Save entry' : 'Add entry'}</button><button class="btn ghost sm" type="button" data-act="pop-close">Close</button></div></form>`;
   const el = document.createElement('div'); el.className = 'wkpop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Entries for ' + dayLabel(d));
-  el.innerHTML = localizeHtml(`<div class="h"><b>${dayLabel(d)}</b><span class="muted">${esc(wkPL(p))}${svc && wkSvcs(p).length > 1 ? ' · ' + esc(svc.name) : ''}</span></div>${items ? `<ul>${items}</ul>` : ''}${form}`);
+  el.innerHTML = localizeHtml(`<div class="h"><b>${dayLabel(d)}</b><span class="muted">${esc(wkPL(p))}${svc && wkSvcs(p).length > 1 ? ' · ' + esc(svc.name) : ''}${ln.task_id ? ' · ' + esc(wkTaskName(p, ln.task_id)) : ''}</span></div>${items ? `<ul>${items}</ul>` : ''}${form}`);
   document.body.appendChild(el);
   if (anchor && anchor.isConnected) { const r = anchor.getBoundingClientRect(); wkPopPos = { left: r.left + scrollX, top: r.bottom + scrollY + 6 }; }
   const pos = wkPopPos || { left: 40, top: 120 };
@@ -1710,14 +1744,14 @@ Object.assign(actions, {
   'wk-go': el => { S.weekDate = el.dataset.end; render(); },
   'wk-add'() {
     const p = (S.cache.projects || []).find(x => x.active && wkSvcs(x).length); if (!p) throw new Error('There are no projects to add.');
-    const st = WK(); st.extra.push({ lid: 'n' + (++st.n), project_id: p.id, service_id: wkSvcs(p)[0].id, hour_type: 'reg' }); render();
+    const st = WK(); st.extra.push({ lid: 'n' + (++st.n), project_id: p.id, service_id: wkSvcs(p)[0].id, task_id: null, hour_type: 'reg' }); render();
   },
   async 'wk-copy'() {
     const prev = addDays(weekEnd(S.weekDate), -7); const r = await api(`/entries?from=${addDays(prev, -6)}&to=${prev}`);
     const seen = new Set(S.cache.wkLines.map(wkIdKey)); const st = WK(); let n = 0;
     for (const e of r.entries.filter(x => !x.running)) {
-      const t = e.hour_type || 'reg'; const k = [e.project_id, e.service_id ?? '', t].join('|'); if (seen.has(k)) continue; seen.add(k);
-      st.extra.push({ lid: 'n' + (++st.n), project_id: e.project_id, service_id: e.service_id ?? null, hour_type: t }); n++;
+      const t = e.hour_type || 'reg'; const k = [e.project_id, e.service_id ?? '', e.task_id ?? '', t].join('|'); if (seen.has(k)) continue; seen.add(k);
+      st.extra.push({ lid: 'n' + (++st.n), project_id: e.project_id, service_id: e.service_id ?? null, task_id: e.task_id ?? null, hour_type: t }); n++;
     }
     flash(n ? (n === 1 ? '1 line copied.' : n + ' lines copied.') : 'There are no new lines to copy from the previous week.', n ? 'ok' : 'warn'); render();
   },
@@ -1771,7 +1805,7 @@ Object.assign(actions, {
     const run = S.cache.wkRunning;
     if (run) {
       const p = (S.cache.projects || []).find(x => x.id === run.project_id) || run.project;
-      wkModalOpen(`<h2 id="clk-t">Clock</h2><p>Running on <b>${esc(wkPL(p))}${run.service && wkSvcs(p).length > 1 ? ' · ' + esc(run.service.name) : ''}</b> since <b class="mono">${esc(run.start_time)}</b></p>
+      wkModalOpen(`<h2 id="clk-t">Clock</h2><p>Running on <b>${esc(wkPL(p))}${run.service && wkSvcs(p).length > 1 ? ' · ' + esc(run.service.name) : ''}${run.task ? ' · ' + esc(run.task.name) : ''}</b> since <b class="mono">${esc(run.start_time)}</b></p>
         <div class="fb"><button class="btn pri" type="button" data-act="clock-stop">Stop</button><button class="btn ghost" type="button" data-act="wk-modal-close">Close</button></div>`);
       return;
     }
@@ -1779,6 +1813,7 @@ Object.assign(actions, {
     if (!ps.length) { wkModalOpen(`<h2 id="clk-t">Clock</h2><p class="muted">There are no projects where the clock can be used.</p><div class="fb"><button class="btn ghost" type="button" data-act="wk-modal-close">Close</button></div>`); return; }
     const m = wkModalOpen(`<h2 id="clk-t">Clock</h2><form data-form="clock"><div><label>Project</label><select name="project_id" data-act-change="clock-project">${ps.map(x => `<option value="${x.id}">${esc(wkPL(x))}</option>`).join('')}</select></div>
       <div><label>Service</label><select name="service_id"></select></div>
+      <div data-clk-task hidden><label>Task</label><select name="task_id"></select></div>
       <div class="fb"><button class="btn pri" type="submit">Start</button><button class="btn ghost" type="button" data-act="wk-modal-close">Cancel</button></div></form>`);
     const f = m.querySelector('form'); syncClockForm(f); f.elements.service_id.parentElement.hidden = f.elements.service_id.hidden;
   },
@@ -1795,13 +1830,13 @@ Object.assign(actions, {
   'clock-min'(el) { return clockStop(new Date(clockStart(S.cache.wkRunning).getTime() + Number(el.dataset.min) * 60000)); },
 });
 Object.assign(forms, {
-  async clock(f) { const o = formObj(f); if (!o.service_id) delete o.service_id; await api('/clock/start', { method: 'POST', body: o }); wkModalClose(); flash('Clock started.'); render(); },
+  async clock(f) { const o = formObj(f); if (!o.service_id) delete o.service_id; if (!o.task_id) delete o.task_id; await api('/clock/start', { method: 'POST', body: o }); wkModalClose(); flash('Clock started.'); render(); },
   async 'wk-pop'(f) {
     const o = formObj(f); const ln = S.cache.wkLines.find(l => l.lid === o.lid); if (!ln) return; const C = S.cache.wkCtx;
     const p = (S.cache.projects || []).find(x => x.id === Number(ln.project_id)); const mode = wkMode(p, ln.service_id);
     if (wkPopCheck(f)) return;   // minutes / hours not aligned to the increment: red, warned, nothing is sent
     const b = { work_date: o.d, project_id: Number(ln.project_id), note: o.note || null };
-    if (ln.service_id) b.service_id = Number(ln.service_id); if (C.emp) b.hour_type = ln.hour_type;
+    if (ln.service_id) b.service_id = Number(ln.service_id); b.task_id = ln.task_id ? Number(ln.task_id) : null; if (C.emp) b.hour_type = ln.hour_type;
     if (mode === 'from_to') { b.start_time = o.start_time; b.end_time = o.end_time; } else b.hours = o.hours;
     try {
       await wkApplyEdits(ln);
@@ -1841,8 +1876,9 @@ document.addEventListener('change', e => {
   const s = e.target.closest?.('[data-act-change="wk-line"]');
   if (s) {
     const ln = S.cache.wkLines.find(l => l.lid === s.dataset.lid); if (!ln) return; const ed = (WK().edits[ln.lid] ??= {});
-    if (s.dataset.fld === 'project_id') { const p = S.cache.projects.find(x => x.id === Number(s.value)); ed.project_id = p.id; ed.service_id = wkSvcs(p)[0]?.id ?? null; }
-    else if (s.dataset.fld === 'service_id') ed.service_id = Number(s.value); else ed.hour_type = s.value;
+    if (s.dataset.fld === 'project_id') { const p = S.cache.projects.find(x => x.id === Number(s.value)); ed.project_id = p.id; ed.service_id = wkSvcs(p)[0]?.id ?? null; ed.task_id = null; }
+    else if (s.dataset.fld === 'service_id') ed.service_id = Number(s.value);
+    else if (s.dataset.fld === 'task_id') ed.task_id = s.value ? Number(s.value) : null; else ed.hour_type = s.value;
     render();
   }
 });

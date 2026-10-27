@@ -43,6 +43,11 @@ class TimeEntry extends Model
         return $this->belongsTo(Service::class);
     }
 
+    public function task(): BelongsTo
+    {
+        return $this->belongsTo(Task::class);
+    }
+
     /** Tarifa de venta de esta entrada: la guardada al crearla (o, en datos viejos, la del servicio o el proyecto). */
     public function saleRate(): float
     {

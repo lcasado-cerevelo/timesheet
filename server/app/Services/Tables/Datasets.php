@@ -123,7 +123,7 @@ class Datasets
         $end = Week::ending($date, $u->company->rules()->weekStart());
         $start = Week::starting($end);
         $sheets = Timesheet::where('user_id', $u->id)->where('week_ending', $end)->orderBy('part')->get();
-        $entries = TimeEntry::with('project:id,code,name', 'service:id,name')->where('user_id', $u->id)->where('running', false)
+        $entries = TimeEntry::with('project:id,code,name', 'service:id,name', 'task:id,name')->where('user_id', $u->id)->where('running', false)
             ->whereBetween('work_date', [$start, $end])->orderBy('work_date')->orderBy('start_time')->get();
         $labels = ['draft' => __('Borrador'), 'submitted' => __('Enviada'), 'approved' => __('Aprobada'), 'returned' => __('Devuelta')];
         $status = $sheets->isEmpty() ? $labels['draft'] : $sheets->pluck('status')->unique()->map(fn ($x) => $labels[$x] ?? $x)->implode(' / ');
@@ -186,7 +186,7 @@ class Datasets
                 $external->restrictTo($s, $approver);
                 $entries = $s->entries;
             } else {
-                $entries = $s->entries()->with('project:id,code,name', 'service:id,name')->get();
+                $entries = $s->entries()->with('project:id,code,name', 'service:id,name', 'task:id,name')->get();
             }
             foreach ($entries->sortBy(fn ($e) => $e->work_date->toDateString().'|'.$e->start_time) as $e) {
                 $day = $e->work_date->toDateString();

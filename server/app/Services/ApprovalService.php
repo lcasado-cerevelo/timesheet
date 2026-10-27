@@ -65,9 +65,10 @@ class ApprovalService
     {
         $sheet->loadMissing('user');
         $entries ??= $sheet->entries()->get();
-        \Illuminate\Database\Eloquent\Collection::make($entries)->loadMissing('project.services', 'service');
-        $byPart = $entries->groupBy(fn ($e) => $e->project_id.'|'.(Parts::serviceName($e->project, $e->service) ?? ''))->map(fn ($rows) => [
-            'project' => Parts::label($rows->first()->project, $rows->first()->service),
+        \Illuminate\Database\Eloquent\Collection::make($entries)->loadMissing('project.services', 'service', 'task');
+        // Una línea por proyecto + servicio + tarea (la tarea es opcional): el aprobador lo ve todo junto, "P-1 · Planta · Terapia · Diseño".
+        $byPart = $entries->groupBy(fn ($e) => $e->project_id.'|'.(Parts::serviceName($e->project, $e->service) ?? '').'|'.($e->task_id ?? ''))->map(fn ($rows) => [
+            'project' => Parts::label($rows->first()->project, $rows->first()->service).($rows->first()->task ? ' · '.$rows->first()->task->name : ''),
             'hours' => (float) $rows->sum('hours'),
         ])->values()->all();
         return [

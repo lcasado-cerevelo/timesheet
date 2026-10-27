@@ -69,7 +69,7 @@ class ExternalApprovalService
     public function parts(Timesheet $sheet): Collection
     {
         $sheet->loadMissing('user');
-        $entries = $sheet->entries()->with('project.customer.approvers', 'project.services', 'service.externalApprovers')->get()
+        $entries = $sheet->entries()->with('project.customer.approvers', 'project.services', 'service.externalApprovers', 'task:id,name')->get()
             ->filter(fn ($e) => $e->project && (! $e->service || $e->service->needsExternal()));
         if ($entries->isEmpty()) {
             return collect();
@@ -269,9 +269,9 @@ class ExternalApprovalService
         $keys = $this->serviceKeysOf($s, $a);
         if ($keys === [] && ((int) $s->approver_id === $a->id || (int) $s->decided_by_approver_id === $a->id) && ! $s->externalApprovals()->exists()) {
             // Hoja vieja (sin partes registradas) que este aprobador ya tenía o decidió: ve todas las líneas, como antes.
-            $entries = $s->entries()->with('project:id,code,name', 'service:id,name')->get();
+            $entries = $s->entries()->with('project:id,code,name', 'service:id,name', 'task:id,name')->get();
         } else {
-            $entries = $s->entries()->with('project:id,code,name', 'service:id,name')
+            $entries = $s->entries()->with('project:id,code,name', 'service:id,name', 'task:id,name')
                 ->where(fn ($x) => $x->whereIn('service_id', array_filter($keys))->when(in_array(0, $keys, true), fn ($y) => $y->orWhereNull('service_id')))->get();
         }
         $s->setRelation('entries', $entries);

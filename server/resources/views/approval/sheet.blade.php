@@ -12,10 +12,10 @@
 </div>
 <div class="card">
 <h2>{{ __('Detalle por día') }}</h2>
-<table><tr><th>{{ __('Día') }}</th><th>{{ __('Proyecto') }}</th><th>{{ __('Desde–hasta') }}</th><th class="r">{{ __('Horas') }}</th></tr>
+<table><tr><th>{{ __('Día') }}</th><th>{{ __('Proyecto') }}</th><th>{{ __('Tarea') }}</th><th>{{ __('Desde–hasta') }}</th><th class="r">{{ __('Horas') }}</th></tr>
 @foreach($byDay as $day => $rows)@foreach($rows as $e)
-<tr><td>{{ $day }}</td><td>{{ $e->project->code }}@if($e->service) · {{ $e->service->name }}@endif</td><td>{{ $e->start_time ? substr($e->start_time,0,5).'–'.substr((string)$e->end_time,0,5) : __('Día completo') }}</td><td class="r">{{ number_format((float)$e->hours, 2) }}</td></tr>
-@if($e->note)<tr><td colspan="4" class="muted">{{ $e->note }}</td></tr>@endif
+<tr><td>{{ $day }}</td><td>{{ $e->project->code }}@if($e->service) · {{ $e->service->name }}@endif</td><td>{{ $e->task?->name ?? '' }}</td><td>{{ $e->start_time ? substr($e->start_time,0,5).'–'.substr((string)$e->end_time,0,5) : __('Día completo') }}</td><td class="r">{{ number_format((float)$e->hours, 2) }}</td></tr>
+@if($e->note)<tr><td colspan="5" class="muted">{{ $e->note }}</td></tr>@endif
 @endforeach @endforeach</table>
 </div>
 <div class="card">

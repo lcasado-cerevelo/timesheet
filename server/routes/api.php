@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\SheetController;
 use App\Http\Controllers\Api\SimpleCrudController;
+use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\TableExportController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
@@ -136,6 +137,8 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
 
         Route::post('/projects/{project}/services', [ServiceController::class, 'store']);
         Route::put('/services/{service}', [ServiceController::class, 'update']);
+        Route::post('/projects/{project}/tasks', [TaskController::class, 'store']);
+        Route::put('/tasks/{task}', [TaskController::class, 'update']);
 
         Route::get('/sheets-pending', [SheetController::class, 'pending']);
         Route::get('/review/sheets', [SheetController::class, 'review']);

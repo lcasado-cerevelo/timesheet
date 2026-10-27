@@ -6,6 +6,7 @@ use App\Support\Lang;
 use App\Exceptions\SheetLockedException;
 use App\Models\Project;
 use App\Models\Service;
+use App\Models\Task;
 use App\Models\TimeEntry;
 use App\Models\Timesheet;
 use App\Models\User;
@@ -50,6 +51,7 @@ class EntryService
 
             // El servicio manda: si permite las dos formas, decide la preferencia de la persona (la fija la gerencia).
             $service = $this->resolveService($project, $data['service_id'] ?? null, $entry);
+            $task = $this->resolveTask($project, $data, $entry);
             $mode = $service->effectiveMode($user);
             $inc = $rules->increment();
             $running = (bool) ($data['running'] ?? false);
@@ -152,6 +154,7 @@ class EntryService
                 'user_id' => $user->id,
                 'project_id' => $project->id,
                 'service_id' => $service->id,
+                'task_id' => $task?->id,
                 'timesheet_id' => $newSheet->id,
                 'work_date' => $date,
                 'start_time' => $start ? $start.':00' : null,
@@ -208,6 +211,25 @@ class EntryService
         $this->fail('service_id', $active->isEmpty() ? __('Ese proyecto no tiene servicios activos.') : __('Escoge el servicio.'));
     }
 
+    /**
+     * La tarea es opcional. Si viene, debe ser de este proyecto y estar activa (una entrada vieja puede conservar una desactivada).
+     * Si no viene la clave, la entrada conserva la que tenía (siempre que siga siendo del mismo proyecto); si viene vacía, se quita.
+     */
+    private function resolveTask(Project $project, array $data, ?TimeEntry $entry): ?Task
+    {
+        if (! array_key_exists('task_id', $data)) {
+            return $entry && $entry->task_id && (int) $entry->project_id === $project->id ? Task::find($entry->task_id) : null;
+        }
+        if (empty($data['task_id'])) {
+            return null;
+        }
+        $t = Task::where('project_id', $project->id)->find($data['task_id']);
+        if ($t && ($t->active || ($entry && (int) $entry->task_id === $t->id))) {
+            return $t;
+        }
+        $this->fail('task_id', __('Esa tarea no existe en este proyecto o está desactivada.'));
+    }
+
     public function delete(User $user, TimeEntry $entry, string $channel = 'app'): void
     {
         DB::transaction(function () use ($user, $entry, $channel) {
@@ -225,7 +247,7 @@ class EntryService
     }
 
     /** Reloj: empieza ahora. */
-    public function startClock(User $user, int $projectId, ?string $note = null, ?string $uuid = null, ?string $at = null, ?int $serviceId = null): TimeEntry
+    public function startClock(User $user, int $projectId, ?string $note = null, ?string $uuid = null, ?string $at = null, ?int $serviceId = null, ?int $taskId = null): TimeEntry
     {
         $tz = $user->company->timezone;
         $now = $at ? CarbonImmutable::parse($at)->setTimezone($tz) : CarbonImmutable::now($tz);
@@ -237,6 +259,7 @@ class EntryService
         return $this->save($user, [
             'project_id' => $projectId,
             'service_id' => $serviceId,
+            'task_id' => $taskId,
             'work_date' => $now->toDateString(),
             'start_time' => $start,
             'running' => true,
@@ -274,6 +297,7 @@ class EntryService
         return $this->save($user, [
             'project_id' => $entry->project_id,
             'service_id' => $entry->service_id,
+            'task_id' => $entry->task_id,
             'work_date' => $entry->work_date->toDateString(),
             'start_time' => substr($entry->start_time, 0, 5),
             'end_time' => $now->format('H:i'),
@@ -308,8 +332,10 @@ class EntryService
     private function describe(TimeEntry $e): string
     {
         $e->loadMissing('project');
+        // La relación puede ser la de antes de cambiar la tarea: se vuelve a leer si no coincide.
+        $task = $e->task_id ? ($e->relationLoaded('task') && $e->task?->id === (int) $e->task_id ? $e->task : Task::find($e->task_id)) : null;
         $span = $e->start_time ? substr($e->start_time, 0, 5).'-'.($e->end_time ? substr($e->end_time, 0, 5) : '…') : '';
-        return trim($e->work_date->toDateString().' '.$e->project->code.' '.$span).' '.number_format((float) $e->hours, 2).' h';
+        return trim($e->work_date->toDateString().' '.$e->project->code.($task ? ' / '.$task->name : '').' '.$span).' '.number_format((float) $e->hours, 2).' h';
     }
 
     /** Los minutos de las horas desde/hasta deben ser múltiplos del incremento (0.01 no exige alineación). */

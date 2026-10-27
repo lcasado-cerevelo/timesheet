@@ -14,7 +14,7 @@ class ProjectController extends Controller
     public function index(Request $request)
     {
         $u = $request->user();
-        $q = Project::with('customer.approvers', 'users:id,name', 'services.internalApprovers', 'services.externalApprovers')->where('company_id', $u->company_id)->orderBy('code');
+        $q = Project::with('customer.approvers', 'users:id,name', 'services.internalApprovers', 'services.externalApprovers', 'tasks')->where('company_id', $u->company_id)->orderBy('code');
         if (! $u->isOwner()) {
             $q->where('active', true)->whereHas('users', fn ($x) => $x->where('users.id', $u->id));
         }
@@ -29,7 +29,7 @@ class ProjectController extends Controller
         if (isset($data['user_ids'])) {
             $project->users()->sync($this->ownUsers($request, $data['user_ids']));
         }
-        return response()->json($this->payload($project->fresh(['customer.approvers', 'users', 'services.internalApprovers', 'services.externalApprovers']), true, $request->user()), 201);
+        return response()->json($this->payload($project->fresh(['customer.approvers', 'users', 'services.internalApprovers', 'services.externalApprovers', 'tasks']), true, $request->user()), 201);
     }
 
     public function update(Request $request, Project $project)
@@ -40,7 +40,7 @@ class ProjectController extends Controller
         if (isset($data['user_ids'])) {
             $project->users()->sync($this->ownUsers($request, $data['user_ids']));
         }
-        return response()->json($this->payload($project->fresh(['customer.approvers', 'users', 'services.internalApprovers', 'services.externalApprovers']), true, $request->user()));
+        return response()->json($this->payload($project->fresh(['customer.approvers', 'users', 'services.internalApprovers', 'services.externalApprovers', 'tasks']), true, $request->user()));
     }
 
     /** Un proyecto con horas no se borra; se desactiva. */
@@ -121,6 +121,9 @@ class ProjectController extends Controller
         // Servicios del proyecto: el dueño ve todos (también los desactivados); los demás solo los activos.
         $out['services'] = $p->services->when(! $owner, fn ($c) => $c->where('active', true))->values()
             ->map(fn ($s) => ServiceController::payload($s, $owner, $for, $p))->all();
+        // Tareas (opcionales): el dueño ve todas; los demás solo las activas.
+        $out['tasks'] = $p->tasks->when(! $owner, fn ($c) => $c->where('active', true))->values()
+            ->map(fn ($t) => TaskController::payload($t))->all();
         if ($owner) {
             $out += ['bill_rate' => $p->bill_rate, 'approver_id' => $p->approver_id, 'user_ids' => $p->users->pluck('id'),
                 'accountisi_id' => $p->accountisi_id,

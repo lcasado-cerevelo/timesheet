@@ -3,6 +3,11 @@
 window.I18N_ES = {
   exact: {
     // --- v2: edit approvers/clients, brand, sign-in rule ---
+    // --- tasks (optional, per project) ---
+    'Tasks': 'Tareas', 'Add task': 'Añadir tarea', 'Rename task': 'Renombrar tarea', 'Rename': 'Renombrar', 'Task': 'Tarea', 'No task': 'Sin tarea', 'No tasks yet.': 'Aún no hay tareas.',
+    'Task saved.': 'Tarea guardada.', 'Task deactivated.': 'Tarea desactivada.', 'Task activated.': 'Tarea activada.',
+    'Optional. A project may have no tasks. When it has some, the person can pick one on each line of the week and the approver sees it next to the project and the service.': 'Opcional. Un proyecto puede no tener tareas. Si las tiene, la persona puede escoger una en cada línea de la semana y el aprobador la ve junto al proyecto y al servicio.',
+    'Tasks are optional. Save the project, then open it with Edit to add the tasks people can pick when they log hours.': 'Las tareas son opcionales. Guarda el proyecto y ábrelo con Editar para añadir las tareas que la gente puede escoger al registrar horas.',
     'Approver saved.': 'Aprobador guardado.', 'Client saved.': 'Cliente guardado.',
     'A billable project needs a client. Non-billable (internal) projects can have none.': 'Un proyecto facturable necesita un cliente. Los no facturables (internos) pueden quedar sin cliente.',
     'Pick a client: a billable project needs one.': 'Escoge un cliente: un proyecto facturable lo necesita.',
