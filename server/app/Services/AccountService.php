@@ -63,12 +63,19 @@ class AccountService
     }
 
     /** Reseteo hecho por el dueño (o por la consola): contraseña anterior inservible, sesiones cerradas, enlace nuevo. Devuelve el enlace. */
-    public function reset(User $user, ?User $actor = null, array $data = []): string
+    public function reset(User $user, ?User $actor = null, array $data = [], bool $mailFailureIsFatal = true): string
     {
         $this->lockPassword($user);
         $this->revokeAccess($user);
         $plain = $this->issueToken($user, 'reset');
-        $this->mailLink($user, 'reset', $plain);
+        try {
+            $this->mailLink($user, 'reset', $plain);
+        } catch (\Throwable $e) {
+            if ($mailFailureIsFatal) {
+                throw $e;
+            }
+            report($e);
+        }
         $this->log('password_reset', $user, $actor, $data);
         return $this->linkFor($user, $plain);
     }

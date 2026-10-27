@@ -20,7 +20,7 @@ class ResetPasswordCommand extends Command
             $this->error(__('No existe una cuenta con ese correo.'));
             return self::FAILURE;
         }
-        $link = $accounts->reset($user, null, ['via' => 'cli']);
+        $link = $accounts->reset($user, null, ['via' => 'cli'], false);
         $this->info(__('Contraseña anulada y sesiones cerradas para :email.', ['email' => $user->email]));
         $this->line(__('Enlace para crear la contraseña nueva (un solo uso, vale :hours horas):', ['hours' => AccountService::RESET_HOURS]));
         $this->line($link);
