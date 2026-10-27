@@ -578,6 +578,8 @@ function brandPreview(f) {
   pv.querySelector('.ph').style.background = f.elements.color_primary.value; pv.querySelector('.pvbtn').style.background = f.elements.color_accent.value;
   const nm = pv.querySelector('.pvname'); if (nm) { nm.hidden = !f.elements.show_name.checked; pv.querySelector('.ph img').style.maxHeight = f.elements.show_name.checked ? '34px' : '52px'; }
 }
+/* The note icon of a cell shows only while the cell has hours (typed or saved). */
+function wkNoteVis(i) { const b = i.parentElement?.querySelector('.nbtn'); if (b && !i.readOnly) b.classList.toggle('off', !(parseFloat(i.value) > 0)); }
 document.addEventListener('input', e => { if (e.target.type === 'color' && e.target.form) brandPreview(e.target.form); });
 document.addEventListener('change', e => { if (e.target.name === 'show_name') brandPreview(e.target.form); });
 async function brandView() {
@@ -1514,7 +1516,7 @@ async function weekView() {
       const dl = locked || dayLocked(d);
       const hasNote = Object.prototype.hasOwnProperty.call(st.pnote, key) ? !!st.pnote[key] : es.some(e => e.note);
       const pendH = Object.prototype.hasOwnProperty.call(st.pend, key) ? parseFloat(st.pend[key]) || 0 : 0;
-      const noteBtn = (es.length || pendH > 0) ? `<button type="button" class="nbtn ${hasNote ? 'on' : ''}" data-act="${es.length > 1 ? 'cell-pop' : 'cell-note'}" data-lid="${esc(ln.lid)}" data-d="${d}" title="${hasNote ? 'Note' : 'Add a note'}" aria-label="${hasNote ? 'Note' : 'Add a note'}">${wkNote}</button>` : '';
+      const noteBtn = (es.length || pendH > 0 || !dl) ? `<button type="button" class="nbtn ${hasNote ? 'on' : ''} ${es.length || pendH > 0 ? '' : 'off'}" data-act="${es.length > 1 ? 'cell-pop' : 'cell-note'}" data-lid="${esc(ln.lid)}" data-d="${d}" title="${hasNote ? 'Note' : 'Add a note'}" aria-label="${hasNote ? 'Note' : 'Add a note'}">${wkNote}</button>` : '';
       if (mode === 'from_to' || es.length > 1) { lt += sum; tot.day[di] += sum; return `<div class="wkcw"><input class="inp num wkc ro ${dl ? 'lk' : ''}" readonly data-di="${di}" data-act="cell-pop" data-lid="${esc(ln.lid)}" data-d="${d}" title="Details" aria-label="${aria}" value="${sum ? h1(sum) : ''}">${noteBtn}</div>`; }
       const orig = es[0] ? Number(es[0].hours) : ''; const dirty = Object.prototype.hasOwnProperty.call(st.pend, key); const v = dirty ? st.pend[key] : orig;
       const n = parseFloat(v) || 0; lt += n; tot.day[di] += n;
@@ -1808,7 +1810,7 @@ Object.assign(forms, {
 document.addEventListener('input', e => { if (e.target.matches?.('[data-snote]')) { WK().snote = e.target.value; return; }
   
   const i = e.target.closest?.('[data-cell]'); if (!i) return;
-  i.classList.add('dirty'); WK().pend[i.dataset.cell] = i.value; wkRecalc();
+  i.classList.add('dirty'); WK().pend[i.dataset.cell] = i.value; wkRecalc(); wkNoteVis(i);
   const okv = wkMulti(i.value); i.classList.toggle('bad', !okv); if (okv) { i.removeAttribute('aria-invalid'); i.removeAttribute('title'); } else { i.setAttribute('aria-invalid', 'true'); i.title = T(wkIncMsg(wkInc())); }
 });
 document.addEventListener('change', e => {
@@ -1820,7 +1822,8 @@ document.addEventListener('change', e => {
       st.pend[i.dataset.cell] = i.value; i.classList.add('dirty', 'bad'); i.setAttribute('aria-invalid', 'true'); i.title = T(wkIncMsg(C.inc)); wkRecalc(); toast(wkIncMsg(C.inc), 'err'); return;
     }
     else { i.classList.remove('bad'); i.removeAttribute('aria-invalid'); i.removeAttribute('title'); i.value = v ? h1(v) : ''; wkRecalc(); const di = +i.dataset.di; const dsum = [...document.querySelectorAll(`.wk .wkc[data-di="${di}"]`)].reduce((a, x) => a + (parseFloat(x.value) || 0), 0); if (dsum > C.maxDay) bad = 'The most hours you can enter for one day is ' + C.maxDay + '.'; }
-    if (bad) { i.value = i.dataset.orig; delete st.pend[i.dataset.cell]; i.classList.remove('dirty', 'bad'); i.removeAttribute('aria-invalid'); wkRecalc(); toast(bad, 'err'); return; }
+    wkNoteVis(i);
+    if (bad) { i.value = i.dataset.orig; delete st.pend[i.dataset.cell]; i.classList.remove('dirty', 'bad'); i.removeAttribute('aria-invalid'); wkRecalc(); wkNoteVis(i); toast(bad, 'err'); return; }
     if (String(i.value) === String(i.dataset.orig)) { delete st.pend[i.dataset.cell]; i.classList.remove('dirty'); } else st.pend[i.dataset.cell] = i.value;
     return;
   }
