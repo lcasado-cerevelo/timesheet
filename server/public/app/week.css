@@ -20,9 +20,9 @@
 .lbl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
 .val{font-size:16px;font-weight:500}.val.mono{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace}
 .wkcard{padding:16px}
-.wkscroll{overflow-x:auto}.wkmin{min-width:960px}
-.wkg{display:grid;grid-template-columns:minmax(170px,2fr) repeat(7,64px) 72px 44px;gap:8px;align-items:center}
-.wkg.emp{grid-template-columns:minmax(170px,2fr) 96px repeat(7,64px) 72px 44px}
+.wkscroll{overflow-x:auto}.wkmin{min-width:1060px}
+.wkg{display:grid;grid-template-columns:minmax(150px,1.2fr) repeat(7,80px) 72px 44px;gap:8px;align-items:center}
+.wkg.emp{grid-template-columns:minmax(150px,1.2fr) 96px repeat(7,80px) 72px 44px}
 .wkh{align-items:end;padding-bottom:8px;border-bottom:2px solid var(--text)}
 .th{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:500}
 .th.c{text-align:center}.th.r{text-align:right}.th .dd{text-transform:none;letter-spacing:0}
@@ -81,8 +81,8 @@
 
 /* ===== notes per line and day, and sending a week in parts ===== */
 .wkcw{position:relative}
-.wkcw .inp{padding-right:20px}
-.nbtn{position:absolute;right:2px;bottom:2px;width:20px;height:20px;border:0;background:transparent;color:var(--muted);border-radius:4px;display:grid;place-items:center;cursor:pointer;padding:0;opacity:.5}
+.wkcw .inp{padding-right:24px}
+.nbtn{position:absolute;right:3px;top:50%;margin-top:-10px;width:20px;height:20px;border:0;background:transparent;color:var(--muted);border-radius:4px;display:grid;place-items:center;cursor:pointer;padding:0;opacity:.5}
 .nbtn:hover,.nbtn:focus-visible{opacity:1;color:var(--primary)}
 .nbtn.on{opacity:1;color:var(--primary);background:var(--tint)}
 .wkc.lk{background:#F1F3F5;color:var(--muted)}

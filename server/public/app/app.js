@@ -1514,7 +1514,7 @@ async function weekView() {
       const dl = locked || dayLocked(d);
       const hasNote = Object.prototype.hasOwnProperty.call(st.pnote, key) ? !!st.pnote[key] : es.some(e => e.note);
       const pendH = Object.prototype.hasOwnProperty.call(st.pend, key) ? parseFloat(st.pend[key]) || 0 : 0;
-      const noteBtn = (es.length || pendH > 0) ? `<button type="button" class="nbtn ${hasNote ? 'on' : ''}" data-act="${es.length > 1 ? 'cell-pop' : 'cell-note'}" data-lid="${esc(ln.lid)}" data-d="${d}" title="${hasNote ? 'Note' : 'Add a note'}" aria-label="${hasNote ? 'Note' : 'Add a note'}">${wkNote}</button>` : '';
+      const noteBtn = (es.length || pendH > 0 || !dl || hasNote) ? `<button type="button" class="nbtn ${hasNote ? 'on' : ''}" data-act="${es.length > 1 ? 'cell-pop' : 'cell-note'}" data-lid="${esc(ln.lid)}" data-d="${d}" title="${hasNote ? 'Note' : 'Add a note'}" aria-label="${hasNote ? 'Note' : 'Add a note'}">${wkNote}</button>` : '';
       if (mode === 'from_to' || es.length > 1) { lt += sum; tot.day[di] += sum; return `<div class="wkcw"><input class="inp num wkc ro ${dl ? 'lk' : ''}" readonly data-di="${di}" data-act="cell-pop" data-lid="${esc(ln.lid)}" data-d="${d}" title="Details" aria-label="${aria}" value="${sum ? h1(sum) : ''}">${noteBtn}</div>`; }
       const orig = es[0] ? Number(es[0].hours) : ''; const dirty = Object.prototype.hasOwnProperty.call(st.pend, key); const v = dirty ? st.pend[key] : orig;
       const n = parseFloat(v) || 0; lt += n; tot.day[di] += n;
@@ -1741,7 +1741,7 @@ Object.assign(actions, {
     const cur = Object.prototype.hasOwnProperty.call(st.pnote, key) ? st.pnote[key] : (es[0]?.note || ''); const fromSub = !Object.prototype.hasOwnProperty.call(st.pnote, key) && es[0]?.note_from_submission;
     const ro = S.cache.wkCtx.locked || S.cache.wkCtx.dayLocked(d);
     modalOpen({ title: 'Note', sub: `${dayLabel(d)} · ${wkPL(p)}`, size: 'sm', save: ro ? 'Close' : 'Save note',
-      body: `<div><label>Note</label><textarea name="note" rows="5" maxlength="1000" ${ro ? 'readonly' : ''}>${esc(cur)}</textarea>${fromSub ? `<small class="help">${T('Copied from the submission note. Edit it to make it this line\'s own.')}</small>` : ''}</div>`,
+      body: `<div><label>Note</label><textarea name="note" rows="5" maxlength="1000" ${ro ? 'readonly' : ''}>${esc(cur)}</textarea>${!es.length ? `<small class="help">${T('A note on a day without hours is saved together with the hours.')}</small>` : ''}${fromSub ? `<small class="help">${T('Copied from the submission note. Edit it to make it this line\'s own.')}</small>` : ''}</div>`,
       async onSubmit(m) {
         if (ro) return m.finish(null, async () => {});
         const v = String(formObj(m.form).note || '').trim(); st.pnote[key] = v; await m.finish(null, async () => render());

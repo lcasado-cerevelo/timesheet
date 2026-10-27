@@ -15,6 +15,7 @@
     'Waiting for a decision. If you change it, the approver gets a notice that it changed.': 'Esperando una decisión. Si la cambias, el aprobador recibe un aviso de que cambió.',
     'Returned for correction:': 'Devuelta para corregir:',
     'Name': 'Nombre', 'Worker type': 'Tipo de trabajador', 'Approver': 'Aprobador', 'Employee': 'Empleado', 'Consultant': 'Consultor',
+    'A note on a day without hours is saved together with the hours.': 'Una nota en un día sin horas se guarda junto con las horas.',
     'Week ending (Sunday)': 'Semana que termina (domingo)',
     'You have 1 past week with no timesheet. Start with the oldest:': 'Tienes 1 semana pasada sin hoja de horas. Empieza por la más antigua:',
     // clock
