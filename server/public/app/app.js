@@ -82,6 +82,12 @@ function filterBar(view, defs) {
   return `<div class="fbar">${defs.map(d => `<div><label>${d.label}</label>${ctl(d)}</div>`).join('')}
     <button class="btn ghost sm" type="button" data-act="f-clear" data-view="${view}" ${on ? '' : 'disabled'}>Clear filters</button></div>`;
 }
+/** Notes of a timesheet for the approver: the submission note, then each line's note with its day, project and service. */
+function aprNotes(entries, sheet) {
+  const items = (entries || []).filter(e => e.note).map(e => `<li><b>${esc(dayLabel(e.work_date))}</b> · ${esc([e.project?.code, e.service?.name].filter(Boolean).join(' · '))}<br><span style="white-space:pre-wrap">${esc(e.note)}</span></li>`).join('');
+  const sub = sheet?.submission_note ? `<p style="margin:0 0 6px"><b>${T('Submission note')}:</b> <span style="white-space:pre-wrap">${esc(sheet.submission_note)}</span></p>` : '';
+  return items || sub ? `<div class="aprnotes" style="margin:10px 0"><b>${T('Notes')}</b>${sub}${items ? `<ul style="margin:6px 0 0;padding-left:18px">${items}</ul>` : ''}</div>` : '';
+}
 /** Buttons to export any table to CSV, Excel or PDF (Excel and PDF carry the company logo and colors). */
 function exportBar(ds, q = {}) {
   const j = esc(JSON.stringify(q));
@@ -371,7 +377,7 @@ async function approverView() {
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
       ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
       <p class="row" style="margin:10px 0"><b>Total hours</b><span class="spacer"></span><b>${h1(sel.total_hours)}</b></p>
-      ${(d.entries || []).some(e => e.note) ? `<p class="muted" style="white-space:pre-wrap">${esc(d.entries.filter(e => e.note).map(e => dayLabel(e.work_date) + ': ' + e.note).join('\n'))}</p>` : ''}${acts}</div>`;
+      ${aprNotes(d?.entries, sel)}${acts}</div>`;
   }
   const pills = APR_VIEWS.map(([k, l]) => `<button type="button" class="${k === st ? 'on' : ''}" data-act="apr-status" data-s="${k}">${l}${k === st ? ` (${all.length})` : ''}</button>`).join('');
   const dateOf = s => esc(String((s.status === 'submitted' ? s.submitted_at : s.decided_at || s.submitted_at) || '').slice(0, 10));
@@ -413,7 +419,9 @@ async function weeksView() {
       <td>${esc(s?.approved_by || '—')}</td><td>${esc(s?.invoice_number || '—')}</td>
       <td class="r"><button class="btn ${open[1]} sm" data-act="open-week" data-end="${end}">${open[0]}</button></td></tr>`;
   }).join('');
+  const xr = { from: addDays(cur, -7 * Math.max(back, 52)), to: cur };
   return `<h1>All weeks</h1><p class="sub">Every week is listed, including the ones you have not filled in yet. Open any of them to fill it in or review it.</p>
+    <div style="text-align:right;margin-bottom:8px">${exportBar('sheets', xr)}</div>
     <div class="card"><table><tr><th>Week ending</th><th class="r">Hours</th><th>Status</th><th>Approved by</th><th>Invoice</th><th class="r">Action</th></tr>${rows}</table></div>`;
 }
 
@@ -454,7 +462,7 @@ async function approvalsView() {
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
       ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
       <p class="row" style="margin:10px 0"><b>Total hours</b><span class="spacer"></span><b>${h1(sel.total_hours)}</b></p>
-      ${d.entries.some(e => e.note) ? `<p class="muted" style="white-space:pre-wrap">${esc(d.entries.filter(e => e.note).map(e => dayLabel(e.work_date) + ': ' + e.note).join('\n'))}</p>` : ''}
+      ${aprNotes(d?.entries, sel)}
       <label>Comment (required when returning)</label><textarea id="ap-comment" rows="3" placeholder="Example: Thursday should be OT, please fix and resubmit."></textarea>
       <p class="row" style="margin-bottom:0"><button class="btn" data-act="approve" data-id="${sel.id}" data-v="${sel.version}">Approve</button>
       <button class="btn danger" data-act="return" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></p></div>`;
@@ -479,6 +487,7 @@ async function invoicesView() {
     && (!F.from || i.issued_on >= F.from) && (!F.to || i.issued_on <= F.to));
   const st = { issued: 'Issued', sent: 'Sent', paid: 'Paid' };
   return `<h1>Invoices</h1><p class="sub">Pick the approved weeks to bill. Rate, deductions and totals are calculated for you.</p>
+    <div style="text-align:right;margin-bottom:8px">${exportBar('invoices', activeF('invoices'))}</div>
     ${canInvoice ? `<div class="card"><h2>Create an invoice</h2><form data-form="cinv" class="fbar" style="margin:0"><div><label>From</label><input type="date" name="from" value="${addDays(today(), -30)}"></div>
     <div><label>To</label><input type="date" name="to" value="${today()}"></div>
     ${owner ? `<div><label>Consultant</label><select name="user_id"><option value="">Me</option>${people.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>` : ''}
@@ -999,7 +1008,7 @@ async function reviewScreen() {
       <div class="scrollx"><div style="min-width:440px"><div class="hd cols-det"><div class="th">Line</div>${days.map(x => `<div class="th c">${dow(parse(x).getDay())}</div>`).join('')}<div class="th r">Total</div></div>
       ${[...lines.values()].map(r => `<div class="rw cols-det"><div style="font-size:14px">${esc([r.p?.code, r.p?.name, r.s?.name].filter(Boolean).join(' · '))}</div>${days.map(x => cell(r.by[x])).join('')}<div class="mono" style="text-align:right;font-weight:500">${h1(Object.values(r.by).reduce((a, v) => a + v, 0))}</div></div>`).join('')}
       <div class="tot"><span>Total hours</span><span class="mono">${h1(sel.total_hours)}</span></div></div></div>
-      ${(d?.entries || []).some(e => e.note) ? `<p class="muted" style="white-space:pre-wrap;margin:0">${esc(d.entries.filter(e => e.note).map(e => dayLabel(e.work_date) + ': ' + e.note).join('\n'))}</p>` : ''}${acts}</div>`;
+      ${aprNotes(d?.entries, d || sel)}${acts}</div>`;
   }
   const pillBtn = ([k, l]) => `<button type="button" class="pill ${k === R.status ? 'on' : ''}" aria-pressed="${k === R.status}" data-act="rv-status" data-s="${k}">${l} (${cnt[k] ?? 0})</button>`;
   const per = ([k, l]) => `<button type="button" class="pill ${R.period === k ? 'on' : ''}" data-act="rv-period" data-p="${k}" ${pend ? 'disabled' : ''}>${l}</button>`;
@@ -1011,6 +1020,7 @@ async function reviewScreen() {
       <label class="flbl" style="flex:1 1 140px">Type<select data-rv="type">${optHtml('', 'All types', R.type)}${optHtml('employee', 'Employees', R.type)}${optHtml('consultant', 'Contractors', R.type)}</select></label>
       <label class="flbl" style="flex:1 1 150px">Week ending from<input type="date" data-rv="from" ${pend ? 'disabled' : ''} value="${esc(R.from)}"></label>
       <label class="flbl" style="flex:1 1 150px">to<input type="date" data-rv="to" ${pend ? 'disabled' : ''} value="${esc(R.to)}"></label>
+      <div style="flex:1 1 100%;text-align:right">${exportBar('sheets', { from: pend || !R.from ? addDays(today(), -365) : R.from, to: pend || !R.to ? today() : R.to, ...(R.q ? { q: R.q } : {}), ...({ pending: { status: 'submitted' }, approved: { status: 'approved' }, returned: { status: 'returned' } }[R.status] || {}) })}</div>
       <div class="pillrow" style="flex:1 1 100%"><span class="note">Quick period:</span>${[['4w', 'Last 4 weeks'], ['3m', 'Last 3 months'], ['all', 'All time']].map(per).join('')}</div></div>
       <p class="note" style="margin:0 0 8px">Pending always shows everything waiting for you, whatever the dates. The period applies to Approved, Returned and All.</p>
       <div class="revscroll"><div style="min-width:620px"><div class="hd cols-rev" style="padding:0 8px 8px"><div class="th">Person</div><div class="th">Week ending</div><div class="th">Type</div><div class="th">Project</div><div class="th r">Hours</div><div class="th">Status</div></div>
@@ -1484,7 +1494,7 @@ async function weekView() {
   const nav = `<div class="card wknav"><button class="btn ghost" data-act="wk" data-n="-7" aria-label="Previous week (older)">←</button>
     <label class="wkpick">Week ending<select data-act-change="wk-pick">${picker}</select></label>
     <button class="btn ghost" data-act="wk" data-n="7" ${end >= cur ? 'disabled' : ''} aria-label="Next week (newer)">→</button>
-    <button class="btn ghost" data-act="wk-now" ${end === cur ? 'disabled' : ''}>Current week</button></div>`;
+    <button class="btn ghost" data-act="wk-now" ${end === cur ? 'disabled' : ''}>Current week</button>${exportBar('week', { date: end })}</div>`;
 
   // C. past weeks with no timesheet (or no hours), oldest first
   const byEnd = weekAgg(mine); const back = Number(R.weeks_back ?? 8); const miss = [];

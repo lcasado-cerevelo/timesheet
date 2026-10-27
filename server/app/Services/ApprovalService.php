@@ -76,6 +76,7 @@ class ApprovalService
             'total_hours' => round((float) $entries->sum('hours'), 2),
             'projects' => $byPart,
             'late' => (bool) $sheet->late,
+            'submission_note' => $sheet->submission_note,
             'warnings' => $sheet->warnings(),
         ];
     }

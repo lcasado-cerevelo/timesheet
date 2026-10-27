@@ -20,7 +20,7 @@ class Datasets
 {
     /** Quién puede pedir cada tabla: 'any' o 'owner'. */
     public const ACCESS = [
-        'report' => 'any', 'week' => 'any', 'invoices' => 'any',
+        'report' => 'any', 'week' => 'any', 'invoices' => 'any', 'sheets' => 'any',
         'pending' => 'owner', 'projects' => 'owner', 'people' => 'owner', 'approvers' => 'owner', 'customers' => 'owner',
     ];
 
@@ -35,6 +35,7 @@ class Datasets
         return match ($dataset) {
             'report' => $this->report($user, $p),
             'week' => $this->week($user, $p),
+            'sheets' => $this->sheets($user, $p),
             'invoices' => $this->invoices($user, $p),
             'pending' => $this->pending($user, $p),
             'projects' => $this->projects($user, $p),
@@ -112,22 +113,105 @@ class Datasets
         ];
     }
 
+    /**
+     * Tu hoja de la semana tal como se ve en pantalla: una fila por línea (proyecto y servicio), una columna por día, el total y,
+     * al final de cada línea, sus notas (con el día de cada una). Incluye todas las partes de la semana.
+     */
     private function week(User $u, array $p): array
     {
         $date = validator($p, ['date' => 'required|date_format:Y-m-d'])->validate()['date'];
         $end = Week::ending($date, $u->company->rules()->weekStart());
         $start = Week::starting($end);
-        $sheet = Timesheet::where('user_id', $u->id)->where('week_ending', $end)->orderByDesc('part')->first();
-        $entries = TimeEntry::with('project')->where('user_id', $u->id)->where('running', false)
+        $sheets = Timesheet::where('user_id', $u->id)->where('week_ending', $end)->orderBy('part')->get();
+        $entries = TimeEntry::with('project:id,code,name', 'service:id,name')->where('user_id', $u->id)->where('running', false)
             ->whereBetween('work_date', [$start, $end])->orderBy('work_date')->orderBy('start_time')->get();
-        $status = ['draft' => __('Borrador'), 'submitted' => __('Enviada'), 'approved' => __('Aprobada'), 'returned' => __('Devuelta')][$sheet->status ?? 'draft'] ?? __('Borrador');
+        $labels = ['draft' => __('Borrador'), 'submitted' => __('Enviada'), 'approved' => __('Aprobada'), 'returned' => __('Devuelta')];
+        $status = $sheets->isEmpty() ? $labels['draft'] : $sheets->pluck('status')->unique()->map(fn ($x) => $labels[$x] ?? $x)->implode(' / ');
+        $days = [];
+        for ($d = \Carbon\CarbonImmutable::parse($start); $d->toDateString() <= $end; $d = $d->addDay()) {
+            $days[] = $d->toDateString();
+        }
+        $short = fn (string $d) => mb_convert_case(rtrim(\Carbon\CarbonImmutable::parse($d)->locale(app()->getLocale())->isoFormat('ddd'), '.'), MB_CASE_TITLE).' '.\Carbon\CarbonImmutable::parse($d)->format('j/n');
+        $lines = $entries->groupBy(fn ($e) => $e->project_id.'|'.($e->service_id ?? 0));
+        $rows = [];
+        $dayTotals = array_fill(0, 7, 0.0);
+        foreach ($lines as $group) {
+            $first = $group->first();
+            $cells = [];
+            $notes = [];
+            foreach ($days as $i => $d) {
+                $of = $group->filter(fn ($e) => $e->work_date->toDateString() === $d);
+                $h = round((float) $of->sum('hours'), 2);
+                $cells[] = $h > 0 ? $h : '';
+                $dayTotals[$i] += $h;
+                foreach ($of->filter(fn ($e) => trim((string) $e->note) !== '') as $e) {
+                    $notes[] = $short($d).': '.trim($e->note);
+                }
+            }
+            $rows[] = array_merge([$first->project->code.' · '.$first->project->name, (string) ($first->service?->name ?? '')], $cells,
+                [round((float) $group->sum('hours'), 2), implode("\n", $notes)]);
+        }
+        $columns = array_merge([['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Servicio'), 't' => 'text']],
+            array_map(fn ($d) => ['h' => $short($d), 't' => 'hours'], $days), [['h' => __('Total'), 't' => 'hours'], ['h' => __('Notas'), 't' => 'text']]);
         return [
             'title' => __('Hoja de la semana'),
             'subtitle' => __(':name · semana :start a :end · :status', ['name' => $u->name, 'start' => $start, 'end' => $end, 'status' => $status]),
-            'columns' => [['h' => __('Fecha'), 't' => 'date'], ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Desde'), 't' => 'text'], ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Nota'), 't' => 'text']],
-            'rows' => $entries->map(fn ($e) => [$e->work_date->toDateString(), $e->project->code.' · '.$e->project->name,
-                $e->start_time ? substr($e->start_time, 0, 5) : '', $e->end_time ? substr($e->end_time, 0, 5) : '', (float) $e->hours, (string) $e->note])->all(),
-            'total' => [__('Total'), '', '', '', round((float) $entries->sum('hours'), 2), ''],
+            'columns' => $columns,
+            'rows' => $rows,
+            'total' => array_merge([__('Total del día'), ''], array_map(fn ($h) => round($h, 2), $dayTotals), [round(array_sum($dayTotals), 2), '']),
+        ];
+    }
+
+    /**
+     * Las hojas del periodo, una fila por día y línea (con su parte, proyecto, servicio y nota). El dueño ve las de toda la compañía,
+     * un aprobador con cuenta solo las líneas de sus servicios y cada persona las suyas.
+     */
+    private function sheets(User $u, array $p = []): array
+    {
+        $f = validator($p, ['from' => 'required|date_format:Y-m-d', 'to' => 'required|date_format:Y-m-d|after_or_equal:from', 'q' => 'nullable|string|max:100',
+            'user_id' => 'nullable|integer', 'project_id' => 'nullable|integer', 'status' => 'nullable|in:draft,submitted,approved,returned'])->validate();
+        $external = app(\App\Services\ExternalApprovalService::class);
+        $approver = $u->isApprover() ? \App\Models\Approver::find($u->approver_profile_id) : null;
+        $q = Timesheet::with('user:id,name')->where('company_id', $u->company_id)
+            ->when($u->isApprover(), fn ($x) => $x->whereIn('id', $approver ? $external->sheetIdsFor($approver) : []))
+            ->when(! $u->isApprover() && ! $u->isOwner(), fn ($x) => $x->where('user_id', $u->id))
+            ->when($u->isOwner() && ! empty($f['user_id']), fn ($x) => $x->where('user_id', $f['user_id']))
+            ->when(! empty($f['status']), fn ($x) => $x->where('status', $f['status']))
+            ->where('week_ending', '>=', $f['from'])->where('week_ending', '<=', \Carbon\CarbonImmutable::parse($f['to'])->addDays(6)->toDateString())
+            ->orderBy('week_ending')->orderBy('user_id')->orderBy('part')->orderBy('id');
+        $status = ['draft' => __('Borrador'), 'submitted' => __('Enviada'), 'approved' => __('Aprobada'), 'returned' => __('Devuelta')];
+        $rows = [];
+        foreach ($q->limit(3000)->get() as $s) {
+            if ($approver) {
+                $external->restrictTo($s, $approver);
+                $entries = $s->entries;
+            } else {
+                $entries = $s->entries()->with('project:id,code,name', 'service:id,name')->get();
+            }
+            foreach ($entries->sortBy(fn ($e) => $e->work_date->toDateString().'|'.$e->start_time) as $e) {
+                $day = $e->work_date->toDateString();
+                if ($day < $f['from'] || $day > $f['to'] || (! empty($f['project_id']) && (int) $e->project_id !== (int) $f['project_id'])) {
+                    continue;
+                }
+                $row = [$s->user->name, $s->week_ending->toDateString(), $s->part ? (string) $s->part : '', $status[$s->status] ?? $s->status,
+                    $e->project->code.' · '.$e->project->name, (string) ($e->service?->name ?? ''), $day,
+                    $e->start_time ? substr($e->start_time, 0, 5) : '', $e->end_time ? substr($e->end_time, 0, 5) : '', (float) $e->hours, (string) $e->note];
+                if ($this->matches($f['q'] ?? null, [$row[0], $row[4], $row[5], $row[10]])) {
+                    $rows[] = $row;
+                }
+            }
+        }
+        return [
+            'title' => __('Hojas de tiempo'),
+            'subtitle' => __(':count línea(s) · del :from al :to', ['count' => count($rows), 'from' => $f['from'], 'to' => $f['to']]).$this->describe([$this->txt($f),
+                ! empty($f['status']) ? __('estado :status', ['status' => $status[$f['status']]]) : null,
+                $u->isOwner() && ! empty($f['user_id']) ? __('persona :name', ['name' => User::find($f['user_id'])?->name ?? '#'.$f['user_id']]) : null,
+                ! empty($f['project_id']) ? __('proyecto :name', ['name' => Project::find($f['project_id'])?->code ?? '#'.$f['project_id']]) : null]),
+            'columns' => [['h' => __('Persona'), 't' => 'text'], ['h' => __('Semana que termina'), 't' => 'date'], ['h' => __('Parte'), 't' => 'text'], ['h' => __('Estado'), 't' => 'text'],
+                ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Servicio'), 't' => 'text'], ['h' => __('Fecha'), 't' => 'date'], ['h' => __('Desde'), 't' => 'text'],
+                ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Nota'), 't' => 'text']],
+            'rows' => $rows,
+            'total' => [__('Total'), '', '', '', '', '', '', '', '', round(array_sum(array_column($rows, 9)), 2), ''],
         ];
     }
 

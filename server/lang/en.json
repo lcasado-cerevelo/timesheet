@@ -363,5 +363,13 @@
     "Usa \"on\" u \"off\".": "Use \"on\" or \"off\".",
     "Código por correo del dueño y la oficina: :state (:n compañía(s)).": "Emailed code for the owner and the office: :state (:n company(ies)).",
     "activado": "on",
-    "apagado": "off"
+    "apagado": "off",
+    "Hojas de tiempo": "Timesheets",
+    "Total del día": "Day total",
+    ":count línea(s) · del :from al :to": ":count line(s) · from :from to :to",
+    "Notas": "Notes",
+    "Nota del envío": "Submission note",
+    "Parte": "Part",
+    "Servicio": "Service",
+    "proyecto :name": "project :name"
 }

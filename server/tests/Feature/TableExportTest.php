@@ -48,6 +48,7 @@ class TableExportTest extends TestCase
         return [
             ['report', ['from' => '2026-10-01', 'to' => '2026-10-31', 'group' => 'project']],
             ['week', ['date' => '2026-10-20']],
+            ['sheets', ['from' => '2026-10-19', 'to' => '2026-10-25']],
             ['invoices', []],
             ['pending', []], ['projects', []], ['people', []], ['approvers', []], ['customers', []],
         ];
@@ -79,11 +80,18 @@ class TableExportTest extends TestCase
         $this->hours();
         Sanctum::actingAs($this->worker);
         $csv = $this->call('GET', '/api/tables/week/export', ['date' => '2026-10-20', 'format' => 'csv'])->assertOk()->getContent();
-        $this->assertStringStartsWith("\xEF\xBB\xBF".'Fecha,Proyecto,Desde,Hasta,Horas,Nota', $csv);
-        $this->assertStringContainsString('2026-10-20,"P-1 · Soporte",08:00,16:00,8.00', $csv);
-        $this->assertStringContainsString("'=HYPERLINK", $csv);                 // no se ejecuta como fórmula en Excel
-        $this->assertStringContainsString('Total,,,,10.50,', $csv);             // 8 + 2.5
-        $this->assertStringNotContainsString("\n=HYPERLINK", $csv);
+        // La hoja sale como en pantalla: una fila por línea, una columna por día, el total y las notas con su día.
+        $this->assertStringStartsWith("\xEF\xBB\xBF".'Proyecto,Servicio,"Lun 19/10","Mar 20/10"', $csv);
+        $this->assertStringContainsString('"P-1 · Soporte",', $csv);
+        $this->assertStringContainsString('Lun 19/10: Normal', $csv);
+        $this->assertStringContainsString('Mar 20/10: =HYPERLINK', $csv);       // la nota trae su día: no empieza con "="
+        $this->assertMatchesRegularExpression('/Total[^
+]*,2\.50,8\.00,0\.00,0\.00,0\.00,0\.00,0\.00,10\.50,/', $csv);   // total de cada día
+        $this->assertStringContainsString(',10.50,', $csv);                      // 8 + 2.5
+        // Una nota que empieza con "=" no se ejecuta como fórmula en la tabla de hojas.
+        $sheets = $this->call('GET', '/api/tables/sheets/export', ['from' => '2026-10-19', 'to' => '2026-10-25', 'format' => 'csv'])->assertOk()->getContent();
+        $this->assertStringContainsString("'=HYPERLINK", $sheets);
+        $this->assertStringNotContainsString("\n=HYPERLINK", $sheets);
     }
 
     public function test_excel_has_the_company_color_and_logo(): void
@@ -101,7 +109,7 @@ class TableExportTest extends TestCase
         $this->assertSame('Hoja de la semana', $sheet->getCell('A3')->getValue());
         $headRow = null;
         for ($i = 1; $i <= 10; $i++) {
-            if ($sheet->getCell('A'.$i)->getValue() === 'Fecha') {
+            if ($sheet->getCell('A'.$i)->getValue() === 'Proyecto') {
                 $headRow = $i;
             }
         }
@@ -111,8 +119,8 @@ class TableExportTest extends TestCase
         // La nota que empieza con "=" queda como texto, no como fórmula.
         $found = false;
         for ($i = $headRow + 1; $i <= $sheet->getHighestRow(); $i++) {
-            $c = $sheet->getCell('F'.$i);
-            if (str_starts_with((string) $c->getValue(), '=HYPERLINK')) {
+            $c = $sheet->getCell('K'.$i);
+            if (str_contains((string) $c->getValue(), '=HYPERLINK')) {
                 $found = true;
                 $this->assertSame(\PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING, $c->getDataType());
             }

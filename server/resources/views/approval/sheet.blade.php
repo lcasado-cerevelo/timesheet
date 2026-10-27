@@ -6,6 +6,7 @@
 <p>{!! __('Semana que termina el <strong>:week</strong> · Total <strong>:hours h</strong>', ['week' => e($summary['week_ending']), 'hours' => number_format($summary['total_hours'], 2)]) !!}</p>
 @if($summary['late'])<div class="msg warn">{{ __('Esta hoja se envió después de la fecha límite.') }}</div>@endif
 @foreach($summary['warnings'] as $w)<div class="msg warn">{{ $w['message'] }}</div>@endforeach
+@if(!empty($summary['submission_note']))<p><strong>{{ __('Nota del envío') }}:</strong> {{ $summary['submission_note'] }}</p>@endif
 <h2>{{ __('Por proyecto') }}</h2>
 <table>@foreach($summary['projects'] as $p)<tr><td>{{ $p['project'] }}</td><td class="r">{{ number_format($p['hours'], 2) }} h</td></tr>@endforeach</table>
 </div>
@@ -13,7 +14,7 @@
 <h2>{{ __('Detalle por día') }}</h2>
 <table><tr><th>{{ __('Día') }}</th><th>{{ __('Proyecto') }}</th><th>{{ __('Desde–hasta') }}</th><th class="r">{{ __('Horas') }}</th></tr>
 @foreach($byDay as $day => $rows)@foreach($rows as $e)
-<tr><td>{{ $day }}</td><td>{{ $e->project->code }}</td><td>{{ $e->start_time ? substr($e->start_time,0,5).'–'.substr((string)$e->end_time,0,5) : __('Día completo') }}</td><td class="r">{{ number_format((float)$e->hours, 2) }}</td></tr>
+<tr><td>{{ $day }}</td><td>{{ $e->project->code }}@if($e->service) · {{ $e->service->name }}@endif</td><td>{{ $e->start_time ? substr($e->start_time,0,5).'–'.substr((string)$e->end_time,0,5) : __('Día completo') }}</td><td class="r">{{ number_format((float)$e->hours, 2) }}</td></tr>
 @if($e->note)<tr><td colspan="4" class="muted">{{ $e->note }}</td></tr>@endif
 @endforeach @endforeach</table>
 </div>

@@ -77,7 +77,7 @@
   );
   Object.assign(d.exact, {
     // notes and sending in parts
-    'Add a note': 'Agregar una nota', 'Save note': 'Guardar nota', 'Submission note': 'Nota del envío',
+    'Add a note': 'Agregar una nota', 'Save note': 'Guardar nota', 'Submission note': 'Nota del envío', 'Notes': 'Notas',
     'Applied to every line that has no note': 'Se aplica a cada línea que no tenga nota',
     'Some services require a note on every line: write one in each line or here.': 'Algunos servicios exigen una nota en cada línea: escribe una en cada línea o aquí.',
     'Check "send through here" in a day header first.': 'Marca primero "enviar hasta aquí" en el encabezado de un día.',
