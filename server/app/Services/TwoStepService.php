@@ -24,6 +24,9 @@ class TwoStepService
      */
     public function required(User $user): bool
     {
+        if (config('app.demo')) {
+            return false;   // demostración: nadie recibe códigos por correo
+        }
         if ($user->isApprover()) {
             return true;
         }

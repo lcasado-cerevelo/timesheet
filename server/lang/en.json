@@ -63,7 +63,6 @@
     "De:": "From:",
     "Demasiados intentos fallidos. Espera :min minuto(s) y vuelve a intentarlo.": "Too many failed attempts. Wait :min minute(s) and try again.",
     "Demasiados intentos. Vuelve a iniciar sesión.": "Too many attempts. Sign in again.",
-    "Demo lista. Dueño: :owner · Consultora: :consultant · Empleado: :employee · clave :password": "Demo ready. Owner: :owner · Consultant: :consultant · Employee: :employee · password :password",
     "Descripción": "Description",
     "Desde": "From",
     "Desde / hasta": "From / to",
@@ -191,7 +190,6 @@
     "IVU": "IVU",
     "IVU retenido": "IVU withheld",
     "IVU retenido (:pct%)": "IVU withheld (:pct%)",
-    "La compañía demo ya existe.": "The demo company already exists.",
     "La contraseña actual no es correcta.": "The current password is not correct.",
     "La contraseña debe tener al menos 10 caracteres.": "The password must be at least 10 characters long.",
     "La contraseña no puede ser igual al correo.": "The password cannot be the same as the email.",
@@ -252,7 +250,7 @@
     "Pide código extra": "Requires extra code",
     "Por proyecto": "By project",
     "Por seguridad, enviamos un código de 6 dígitos al correo :email. Escríbelo aquí para continuar.": "For security, we send a 6-digit code to :email. Enter it here to continue.",
-    "Por seguridad, enviamos un código de 6 dígitos al correo del aprobador. Escríbelo aquí para continuar.":"For security, we send a 6-digit code to the approver's email. Enter it here to continue.",
+    "Por seguridad, enviamos un código de 6 dígitos al correo del aprobador. Escríbelo aquí para continuar.": "For security, we send a 6-digit code to the approver's email. Enter it here to continue.",
     "Primero guarda la configuración.": "Save the configuration first.",
     "Proyecto": "Project",
     "proyecto :code": "project :code",
@@ -432,5 +430,11 @@
     "Atrasada": "Late",
     "Total del proyecto": "Project total",
     "Esta cuenta no es de gerente de proyecto.": "This account is not a project manager.",
-    "Cortesía (no facturado)": "Courtesy (not billed)"
+    "Cortesía (no facturado)": "Courtesy (not billed)",
+    "Este comando solo corre en un sitio de demostración: pon DEMO_MODE=true en el .env de ese sitio. No se tocó nada.": "This command only runs on a demo site: set DEMO_MODE=true in that site's .env. Nothing was touched.",
+    "La marca debe ser cerevelo o amsi.": "The brand must be cerevelo or amsi.",
+    "Sembrando la demostración…": "Seeding the demo…",
+    "Listo. Contraseña de las cuentas de ejemplo: :password": "Done. Password of the example accounts: :password",
+    "Demo · datos de ejemplo": "Demo · example data",
+    "En la demostración no se puede cambiar la contraseña de las cuentas de ejemplo.": "In the demo the password of the example accounts cannot be changed."
 }

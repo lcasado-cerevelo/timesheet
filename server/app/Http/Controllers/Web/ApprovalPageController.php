@@ -241,6 +241,9 @@ class ApprovalPageController extends Controller
 
     private function codeOk(ApprovalToken $token): bool
     {
+        if (config('app.demo')) {
+            return true;   // demostración: el enlace decide sin código
+        }
         return $token->code_verified_at !== null && $token->code_verified_at->gt(now()->subMinutes(30));
     }
 

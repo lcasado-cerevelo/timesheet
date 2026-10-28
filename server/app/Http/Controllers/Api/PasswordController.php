@@ -39,6 +39,7 @@ class PasswordController extends Controller
 
     public function change(Request $request)
     {
+        \App\Support\Demo::guardPassword($request->user());
         $v = $request->validate([
             'current_password' => 'required|string',
             'password' => 'required|string|min:10|max:200|different:current_password',

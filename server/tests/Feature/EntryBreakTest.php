@@ -13,7 +13,7 @@ class EntryBreakTest extends TestCase
 {
     use RefreshDatabase, BuildsWorld;
 
-    private function post(array $extra)
+    private function saveEntry(array $extra)
     {
         $this->app['auth']->forgetGuards();
         Sanctum::actingAs($this->worker);
@@ -23,7 +23,7 @@ class EntryBreakTest extends TestCase
     public function test_the_break_is_taken_out_of_the_hours(): void
     {
         $this->world();
-        $this->post(['break_minutes' => 60])->assertStatus(201);
+        $this->saveEntry(['break_minutes' => 60])->assertStatus(201);
 
         $e = TimeEntry::first();
         $this->assertSame(60, (int) $e->break_minutes);
@@ -34,7 +34,7 @@ class EntryBreakTest extends TestCase
     public function test_without_a_break_the_entry_works_as_before(): void
     {
         $this->world();
-        $this->post([])->assertStatus(201);
+        $this->saveEntry([])->assertStatus(201);
 
         $e = TimeEntry::first();
         $this->assertSame(0, (int) $e->break_minutes);
@@ -44,16 +44,16 @@ class EntryBreakTest extends TestCase
     public function test_a_break_as_long_as_the_whole_span_or_off_the_increment_is_rejected(): void
     {
         $this->world();
-        $this->post(['start_time' => '08:00', 'end_time' => '09:00', 'break_minutes' => 60])->assertStatus(422)->assertJsonValidationErrors('break_minutes');
-        $this->post(['break_minutes' => 20])->assertStatus(422)->assertJsonValidationErrors('break_minutes');   // el incremento es de 15 minutos
-        $this->post(['break_minutes' => -5])->assertStatus(422);
+        $this->saveEntry(['start_time' => '08:00', 'end_time' => '09:00', 'break_minutes' => 60])->assertStatus(422)->assertJsonValidationErrors('break_minutes');
+        $this->saveEntry(['break_minutes' => 20])->assertStatus(422)->assertJsonValidationErrors('break_minutes');   // el incremento es de 15 minutos
+        $this->saveEntry(['break_minutes' => -5])->assertStatus(422);
         $this->assertSame(0, TimeEntry::count());
     }
 
     public function test_editing_the_times_without_sending_the_break_keeps_it(): void
     {
         $this->world();
-        $id = $this->post(['break_minutes' => 30])->assertStatus(201)->json('id');
+        $id = $this->saveEntry(['break_minutes' => 30])->assertStatus(201)->json('id');
 
         $this->app['auth']->forgetGuards();
         Sanctum::actingAs($this->worker);

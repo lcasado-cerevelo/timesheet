@@ -26,10 +26,12 @@ th{color:#666;font-weight:600}td.r,th.r{text-align:right}
 textarea,input[type=text]{width:100%;padding:10px;border:1px solid #bbb;border-radius:8px;font:inherit}
 .msg{padding:10px 12px;border-radius:8px;margin-bottom:12px}.ok{background:#e6f4ea;border-left:4px solid #1b7f3b}.err{background:#fdecea;border-left:4px solid #b00020}.warn{background:#fff4d6;border-left:4px solid #e0a800}
 .muted{color:#777;font-size:13px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start}
+.demo-strip{background:#b45309;color:#fff;text-align:center;font-size:13px;font-weight:700;padding:5px 10px;letter-spacing:.03em}
 footer{text-align:center;color:#888;font-size:12px;padding:16px}
 </style>
 </head>
 <body>
+@if(config('app.demo'))<div class="demo-strip">{{ __('Demo · datos de ejemplo') }}</div>@endif
 <header>@if($brand['logo_url'])<img src="{{ $brand['logo_url'] }}" alt="{{ $brand['name'] }}">@endif @if(! $brand['logo_url'] || ($brand['show_name'] ?? true))<span>{{ $brand['name'] }}</span>@endif</header>
 <main>
 @if(session('status'))<div class="msg ok">{{ session('status') }}</div>@endif

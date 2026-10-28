@@ -33,6 +33,9 @@ class SecurityHeaders
                 $h->set($name, $value);
             }
         }
+        if (config('app.demo')) {
+            $h->set('X-Robots-Tag', 'noindex, nofollow');   // el sitio de demostración no se indexa
+        }
         if ($request->isSecure() && ! $h->has('Strict-Transport-Security')) {
             $h->set('Strict-Transport-Security', 'max-age=31536000');
         }

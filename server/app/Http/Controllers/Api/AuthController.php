@@ -97,6 +97,8 @@ class AuthController extends Controller
             'turnstile_site_key' => Turnstile::enabled() ? config('services.turnstile.site_key') : null,
             'locale' => $locale,
             'brand' => $company?->publicBrand(),
+            'demo' => (bool) config('app.demo'),
+            'demo_accounts' => config('app.demo') ? \App\Support\Demo::publicAccounts() : [],
         ]);
     }
 
@@ -179,6 +181,7 @@ class AuthController extends Controller
         $extra = $user->isApprover() ? ['approver_id' => $user->approver_profile_id, 'two_step' => true,
             'project_manager' => (bool) \App\Models\Approver::whereKey($user->approver_profile_id)->where('project_manager', true)->where('active', true)->exists()] : [];
         return $extra + [
+            'demo' => (bool) config('app.demo'),
             'internal_approver' => ! $user->isApprover() && $user->isInternalApprover(),
             // Con comisión activa, la persona ve la pantalla "Mis comisiones".
             'has_commissions' => ! $user->isApprover() && \App\Models\Commission::where('user_id', $user->id)->where('active', true)->exists(),

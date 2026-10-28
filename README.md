@@ -16,7 +16,7 @@ exportación a Excel (incluida la plantilla de Consultorio 1500) e integración 
 export PATH="$PWD/tools/php:$PATH"
 cd server
 php artisan migrate:fresh
-php artisan tiempo:demo          # compañía de ejemplo (Cerevelo) con personas y proyectos
+# sitio de demostración (opcional): pon DEMO_MODE=true en .env y corre  php artisan tiempo:demo --fresh  (ver DEMO.md)
 php artisan storage:link
 php artisan serve                # http://127.0.0.1:8000/app/
 ```
@@ -44,7 +44,7 @@ el programador de tareas y un buzón de correo de prueba. El código se edita en
 
 ```bash
 docker compose up -d --build                         # primera vez: baja las imágenes y construye
-docker compose exec -u www-data app php artisan tiempo:demo      # datos de ejemplo (clave demo-password-123)
+docker compose exec -u www-data -e DEMO_MODE=true app php artisan tiempo:demo --fresh      # datos de ejemplo (clave en DEMO.md)
 docker compose exec -u www-data -e DB_DATABASE=tiempo_test app php artisan test    # las pruebas, siempre con la base tiempo_test
 docker compose down                                  # apaga (la base se conserva); con -v también la borra
 ```

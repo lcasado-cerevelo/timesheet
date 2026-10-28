@@ -196,7 +196,7 @@ function shell(name, body, withFlash) {
   const fl = '';   // messages are floating toasts now (see toast()), they no longer push the page around
   if (withFlash && S.flash) { const f = S.flash; S.flash = null; setTimeout(() => toast(f.text, f.kind), 0); }
   const sub = cur && cur.vis.length > 1 ? `<div class="subtabs">${cur.vis.map(k => `<a href="#/${k}" class="${k === name ? 'on' : ''}">${ROUTES[k].t}</a>`).join('')}</div>` : '';
-  return `<header class="hdr"><div class="brand ${solo ? 'solo' : ''}">${b.logo_url ? `<img src="${esc(b.logo_url)}" alt="${esc(b.name)}">${solo ? '' : '<span class="sep"></span>'}` : ''}${solo ? '' : `<div><b>${esc(b.name)}</b><small>Timesheets &amp; invoices</small></div>`}</div>
+  return `${S.me.demo ? `<div class="demo-strip">Demo · example data</div>` : ''}<header class="hdr"><div class="brand ${solo ? 'solo' : ''}">${b.logo_url ? `<img src="${esc(b.logo_url)}" alt="${esc(b.name)}">${solo ? '' : '<span class="sep"></span>'}` : ''}${solo ? '' : `<div><b>${esc(b.name)}</b><small>Timesheets &amp; invoices</small></div>`}</div>
     <span class="spacer"></span><div class="who"><span class="av">${esc(initials(S.me.name))}</span><div><b>${esc(S.me.name)}</b><small>${roleLabel(S.me)}</small></div></div>
     <button class="btn ghost sm" data-act="lang" data-to="${LANG() === 'es' ? 'en' : 'es'}" title="Language">${LANG() === 'es' ? 'English' : 'Español'}</button>
     <button class="btn ghost sm" data-act="logout">Sign out</button></header>
@@ -254,6 +254,7 @@ async function loadPub() {
   if (S.cache.pub === undefined) {
     try { const r = await fetch(BASE + '/api/public-config'); if (!r.ok) return {}; S.cache.pub = await r.json(); } catch { return {}; }
     if (S.cache.pub.locale && !localStorage.getItem('lang')) S.lang = S.cache.pub.locale;
+    if (S.cache.pub.demo) { const m = document.createElement('meta'); m.name = 'robots'; m.content = 'noindex,nofollow'; document.head.appendChild(m); }
   }
   return S.cache.pub;
 }
@@ -265,6 +266,11 @@ function loginError(e) {
   return m || 'Could not sign in. Try again.';
 }
 /* Sign in. If the server has Cloudflare Turnstile keys, the anti-bot challenge is shown first. An approver then types a 6-digit code sent by email. */
+/* Demo site: one button per example account; it only fills the form (the person presses Continue). */
+function demoAccounts(list) {
+  if (!list.length) return '';
+  return `<div class="demo-box"><b>Demo · example data</b><p class="muted" style="margin:4px 0 8px">Sign in as any role. Nothing here is real.</p>${list.map(a => `<button type="button" class="btn ghost sm" data-act="demo-fill" data-email="${esc(a.email)}" data-pw="${esc(a.password)}" title="${esc(a.name)}">${esc(T('Sign in as'))} ${esc(LANG() === 'es' ? a.label_es : a.label_en)}</button>`).join(' ')}</div>`;
+}
 async function loginView(err, info) {
   LAST = null;
   if (!err && !info && S.cache.sessionMsg) { err = S.cache.sessionMsg; S.cache.sessionMsg = null; }
@@ -288,9 +294,9 @@ async function loginView(err, info) {
       <div style="margin:0 0 14px">${pwField('password', 'Password', { auto: 'current-password', ph: 'Your password' })}</div>
       ${key ? '<div id="ts-box" style="margin:8px 0"></div>' : ''}
       <button class="btn pri" type="submit">Continue</button></form>
-      <p class="muted" style="margin:14px 0 0">Access is by invitation only. If you forgot your password, call or write to your administrator and they will reset it for you.</p>`;
+      ${pub.demo ? demoAccounts(pub.demo_accounts || []) : `<p class="muted" style="margin:14px 0 0">Access is by invitation only. If you forgot your password, call or write to your administrator and they will reset it for you.</p>`}`;
   }
-  setApp(`<div class="login-wrap">${authBand(brand)}<div class="card login">${inner}${langBtn()}</div></div>`);
+  setApp(`${pub.demo ? '<div class="demo-strip">Demo · example data</div>' : ''}<div class="login-wrap">${authBand(brand)}<div class="card login">${inner}${langBtn()}</div></div>`);
   if (L && L.step === 'code') {
     document.getElementById('login-code')?.focus();
     clearInterval(S.cache.rt);
@@ -1007,6 +1013,7 @@ const actions = {
     try { await api('/login/code/resend', { method: 'POST', anon: true, body: { challenge: S.login.challenge } }); S.login.resendAt = Date.now() + 60000; loginView(null, 'A new code was sent to ' + S.login.email_hint); }
     catch (e) { loginView(loginError(e)); }
   },
+  'demo-fill'(el) { const f = document.querySelector('form[data-form=login]'); if (!f) return; f.elements.email.value = el.dataset.email; f.elements.password.value = el.dataset.pw; f.querySelector('button[type=submit]')?.focus(); },
   'login-back'() { S.login = null; clearInterval(S.cache.rt); loginView(); },
   'sp-login'() { S.cache.sp = null; logout(); },
   async 'reset-user'(el) {

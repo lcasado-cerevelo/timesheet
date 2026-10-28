@@ -23,6 +23,7 @@ class AccountService
     /** Deja la cuenta sin contraseña utilizable hasta que la persona cree una. */
     public function lockPassword(User $user): void
     {
+        \App\Support\Demo::guardPassword($user);
         $user->forceFill(['password' => Str::random(64), 'must_set_password' => true])->save();
     }
 

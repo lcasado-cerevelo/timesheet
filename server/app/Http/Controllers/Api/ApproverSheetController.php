@@ -112,6 +112,9 @@ class ApproverSheetController extends Controller
     /** El límite de horas para pedir código se mide sobre las horas que le tocan a este aprobador. */
     private function needsCode(Timesheet $sheet, Approver $approver): bool
     {
+        if (config('app.demo')) {
+            return false;
+        }
         $limit = $approver->company->rules()->get('second_approval_hours');
         if ($approver->require_code) {
             return true;

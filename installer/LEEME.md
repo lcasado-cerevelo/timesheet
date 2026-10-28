@@ -32,3 +32,8 @@ Sube los dos archivos con el File Manager a UNA de estas carpetas:
 2. Extrae su carpeta `app` encima de la carpeta de la aplicación (se conserva el `.env`) y su carpeta `public` encima de la carpeta pública, sin tocar `index.php`.
 3. En cPanel → Cron Jobs crea una tarea de una sola vez (y bórrala a los 2 minutos) para aplicar los cambios de la base y renovar las cachés:
    `cd /home/rfj1sbmpkfe3/timesheet && php artisan migrate --force && php artisan config:cache && php artisan route:cache && php artisan view:cache`
+
+## Sitio de demostración (otro subdominio, otra base de datos)
+La misma aplicación, instalada como arriba pero con su propio subdominio (`timesheet-demo.cerevelo.com`), su propia base de datos y su propio `.env`, llena de datos de ejemplo.
+Los pasos completos (subdominio, base nueva, `.env` con `DEMO_MODE=true` y `MAIL_MAILER=log`, cron temporal con `migrate` + `tiempo:demo --fresh` y cron nocturno para refrescarla) están en **[DEMO.md](../DEMO.md)**.
+Nunca pongas `DEMO_MODE=true` en el `.env` de producción.

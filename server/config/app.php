@@ -55,6 +55,12 @@ return [
     'url' => env('APP_URL', 'http://localhost'),
 
     /*
+    | Sitio de demostración (DEMO_MODE=true): sin códigos por correo, con franja "Demo", cuentas de ejemplo en la entrada y sin cambiar
+    | sus contraseñas. Con false (lo normal) la aplicación se comporta exactamente igual que siempre.
+    */
+    'demo' => (bool) env('DEMO_MODE', false),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
