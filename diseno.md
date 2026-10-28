@@ -530,7 +530,7 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - **Pruebas:** `tests/Feature/TaskTest.php` (servidor) y una prueba real en navegador (crear tarea con los campos nuevos, firma con contraseña mala y buena, completar, reabrir, pantalla Tareas y hoja semanal con tarea obligatoria).
 
 ## Gerente de proyecto: aprobador con vista de Avance (construido; ver "Gerente de proyecto construido" al final)
-**Para qué:** el aprobador externo con cuenta suele ser el project manager del cliente, y el dueño se reúne con él cada semana para el estado del proyecto (cuánto vamos, por dónde vamos, qué falta, peticiones). Hoy el aprobador solo ve las hojas con horas suyas que ya salieron de la etapa interna; no ve cómo va el proyecto.
+**Para qué:** el aprobador externo con cuenta suele ser el project manager del cliente, y el dueño se reúne con él cada semana para el estado del proyecto (cuánto vamos, por dónde vamos, qué falta). Hoy el aprobador solo ve las hojas con horas suyas que ya salieron de la etapa interna; no ve cómo va el proyecto.
 
 **Cómo se marca:** una marca en el perfil del **aprobador** ("**Gerente de proyecto** / Project manager"), que solo pone el dueño. Un aprobador puede ser gerente de proyecto (no se crea otro tipo de usuario). Requiere que el aprobador tenga cuenta. Ve el **proyecto completo** (todos los servicios) de los clientes a los que está ligado; más adelante se puede afinar por proyecto. Los aprobadores sin la marca, y los que aprueban solo por el enlace del correo, siguen igual.
 
@@ -546,7 +546,6 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 
 **Horas facturables y no facturables (recomendación, por confirmar):** por defecto solo las **facturables** (las que el cliente paga). Opción por proyecto "mostrar el trabajo no facturado como cortesía": si el dueño la activa, esas horas salen **aparte** (columna "No facturadas / cortesía"), nunca sumadas al total facturable, para enseñar el trabajo extra que se hace. Las horas no facturables internas (reuniones internas, administración) nunca se muestran. Advertencia: el cálculo de comisiones usa **todas** las horas de la tarea y la vista del cliente solo lo que se le permite ver; los números pueden diferir por diseño.
 
-**Fuera de esta fase:** las **peticiones y gestiones** de la reunión (una lista o notas compartidas por proyecto entre el dueño y el gerente de proyecto) serían otra función posterior.
 
 **Al retomar las fases, preguntar al usuario** si arrancamos con esta (y confirmar la decisión sobre horas no facturables).
 
