@@ -102,3 +102,5 @@
 .sigs{margin:8px 0;padding:8px 12px;border-left:3px solid var(--primary);background:#F5F8FA;font-size:14px;color:var(--text)}.sigs .mono{font-size:12px}
 .wkretmsg{display:flex;flex-direction:column;gap:6px}.wkretl{margin:4px 0 0;padding-left:18px}.wkretl li{margin:2px 0}
 .wkrow.wkret{background:#FFF6F5;box-shadow:inset 3px 0 0 var(--danger)}
+.aprh{background:none;border:0;padding:0;font:inherit;color:var(--primary);text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer}.aprh:hover{text-decoration-style:solid}
+.wkpop .ent{padding:6px 0;border-bottom:1px solid var(--line)}.wkpop .ent:last-of-type{border-bottom:0}.wkpop .nt{white-space:pre-wrap;margin-top:2px;font-size:14px}

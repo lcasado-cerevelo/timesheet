@@ -83,6 +83,15 @@ function filterBar(view, defs) {
     <button class="btn ghost sm" type="button" data-act="f-clear" data-view="${view}" ${on ? '' : 'disabled'}>Clear filters</button></div>`;
 }
 /** Notes of a timesheet for the approver: the submission note, then each line's note with its day, project and service. */
+/* approver tables: the hours of a day become a link that opens its detail (note, from–to, break) when there is something to show */
+function aprHours(r, x) {
+  const es = (r.es && r.es[x]) || []; const hrs = h1(r.by[x]);
+  if (!es.some(e => e.note || e.start_time || e.break_minutes)) return hrs;
+  const tip = T(es.some(e => e.note) ? 'Click here to see the note' : 'Click here to see the details');
+  const hd = [r.p?.code, r.p?.name, r.s?.name, r.t?.name].filter(Boolean).join(' · ');
+  const data = es.map(e => ({ s: e.start_time || '', e: e.end_time || '', b: e.break_minutes || 0, h: e.hours, n: e.note || '' }));
+  return `<button type="button" class="aprh" data-act="apr-cell" data-d="${esc(es[0].work_date)}" data-hd="${esc(hd)}" data-es="${esc(JSON.stringify(data))}" title="${esc(tip)}">${hrs}</button>`;
+}
 function aprNotes(entries, sheet) {
   const items = (entries || []).filter(e => e.note).map(e => `<li><b>${esc(dayLabel(e.work_date))}</b> · ${esc([e.project?.code, e.service?.name].filter(Boolean).join(' · '))}<br><span style="white-space:pre-wrap">${esc(e.note)}</span></li>`).join('');
   const sub = sheet?.submission_note ? `<p style="margin:0 0 6px"><b>${T('Submission note')}:</b> <span style="white-space:pre-wrap">${esc(sheet.submission_note)}</span></p>` : '';
@@ -367,7 +376,7 @@ async function approverView() {
     const days = Array.from({ length: wkSpan(start, d.period_ending || sel.period_ending) }, (_, i) => addDays(start, i));
     const svcs = new Map(); for (const e of d.entries || []) { if (!svcs.has(e.project_id)) svcs.set(e.project_id, new Set()); svcs.get(e.project_id).add(e.service_id); }
     const lines = new Map();
-    for (const e of d.entries || []) { const multi = (svcs.get(e.project_id)?.size || 0) > 1; const k = e.project_id + '|' + (multi ? e.service_id : '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi ? e.service : null, t: e.task, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
+    for (const e of d.entries || []) { const multi = (svcs.get(e.project_id)?.size || 0) > 1; const k = e.project_id + '|' + (multi ? e.service_id : '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi ? e.service : null, t: e.task, by: {}, es: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; (r.es[e.work_date] ||= []).push(e); }
     const dr = S.cache.apDraft && S.cache.apDraft.id === sel.id ? S.cache.apDraft : { comment: '', code: '' };
     const open = sel.status === 'submitted';
     const needs = open && (d.needs_code || sel.needs_code || (S.cache.apCode || {})[sel.id]);
@@ -385,7 +394,7 @@ async function approverView() {
     detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}${sel.is_part ? ` · ${T('Part')} ${sel.part} (${nice(sel.period_starting)}${sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)})` : ''}</span></div><span class="spacer"></span>${pill(label, color)}${sel.late ? ' ' + pill('Late', 'red') : ''}</div>
       ${wkParts(d.internal || d.external ? d : sel, 'in')}${(sel.warnings || []).map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${ret}${sigLines(d?.signatures)}
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
-      ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}${r.t ? ' · ' + esc(r.t.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
+      ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}${r.t ? ' · ' + esc(r.t.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${aprHours(r, x)}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
       <p class="row" style="margin:10px 0"><b>Total hours</b><span class="spacer"></span><b>${h1(sel.total_hours)}</b></p>
       ${aprNotes(d?.entries, sel)}${acts}</div>`;
   }
@@ -466,11 +475,11 @@ async function approvalsView() {
     const days = Array.from({ length: wkSpan(d.period_starting || d.week_starting, d.period_ending) }, (_, i) => addDays(d.period_starting || d.week_starting, i));
     const lines = new Map();
     const multi = id => (S.cache.allProjects?.find(p => p.id === id)?.services || []).length > 1;
-    for (const e of d.entries) { const k = e.project_id + '|' + (multi(e.project_id) ? e.service_id : '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi(e.project_id) ? e.service : null, t: e.task, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
+    for (const e of d.entries) { const k = e.project_id + '|' + (multi(e.project_id) ? e.service_id : '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi(e.project_id) ? e.service : null, t: e.task, by: {}, es: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; (r.es[e.work_date] ||= []).push(e); }
     detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}${sel.is_part ? ` · ${T('Part')} ${sel.part} (${nice(sel.period_starting)}${sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)})` : ''}</span></div><span class="spacer"></span><span class="badge submitted">Pending</span>${sel.late ? ' <span class="badge returned">Late</span>' : ''}</div>
       ${sel.warnings.map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${sigLines(d?.signatures)}
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
-      ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}${r.t ? ' · ' + esc(r.t.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
+      ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}${r.t ? ' · ' + esc(r.t.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${aprHours(r, x)}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
       <p class="row" style="margin:10px 0"><b>Total hours</b><span class="spacer"></span><b>${h1(sel.total_hours)}</b></p>
       ${aprNotes(d?.entries, sel)}
       <label>Comment (required when returning)</label><textarea id="ap-comment" rows="3" placeholder="Example: Thursday should be OT, please fix and resubmit."></textarea>
@@ -1004,6 +1013,14 @@ const actions = {
     const r = await api(`/users/${el.dataset.id}/reset-password`, { method: 'POST' }); flash('Reset email sent to ' + r.emailed_to); render();
   },
   async 'resend-invite'(el) { await api(`/users/${el.dataset.id}/resend-invitation`, { method: 'POST' }); flash('Invitation sent to ' + el.dataset.email); render(); },
+  'apr-cell'(el) {
+    wkPopClose(); const es = JSON.parse(el.dataset.es || '[]'); const rc = el.getBoundingClientRect();
+    const items = es.map(e => `<div class="ent"><div class="mono">${e.s ? esc(e.s) + '–' + esc(e.e) : T('Full day')}${e.b ? ' · ' + T('break') + ' ' + wkBreakFmt(e.b) : ''} · ${h1(e.h)} h</div>${e.n ? `<div class="nt">${esc(e.n)}</div>` : ''}</div>`).join('');
+    const box = document.createElement('div'); box.className = 'wkpop'; box.setAttribute('role', 'dialog');
+    box.innerHTML = localizeHtml(`<div class="h"><b>${esc(dayLabel(el.dataset.d))}</b><span class="muted">${esc(el.dataset.hd)}</span></div>${items}<div class="fb"><button class="btn ghost sm" type="button" data-act="pop-close">Close</button></div>`);
+    document.body.appendChild(box);
+    box.style.left = Math.max(8, Math.min(rc.left + scrollX - 120, scrollX + innerWidth - 340)) + 'px'; box.style.top = (rc.bottom + scrollY + 6) + 'px';
+  },
   'apr-status'(el) { S.cache.apStatus = el.dataset.s; S.cache.apSel = null; render(); },
   'apr-pick'(el) { S.cache.apSel = Number(el.dataset.id); render(); },
   async 'apr-code'(el) {
@@ -1229,7 +1246,7 @@ async function reviewScreen() {
     let d = null; try { d = await api((ap ? '/approver/sheets/' : inn ? '/internal/sheets/' : '/sheets/') + sel.id); } catch (e) { if (e.message === 'Session expired') throw e; }
     const days = Array.from({ length: wkSpan(d?.period_starting || addDays(sel.week_ending, -6), d?.period_ending || sel.week_ending) }, (_, i) => addDays(d?.period_starting || addDays(sel.week_ending, -6), i));
     const lines = new Map();
-    for (const e of (d?.entries || [])) { const k = e.project_id + '|' + (e.service_id || '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: e.service, t: e.task, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
+    for (const e of (d?.entries || [])) { const k = e.project_id + '|' + (e.service_id || '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: e.service, t: e.task, by: {}, es: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; (r.es[e.work_date] ||= []).push(e); }
     const open = sel.status === 'submitted' || sel.status === 'pending';
     const dr = S.cache.apDraft && S.cache.apDraft.id === sel.id ? S.cache.apDraft : { comment: '', code: '' };
     const needs = ap && open && (d?.needs_code || sel.needs_code || (S.cache.apCode || {})[sel.id]);
@@ -1241,11 +1258,11 @@ async function reviewScreen() {
       ${sigField()}
       <div class="decided"><button class="btn" data-act="${A[0]}" data-id="${sel.id}" data-v="${sel.version}">Approve</button><button class="btn danger" data-act="${A[1]}" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></div></div>`
       : (sel.decided_at ? `<p class="muted" style="margin:0">Decided on ${esc(String(sel.decided_at).slice(0, 10))}.</p>` : '');
-    const cell = (v, extra = '') => `<div class="mono" style="text-align:center;${extra}">${v ? h1(v) : ''}</div>`;
+    const cell = (v, extra = '', html = '') => `<div class="mono" style="text-align:center;${extra}">${v ? (html || h1(v)) : ''}</div>`;
     detail = `<div class="card r"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><div><h2 style="font-size:19px">${esc(nameOf(sel))}</h2><p style="margin:0">${typeName(sel)} · week ending ${nice(sel.week_ending)}${sel.is_part ? ' · ' + T('Part') + ' ' + sel.part + ' (' + nice(sel.period_starting) + (sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)) + ')' : ''}</p></div>${pill(stOf(sel), stColor[sel.status] || 'gray')}</div>${wkParts(d && (d.internal || d.external) ? d : sel, 'in') || waitTxt(sel)}
       ${(d?.warnings || sel.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('')}${ret}${sigLines(d?.signatures)}
       <div class="scrollx"><div style="min-width:440px"><div class="hd cols-det"><div class="th">Line</div>${days.map(x => `<div class="th c">${dow(parse(x).getDay())}</div>`).join('')}<div class="th r">Total</div></div>
-      ${[...lines.values()].map(r => `<div class="rw cols-det"><div style="font-size:14px">${esc([r.p?.code, r.p?.name, r.s?.name, r.t?.name].filter(Boolean).join(' · '))}</div>${days.map(x => cell(r.by[x])).join('')}<div class="mono" style="text-align:right;font-weight:500">${h1(Object.values(r.by).reduce((a, v) => a + v, 0))}</div></div>`).join('')}
+      ${[...lines.values()].map(r => `<div class="rw cols-det"><div style="font-size:14px">${esc([r.p?.code, r.p?.name, r.s?.name, r.t?.name].filter(Boolean).join(' · '))}</div>${days.map(x => cell(r.by[x], '', aprHours(r, x))).join('')}<div class="mono" style="text-align:right;font-weight:500">${h1(Object.values(r.by).reduce((a, v) => a + v, 0))}</div></div>`).join('')}
       <div class="tot"><span>Total hours</span><span class="mono">${h1(sel.total_hours)}</span></div></div></div>
       ${aprNotes(d?.entries, d || sel)}${acts}</div>`;
   }
@@ -2241,7 +2258,7 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return; const i = e.target.closest?.('[data-cell]'); if (!i) return;
   e.preventDefault(); const all = [...document.querySelectorAll('.wk input.wkc:not([readonly])')]; const n = all[all.indexOf(i) + 1]; if (n) { n.focus(); n.select(); }
 });
-document.addEventListener('mousedown', e => { if (!e.target.closest('.wkpop') && !e.target.closest('[data-act="cell-pop"]') && !e.target.closest('[data-act="pop-edit"]')) wkPopClose(); });
+document.addEventListener('mousedown', e => { if (!e.target.closest('.wkpop') && !e.target.closest('[data-act="apr-cell"]') && !e.target.closest('[data-act="cell-pop"]') && !e.target.closest('[data-act="pop-edit"]')) wkPopClose(); });
 
 const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { if (e.message !== 'Session expired') { flash(e.message, 'err'); render(); } } };
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="entry-project"],[data-act-change="entry-service"]'); if (el) syncEntryForm(el.closest('form')); });
