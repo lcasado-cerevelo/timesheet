@@ -106,6 +106,7 @@ class ApproverSheetController extends Controller
     {
         abort_unless($sheet->company_id === $approver->company_id && $sheet->status !== Timesheet::DRAFT
             && ! ($sheet->status === Timesheet::SUBMITTED && $sheet->stage === Timesheet::STAGE_INTERNAL)
+            && ! ($sheet->status === Timesheet::RETURNED && $sheet->return_stage === Timesheet::STAGE_INTERNAL)
             && $this->external->involves($sheet, $approver), 404);
     }
 
@@ -157,6 +158,7 @@ class ApproverSheetController extends Controller
             $out['entries'] = $sheet->entries->map(fn ($e) => EntryController::payload($e));
             $out['worker'] = ['id' => $sheet->user->id, 'name' => $sheet->user->name, 'worker_type' => $sheet->user->worker_type, 'employee_number' => $sheet->user->employee_number];
             $out['signatures'] = app(SignatureService::class)->forSheet($sheet);
+            $out['history'] = app(\App\Services\SheetHistory::class)->for($sheet, \App\Services\SheetHistory::EXTERNAL);
         }
         $out['total_hours'] = round((float) $sheet->entries->sum('hours'), 2);
         return $out + ['needs_code' => $this->needsCode($sheet, $approver)];

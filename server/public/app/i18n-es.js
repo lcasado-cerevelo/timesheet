@@ -8,6 +8,10 @@ window.I18N_ES = {
     "Commission: paid on": "Comisión: se paga sobre", "On top of the normal rate. It is paid for the hours chosen below.": "Además de su tarifa normal. Se paga por las horas que escojas abajo.",
     "Per hour worked: only the hours the person worked get the extra. For the assigned %: the person is paid as if they had worked the hours that corresponded to them (the minimum share × the goal hours); each hour not worked is paid at their normal rate + the extra. If they worked more, every hour worked gets the extra.": "Por hora trabajada: solo las horas que la persona trabajó llevan el extra. Por el % asignado: se le paga como si hubiera trabajado las horas que le correspondían (el mínimo × las horas de la meta); cada hora que no trabajó se paga a su tarifa normal + el extra. Si trabajó más, todas las horas trabajadas llevan el extra.",
     "on the assigned %": "sobre el % asignado", "not worked": "no trabajadas", "of the goal": "de la meta",
+    // --- history of a sheet ---
+    "History": "Historial", "Sent": "Enviada", "Sent again": "Enviada de nuevo", "Approved (internal)": "Aprobada (interna)", "Approved (external)": "Aprobada (externa)",
+    "Approved by the owner": "Aprobada por el dueño", "Approved automatically": "Aprobada automáticamente", "internal stage": "etapa interna", "external stage": "etapa externa",
+    "See the reason": "Ver el motivo", "Returned for correction": "Devuelta para corregir", "week ending": "semana que termina", "Returned by": "Devuelta por",
     // --- demo site ---
     "Demo · example data": "Demo · datos de ejemplo", "Sign in as any role. Nothing here is real.": "Entra con cualquier rol. Nada de aquí es real.", "Sign in as": "Entrar como",
     // --- project manager (Progress) ---

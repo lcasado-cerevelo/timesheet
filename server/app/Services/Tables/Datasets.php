@@ -228,7 +228,7 @@ class Datasets
                 $row = [$s->user->name, $s->week_ending->toDateString(), $s->part ? (string) $s->part : '', $status[$s->status] ?? $s->status,
                     $e->project->code.' · '.$e->project->name, (string) ($e->service?->name ?? ''), $day,
                     $e->start_time ? substr($e->start_time, 0, 5) : '', $e->end_time ? substr($e->end_time, 0, 5) : '',
-                    (int) $e->break_minutes > 0 ? round($e->break_minutes / 60, 2) : '', (float) $e->hours, (string) $e->note, $signed];
+                    (int) $e->break_minutes > 0 ? round($e->break_minutes / 60, 2) : '', (float) $e->hours, (string) $e->note, $signed, $s->status === Timesheet::RETURNED ? (string) $s->return_comment : ''];
                 if ($this->matches($f['q'] ?? null, [$row[0], $row[4], $row[5], $row[11]])) {
                     $rows[] = $row;
                     $tasks[] = (string) ($e->task?->name ?? '');
@@ -237,8 +237,8 @@ class Datasets
         }
         $columns = [['h' => __('Persona'), 't' => 'text'], ['h' => __('Semana que termina'), 't' => 'date'], ['h' => __('Parte'), 't' => 'text'], ['h' => __('Estado'), 't' => 'text'],
             ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Servicio'), 't' => 'text'], ['h' => __('Fecha'), 't' => 'date'], ['h' => __('Desde'), 't' => 'text'],
-            ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Descanso'), 't' => 'hours'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Nota'), 't' => 'text'], ['h' => __('Firmas digitales'), 't' => 'text']];
-        $total = [__('Total'), '', '', '', '', '', '', '', '', '', round(array_sum(array_column($rows, 10)), 2), '', ''];
+            ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Descanso'), 't' => 'hours'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Nota'), 't' => 'text'], ['h' => __('Firmas digitales'), 't' => 'text'], ['h' => __('Motivo de la devolución'), 't' => 'text']];
+        $total = [__('Total'), '', '', '', '', '', '', '', '', '', round(array_sum(array_column($rows, 10)), 2), '', '', ''];
         if ($detail) {   // en PDF, la tarea de cada línea va justo después del servicio
             array_splice($columns, 6, 0, [['h' => __('Tarea'), 't' => 'text']]);
             array_splice($total, 6, 0, ['']);

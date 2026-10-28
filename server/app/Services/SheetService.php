@@ -348,6 +348,7 @@ class SheetService
             'late' => (bool) $company->rules()->get('flag_late') && CarbonImmutable::now($company->timezone)->gt($deadline),
             'submission_note' => $submissionNote,
             'return_comment' => null,
+            'return_stage' => null,
             'change_notice_due_at' => null,
             'change_summary' => null,
             'internal_reminded_at' => null,
@@ -488,6 +489,7 @@ class SheetService
             'decided_by_user_id' => $user?->id,
             'decided_via' => $via,
             'return_comment' => mb_substr($comment, 0, 1000),
+            'return_stage' => $stage,
             'change_notice_due_at' => null,
         ])->save();
         ApprovalToken::where('timesheet_id', $sheet->id)->whereNull('used_at')->update(['used_at' => now()]);
@@ -542,7 +544,7 @@ class SheetService
         $this->guardInternal($sheet, $expectedVersion);
         $sheet->fill([
             'status' => Timesheet::RETURNED, 'stage' => null, 'decided_at' => now(), 'decided_by_approver_id' => null,
-            'decided_by_user_id' => $user->id, 'decided_via' => 'internal', 'return_comment' => mb_substr($comment, 0, 1000),
+            'decided_by_user_id' => $user->id, 'decided_via' => 'internal', 'return_comment' => mb_substr($comment, 0, 1000), 'return_stage' => 'internal',
             'change_notice_due_at' => null,
         ])->save();
         $this->log($sheet, 'returned', $user->name, 'internal', ['comment' => $comment, 'stage' => 'internal']);

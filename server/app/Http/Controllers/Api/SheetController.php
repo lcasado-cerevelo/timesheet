@@ -199,6 +199,7 @@ class SheetController extends Controller
             $out['approver'] = $s->approver ? ['id' => $s->approver->id, 'name' => $s->approver->name] : null;
             // Quién envió y quién aprobó o devolvió, con firma digital, en el ciclo actual de la hoja.
             $out['signatures'] = app(SignatureService::class)->forSheet($s);
+            $out['history'] = app(\App\Services\SheetHistory::class)->for($s);
         }
         return $out;
     }

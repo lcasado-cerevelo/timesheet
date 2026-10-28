@@ -221,6 +221,8 @@ class ExternalApprovalService
         $serviceIds = \Illuminate\Support\Facades\DB::table('service_external_approvers')->where('approver_id', $a->id)->pluck('service_id')->all();
         return Timesheet::query()->where('company_id', $a->company_id)
             ->whereIn('status', [Timesheet::SUBMITTED, Timesheet::APPROVED, Timesheet::RETURNED])->releasedToExternal()
+            // Una hoja devuelta en la etapa interna nunca llegó a los externos: no la ven (sí las que devolvió otro aprobador externo).
+            ->where(fn ($r) => $r->where('status', '!=', Timesheet::RETURNED)->orWhereNull('return_stage')->orWhere('return_stage', Timesheet::STAGE_EXTERNAL))
             ->where(function ($q) use ($a, $customerIds, $serviceIds) {
                 $q->where('approver_id', $a->id)->orWhere('decided_by_approver_id', $a->id)
                     ->orWhereHas('externalApprovals', fn ($x) => $x->where('approved_by_approver_id', $a->id))

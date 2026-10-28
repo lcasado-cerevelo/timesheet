@@ -436,5 +436,6 @@
     "Sembrando la demostración…": "Seeding the demo…",
     "Listo. Contraseña de las cuentas de ejemplo: :password": "Done. Password of the example accounts: :password",
     "Demo · datos de ejemplo": "Demo · example data",
-    "En la demostración no se puede cambiar la contraseña de las cuentas de ejemplo.": "In the demo the password of the example accounts cannot be changed."
+    "En la demostración no se puede cambiar la contraseña de las cuentas de ejemplo.": "In the demo the password of the example accounts cannot be changed.",
+    "Motivo de la devolución": "Reason for the return"
 }

@@ -399,7 +399,7 @@ async function approverView() {
       <button class="btn danger" data-act="apr-return" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></p>`
       : `<p class="muted" style="margin:10px 0 0">${sel.decided_at ? `Decided on ${esc(String(sel.decided_at).slice(0, 10))}.` : ''}</p>`;
     detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}${sel.is_part ? ` · ${T('Part')} ${sel.part} (${nice(sel.period_starting)}${sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)})` : ''}</span></div><span class="spacer"></span>${pill(label, color)}${sel.late ? ' ' + pill('Late', 'red') : ''}</div>
-      ${wkParts(d.internal || d.external ? d : sel, 'in')}${(sel.warnings || []).map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${ret}${sigLines(d?.signatures)}
+      ${wkParts(d.internal || d.external ? d : sel, 'in')}${(sel.warnings || []).map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${ret}${sigLines(d?.signatures)}${histLines(d?.history)}
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
       ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}${r.t ? ' · ' + esc(r.t.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${aprHours(r, x)}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
       <p class="row" style="margin:10px 0"><b>Total hours</b><span class="spacer"></span><b>${h1(sel.total_hours)}</b></p>
@@ -484,7 +484,7 @@ async function approvalsView() {
     const multi = id => (S.cache.allProjects?.find(p => p.id === id)?.services || []).length > 1;
     for (const e of d.entries) { const k = e.project_id + '|' + (multi(e.project_id) ? e.service_id : '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi(e.project_id) ? e.service : null, t: e.task, by: {}, es: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; (r.es[e.work_date] ||= []).push(e); }
     detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}${sel.is_part ? ` · ${T('Part')} ${sel.part} (${nice(sel.period_starting)}${sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)})` : ''}</span></div><span class="spacer"></span><span class="badge submitted">Pending</span>${sel.late ? ' <span class="badge returned">Late</span>' : ''}</div>
-      ${sel.warnings.map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${sigLines(d?.signatures)}
+      ${sel.warnings.map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${sigLines(d?.signatures)}${histLines(d?.history)}
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
       ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}${r.t ? ' · ' + esc(r.t.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${aprHours(r, x)}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
       <p class="row" style="margin:10px 0"><b>Total hours</b><span class="spacer"></span><b>${h1(sel.total_hours)}</b></p>
@@ -1245,12 +1245,12 @@ async function reviewScreen() {
   if (R.svc.length) qs.set('service_ids', R.svc.join(','));
   if (R.task.length) qs.set('task_ids', R.task.join(','));
   const res = await api((ap ? '/approver/review?' : inn ? '/internal/review?' : '/review/sheets?') + qs.toString());
-  const sheets = res.sheets || [], cnt = res.counts || {};
+  const sheets = res.sheets || [], cnt = res.counts || {}; S.cache.rvSheets = sheets;
   // Project, service and task filters: services and tasks follow the projects chosen; a choice that no longer applies is dropped.
   const opt = res.options || { projects: [], services: [], tasks: [] };
   const svcOpts = opt.services.filter(x => !R.proj.length || R.proj.includes(x.project_id)), taskOpts = opt.tasks.filter(x => !R.proj.length || R.proj.includes(x.project_id));
   R.svc = R.svc.filter(id => svcOpts.some(x => x.id === id)); R.task = R.task.filter(id => taskOpts.some(x => x.id === id));
-  const msf = (key, lbl, ph, list, sel) => `<div class="flbl" style="flex:1 1 220px"><span>${lbl}</span><div data-rv-ms="${key}">${msel({ label: lbl, placeholder: ph, options: list, selected: sel, name: 'rv_' + key, empty: 'Nothing to choose from yet.' })}</div></div>`;
+  const msf = (key, lbl, ph, list, sel) => `<div class="flbl" style="flex:1 1 200px;min-width:0"><span>${lbl}</span><div data-rv-ms="${key}">${msel({ label: lbl, placeholder: ph, options: list, selected: sel, name: 'rv_' + key, empty: 'Nothing to choose from yet.' })}</div></div>`;
   const sel = sheets.find(s => s.id === S.cache.apSel) || sheets[0];
   const stColor = { submitted: 'amber', pending: 'amber', approved: 'green', returned: 'red' };
   const stName = s => (s === 'submitted' || s === 'pending' ? 'Pending' : STATUS[s] || s);
@@ -1279,7 +1279,7 @@ async function reviewScreen() {
       : (sel.decided_at ? `<p class="muted" style="margin:0">Decided on ${esc(String(sel.decided_at).slice(0, 10))}.</p>` : '');
     const cell = (v, extra = '', html = '') => `<div class="mono" style="text-align:center;${extra}">${v ? (html || h1(v)) : ''}</div>`;
     detail = `<div class="card r"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><div><h2 style="font-size:19px">${esc(nameOf(sel))}</h2><p style="margin:0">${typeName(sel)} · week ending ${nice(sel.week_ending)}${sel.is_part ? ' · ' + T('Part') + ' ' + sel.part + ' (' + nice(sel.period_starting) + (sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)) + ')' : ''}</p></div>${pill(stOf(sel), stColor[sel.status] || 'gray')}</div>${wkParts(d && (d.internal || d.external) ? d : sel, 'in') || waitTxt(sel)}
-      ${(d?.warnings || sel.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('')}${ret}${sigLines(d?.signatures)}
+      ${(d?.warnings || sel.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('')}${ret}${sigLines(d?.signatures)}${histLines(d?.history)}
       <div class="scrollx"><div style="min-width:440px"><div class="hd cols-det"><div class="th">Line</div>${days.map(x => `<div class="th c">${dow(parse(x).getDay())}</div>`).join('')}<div class="th r">Total</div></div>
       ${[...lines.values()].map(r => `<div class="rw cols-det"><div style="font-size:14px">${esc([r.p?.code, r.p?.name, r.s?.name, r.t?.name].filter(Boolean).join(' · '))}</div>${days.map(x => cell(r.by[x], '', aprHours(r, x))).join('')}<div class="mono" style="text-align:right;font-weight:500">${h1(Object.values(r.by).reduce((a, v) => a + v, 0))}</div></div>`).join('')}
       <div class="tot"><span>Total hours</span><span class="mono">${h1(sel.total_hours)}</span></div></div></div>
@@ -1288,14 +1288,14 @@ async function reviewScreen() {
   const pillBtn = ([k, l]) => `<button type="button" class="pill ${k === R.status ? 'on' : ''}" aria-pressed="${k === R.status}" data-act="rv-status" data-s="${k}">${l} (${cnt[k] ?? 0})</button>`;
   const per = ([k, l]) => `<button type="button" class="pill ${R.period === k ? 'on' : ''}" data-act="rv-period" data-p="${k}" ${pend ? 'disabled' : ''}>${l}</button>`;
   const rows = sheets.map(s => `<button type="button" class="rowbtn cols-rev ${sel && s.id === sel.id ? 'sel' : ''}" data-act="rv-pick" data-id="${s.id}"><span><span style="font-weight:500">${esc(nameOf(s))}</span>${s.late ? ' <span class="bd amber">Late</span>' : ''}</span>
-    <span>${wkWeekCell(s)}</span><span>${typeName(s)}</span><span>${esc(projOf(s))}</span><span class="mono" style="text-align:right">${h1(s.total_hours)}</span><span>${pill(stOf(s), stColor[s.status] || 'gray')}</span></button>`).join('');
+    <span>${wkWeekCell(s)}</span><span>${typeName(s)}</span><span>${esc(projOf(s))}</span><span class="mono" style="text-align:right">${h1(s.total_hours)}</span><span>${pill(stOf(s), stColor[s.status] || 'gray')}${s.status === 'returned' && s.return_comment ? ` <span class="cmt" role="button" tabindex="0" data-act="rv-reason" data-id="${s.id}" title="${esc(T('See the reason'))}" aria-label="${esc(T('See the reason'))}">💬</span>` : ''}</span></button>`).join('');
   return `<div class="pp"><div><h1>Approvals</h1><p class="sub">${inn ? 'These are hours waiting for your approval. After you approve, they go to the external approver.' : 'Approving replaces the manager signature. Weeks filled in after the deadline are flagged as late.'}</p></div>
     <div class="twin"><div class="card l"><div class="pillrow" style="margin-bottom:12px">${[['pending', 'Pending'], ['approved', 'Approved'], ['returned', 'Returned'], ['all', 'All']].map(pillBtn).join('')}</div>
       <div class="fpanel"><label class="flbl" style="flex:1 1 160px">Search person<input type="search" data-rv="q" placeholder="Name" value="${esc(R.q)}"></label>
       <label class="flbl" style="flex:1 1 140px">Type<select data-rv="type">${optHtml('', 'All types', R.type)}${optHtml('employee', 'Employees', R.type)}${optHtml('consultant', 'Contractors', R.type)}</select></label>
       <label class="flbl" style="flex:1 1 150px">Week ending from<input type="date" data-rv="from" ${pend ? 'disabled' : ''} value="${esc(R.from)}"></label>
       <label class="flbl" style="flex:1 1 150px">to<input type="date" data-rv="to" ${pend ? 'disabled' : ''} value="${esc(R.to)}"></label>
-      ${msf('proj', 'Project', 'Search project', opt.projects, R.proj)}${msf('svc', 'Service', 'Search service', svcOpts, R.svc)}${msf('task', 'Task', 'Search task', taskOpts, R.task)}
+      <div class="frow3">${msf('proj', 'Project', 'Search project', opt.projects, R.proj)}${msf('svc', 'Service', 'Search service', svcOpts, R.svc)}${msf('task', 'Task', 'Search task', taskOpts, R.task)}</div>
       <div style="flex:1 1 100%;text-align:right">${exportBar('sheets', { from: pend || !R.from ? addDays(today(), -365) : R.from, to: pend || !R.to ? today() : R.to, ...(R.q ? { q: R.q } : {}), ...(R.proj.length ? { project_ids: R.proj.join(',') } : {}), ...(R.svc.length ? { service_ids: R.svc.join(',') } : {}), ...(R.task.length ? { task_ids: R.task.join(',') } : {}), ...({ pending: { status: 'submitted' }, approved: { status: 'approved' }, returned: { status: 'returned' } }[R.status] || {}) })}</div>
       <div class="pillrow" style="flex:1 1 100%"><span class="note">Quick period:</span>${[['4w', 'Last 4 weeks'], ['3m', 'Last 3 months'], ['all', 'All time']].map(per).join('')}</div></div>
       <p class="note" style="margin:0 0 8px">Pending always shows everything waiting for you, whatever the dates. The period applies to Approved, Returned and All.</p>
@@ -1312,6 +1312,11 @@ document.addEventListener('mselchange', e => {
 Object.assign(actions, {
   'rv-status'(el) { rvState().status = el.dataset.s; S.cache.apSel = null; render(); },
   'rv-pick'(el) { S.cache.apSel = Number(el.dataset.id); render(); },
+  'rv-reason'(el) {
+    const x = (S.cache.rvSheets || []).find(r => r.id === Number(el.dataset.id)); if (!x) return;
+    modalOpen({ title: 'Returned for correction', sub: `${x.user?.name ?? x.name ?? ''} · ${T('week ending')} ${nice(x.week_ending)}`, size: 'sm', save: 'Close',
+      body: `<div class="msg err" style="white-space:pre-wrap">${esc(x.return_comment || '')}</div>${x.return_by ? `<p class="muted" style="margin:8px 0 0">${T('Returned by')} ${esc(x.return_by)}</p>` : ''}`, async onSubmit(mm) { mm.close(true); } });
+  },
   'rv-period'(el) { if (el.disabled) return; rvState().period = el.dataset.p; render(); },
 });
 document.addEventListener('change', e => {
@@ -1403,6 +1408,11 @@ function signedAction(title, save, intro, run) {
 }
 /* "Submitted and signed digitally by Ana on Oct 21 · Approved digitally by Jorge (email code) on Oct 22" */
 const SIG_ACTIONS = { 'sheet.submit': 'Submitted and signed digitally by', 'sheet.approve': 'Approved digitally by', 'sheet.return': 'Returned digitally by' };
+/* What happened to a sheet (kept forever): sent, approved, returned with its reason. The server filters it by who is looking. */
+const HIST_ACTIONS = { submitted: 'Sent', resubmitted: 'Sent again', internal_approved: 'Approved (internal)', external_approved: 'Approved (external)', approved: 'Approved', self_approved: 'Approved by the owner', auto_approved: 'Approved automatically', returned: 'Returned' };
+const histLines = list => (list || []).length
+  ? `<div class="hist"><b>${T('History')}</b>${list.map(x => `<div class="hl ${x.type === 'returned' ? 'ret' : ''}"><span class="muted mono">${esc(nice(String(x.at).slice(0, 10)))}</span> ${T(HIST_ACTIONS[x.type] || x.type)}${x.by ? ' · <b>' + esc(x.by) + '</b>' : ''}${x.type === 'returned' && x.stage ? ' <span class="muted">(' + T(x.stage === 'internal' ? 'internal stage' : 'external stage') + ')</span>' : ''}${x.comment ? `<div class="hc">${esc(x.comment)}</div>` : ''}</div>`).join('')}</div>`
+  : '';
 const sigLines = list => (list || []).length
   ? `<div class="sigs">${list.map(x => `<div>${T(SIG_ACTIONS[x.action] || x.action)} <b>${esc(x.by)}</b> · ${esc(nice(String(x.at).slice(0, 10)))}${x.method === 'email_code' ? ' · ' + T('email code') : ''} <span class="muted mono" title="${esc(T('Fingerprint of what was signed'))}">${esc(x.fingerprint)}</span></div>`).join('')}</div>` : '';
 

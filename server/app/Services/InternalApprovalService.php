@@ -277,13 +277,13 @@ class InternalApprovalService
     /** pending | approved | returned | null: dónde cae la hoja en la lista de este supervisor. */
     public function classify(Timesheet $s, User $user): ?string
     {
-        if ($s->status === Timesheet::RETURNED && $s->decided_via === 'internal' && (int) $s->decided_by_user_id === $user->id) {
-            return 'returned';
+        if ($s->status === Timesheet::RETURNED) {
+            return 'returned';   // el supervisor ve todo lo que pasó en sus servicios: también lo que devolvió otro supervisor o un aprobador externo
         }
         if ($s->status === Timesheet::SUBMITTED && $s->stage === Timesheet::STAGE_INTERNAL && $this->pendingPartsOf($s, $user)->isNotEmpty()) {
             return 'pending';
         }
-        if ($s->internalApprovals()->where('approved_by_user_id', $user->id)->where('skipped', false)->exists()) {
+        if ($s->status === Timesheet::APPROVED || $s->internalApprovals()->where('approved_by_user_id', $user->id)->where('skipped', false)->exists()) {
             return 'approved';
         }
         return null;

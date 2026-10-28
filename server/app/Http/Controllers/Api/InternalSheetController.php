@@ -77,6 +77,7 @@ class InternalSheetController extends Controller
         $out = array_merge($out, $info);
         if ($withEntries) {
             $out['entries'] = $sheet->entries->map(fn ($e) => EntryController::payload($e));
+            $out['history'] = app(\App\Services\SheetHistory::class)->for($sheet);
             $out['worker'] = ['id' => $sheet->user->id, 'name' => $sheet->user->name, 'worker_type' => $sheet->user->worker_type, 'employee_number' => $sheet->user->employee_number];
             $out['signatures'] = app(SignatureService::class)->forSheet($sheet);
         }
