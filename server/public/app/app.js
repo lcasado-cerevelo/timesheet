@@ -1948,6 +1948,9 @@ const wkIdKey = ln => [ln.project_id, ln.service_id ?? '', ln.task_id ?? '', ln.
 const wkInc = () => Number(S.me?.rules?.increment) || 0.25;
 const wkMulti = (v, inc = wkInc()) => { const n = parseFloat(v); if (v === '' || v == null || !Number.isFinite(n) || n === 0) return true; const q = n / inc; return Math.abs(q - Math.round(q)) < 1e-6; };
 const wkIncMsg = inc => 'Hours must be multiples of ' + inc;
+/* break time: typed as h:mm (only hours and minutes), stored as minutes */
+const wkBreakFmt = m => (Number(m) > 0 ? Math.floor(Number(m) / 60) + ':' + String(Number(m) % 60).padStart(2, '0') : '');
+const wkParseBreak = v => { const t = String(v || '').trim(); if (!t) return 0; const m = /^(\d{1,2}):([0-5]\d)$/.exec(t); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
 const wkStepMin = () => { const m = wkInc() * 60; return m >= 1 && Math.abs(m - Math.round(m)) < 1e-6 ? Math.round(m) : null; };
 const wkMinMulti = (t, step = wkStepMin()) => { if (!step || !/^\d{1,2}:\d{2}/.test(t || '')) return true; return Number(t.slice(3, 5)) % step === 0; };
 /* cells typed with a value that is not a multiple of the increment, as readable names */
@@ -2016,12 +2019,16 @@ function wkPopCheck(f) {
   const step = wkStepMin(); let msg = '';
   f.querySelectorAll('[data-tm]').forEach(i => { const ok = wkMinMulti(i.value, step); i.classList.toggle('bad', !ok); if (!ok && !msg) msg = 'Minutes must be multiples of ' + step; });
   f.querySelectorAll('[data-hh]').forEach(i => { const ok = wkMulti(i.value); i.classList.toggle('bad', !ok); if (!ok && !msg) msg = wkIncMsg(wkInc()); });
+  f.querySelectorAll('[data-brk]').forEach(i => {
+    const m = wkParseBreak(i.value); const ok = m !== null && (!m || !step || m % step === 0); i.classList.toggle('bad', !ok);
+    if (!ok && !msg) msg = m === null ? 'Break time: use h:mm, for example 0:30.' : 'Minutes must be multiples of ' + step;
+  });
   const box = f.querySelector('.poperr'); if (box) { box.hidden = !msg; box.textContent = msg ? T(msg) : ''; }
   const btn = f.querySelector('[type=submit]'); if (btn) btn.disabled = !!msg;
   return msg;
 }
-document.addEventListener('input', e => { const f = e.target.closest?.('.wkpop form'); if (f && e.target.matches('[data-tm],[data-hh]')) wkPopCheck(f); });
-document.addEventListener('change', e => { const f = e.target.closest?.('.wkpop form'); if (f && e.target.matches('[data-tm],[data-hh]')) { const m = wkPopCheck(f); if (m) toast(m, 'err'); } });
+document.addEventListener('input', e => { const f = e.target.closest?.('.wkpop form'); if (f && e.target.matches('[data-tm],[data-hh],[data-brk]')) { if (e.target.matches('[data-brk]')) e.target.value = e.target.value.replace(/[^0-9:]/g, ''); wkPopCheck(f); } });
+document.addEventListener('change', e => { const f = e.target.closest?.('.wkpop form'); if (f && e.target.matches('[data-tm],[data-hh],[data-brk]')) { const m = wkPopCheck(f); if (m) toast(m, 'err'); } });
 /* small box for "detail" cells (from / to) and for days with several entries */
 let wkPopPos = null;
 function wkPopClose() { document.querySelectorAll('.wkpop').forEach(x => x.remove()); }
@@ -2031,13 +2038,14 @@ function wkPop(lid, d, anchor, editId) {
   const C = S.cache.wkCtx; const p = (S.cache.projects || []).find(x => x.id === Number(ln.project_id)); const mode = wkMode(p, ln.service_id);
   const es = ln.ents.filter(e => e.work_date === d); const ed = editId ? es.find(e => e.id === editId) : null;
   const svc = (p?.services || []).find(s => s.id === Number(ln.service_id));
-  const items = es.map(e => `<li><span class="mono">${e.start_time ? esc(e.start_time) + '–' + esc(e.end_time) : 'Full day'}</span><span class="mono">${h1(e.hours)} h</span><span class="n">${esc(e.note || '')}</span>
+  const items = es.map(e => `<li><span class="mono">${e.start_time ? esc(e.start_time) + '–' + esc(e.end_time) + (e.break_minutes ? ' (' + T('break') + ' ' + wkBreakFmt(e.break_minutes) + ')' : '') : 'Full day'}</span><span class="mono">${h1(e.hours)} h</span><span class="n">${esc(e.note || '')}</span>
     ${C.locked || (C.dayLocked && C.dayLocked(d)) ? '' : `<button type="button" class="btn ghost sm" data-act="pop-edit" data-id="${e.id}">Edit</button><button type="button" class="icon" data-act="pop-del" data-id="${e.id}" aria-label="Delete this entry">${wkClose}</button>`}</li>`).join('');
   const dl = C.locked || (C.dayLocked && C.dayLocked(d));
   const form = dl ? '' : `<form data-form="wk-pop"><input type="hidden" name="lid" value="${esc(lid)}"><input type="hidden" name="d" value="${d}"><input type="hidden" name="id" value="${ed ? ed.id : ''}">
     <div class="g2">${mode === 'from_to'
       ? `<div><label>From</label><input name="start_time" type="time" step="${(wkStepMin() || 1) * 60}" data-tm required value="${esc(ed?.start_time || '')}"></div><div><label>To</label><input name="end_time" type="time" step="${(wkStepMin() || 1) * 60}" data-tm required value="${esc(ed?.end_time || '')}"></div>`
       : `<div><label>Hours for the day</label><input name="hours" type="number" min="0" max="${C.maxDay}" step="${C.inc}" data-hh required value="${ed ? ed.hours : ''}"></div>`}</div>
+    ${mode === 'from_to' ? `<div class="brk"><label for="wk-brk">Break time</label><input id="wk-brk" name="break" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="0:00" data-brk value="${esc(wkBreakFmt(ed?.break_minutes))}"><small class="muted">h:mm</small></div>` : ''}
     <div class="poperr" role="alert" hidden></div>
     <div><label>Note</label><input name="note" maxlength="1000" value="${esc(ed?.note || '')}"></div>
     <div class="fb"><button class="btn pri sm" type="submit">${ed ? 'Save entry' : 'Add entry'}</button><button class="btn ghost sm" type="button" data-act="pop-close">Close</button></div></form>`;
@@ -2171,7 +2179,7 @@ Object.assign(forms, {
     if (wkPopCheck(f)) return;   // minutes / hours not aligned to the increment: red, warned, nothing is sent
     const b = { work_date: o.d, project_id: Number(ln.project_id), note: o.note || null };
     if (ln.service_id) b.service_id = Number(ln.service_id); b.task_id = ln.task_id ? Number(ln.task_id) : null; if (C.emp) b.hour_type = ln.hour_type;
-    if (mode === 'from_to') { b.start_time = o.start_time; b.end_time = o.end_time; } else b.hours = o.hours;
+    if (mode === 'from_to') { b.start_time = o.start_time; b.end_time = o.end_time; b.break_minutes = wkParseBreak(o.break) || 0; } else b.hours = o.hours;
     if (!o.id && wkNeedTask(ln)) { const box = f.querySelector('.poperr'); if (box) { box.hidden = false; box.textContent = T('Choose the task on this line first.'); } return; }
     try {
       await wkApplyEdits(ln);
@@ -2179,9 +2187,9 @@ Object.assign(forms, {
     } catch (e) {   // the server refused (422 start_time / end_time / hours): shown in the box, which stays open
       if (e.message === 'Session expired') throw e;
       const box = f.querySelector('.poperr'); const er = e.errors || {};
-      if (box) { box.hidden = false; box.textContent = T(er.start_time?.[0] || er.end_time?.[0] || er.hours?.[0] || er.task_id?.[0] || e.message); }
-      for (const k of Object.keys(er)) f.elements[k]?.classList?.add('bad');
-      toast(er.start_time?.[0] || er.end_time?.[0] || er.hours?.[0] || e.message, 'err'); return;
+      if (box) { box.hidden = false; box.textContent = T(er.start_time?.[0] || er.end_time?.[0] || er.break_minutes?.[0] || er.hours?.[0] || er.task_id?.[0] || e.message); }
+      for (const k of Object.keys(er)) (k === 'break_minutes' ? f.elements.break : f.elements[k])?.classList?.add('bad');
+      toast(er.start_time?.[0] || er.end_time?.[0] || er.break_minutes?.[0] || er.hours?.[0] || e.message, 'err'); return;
     }
     wkPopClose(); wkRelid(ln); flash('Entry saved.'); render();
   },

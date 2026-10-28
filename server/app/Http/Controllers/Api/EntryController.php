@@ -121,6 +121,7 @@ class EntryController extends Controller
             'start_time' => 'nullable|string|max:5',
             'end_time' => 'nullable|string|max:5',
             'hours' => 'nullable|numeric',
+            'break_minutes' => 'nullable|integer|min:0|max:1440',
             'note' => 'nullable|string|max:1000',
             'billable' => 'nullable|boolean',
             'hour_type' => 'nullable|in:'.implode(',', TimeEntry::HOUR_TYPES),
@@ -131,7 +132,7 @@ class EntryController extends Controller
 
     private function normalize(array $in): array
     {
-        $keys = ['project_id', 'service_id', 'task_id', 'work_date', 'start_time', 'end_time', 'hours', 'note', 'billable', 'hour_type', 'running'];
+        $keys = ['project_id', 'service_id', 'task_id', 'work_date', 'start_time', 'end_time', 'break_minutes', 'hours', 'note', 'billable', 'hour_type', 'running'];
         return array_intersect_key($in, array_flip($keys));
     }
 
@@ -156,6 +157,7 @@ class EntryController extends Controller
             'start_time' => $e->start_time ? substr($e->start_time, 0, 5) : null,
             'end_time' => $e->end_time ? substr($e->end_time, 0, 5) : null,
             'running' => $e->running,
+            'break_minutes' => (int) $e->break_minutes,
             'hours' => (float) $e->hours,
             'note' => $e->note,
             'note_from_submission' => (bool) $e->note_from_submission,

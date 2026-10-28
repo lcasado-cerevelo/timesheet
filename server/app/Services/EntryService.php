@@ -64,8 +64,17 @@ class EntryService
             $start = $data['start_time'] ?? null;
             $end = $data['end_time'] ?? null;
             $hours = isset($data['hours']) ? (float) $data['hours'] : null;
+            // Descanso en minutos (solo con hora desde y hasta). Si no viene, la entrada conserva el que tenía.
+            $break = array_key_exists('break_minutes', $data) ? (int) $data['break_minutes'] : (int) ($entry?->break_minutes ?? 0);
+            if ($break < 0) {
+                $this->fail('break_minutes', __('El descanso no puede ser negativo.'));
+            }
 
             if ($mode === 'full_day') {
+                if (! empty($data['break_minutes'])) {
+                    $this->fail('break_minutes', __('El descanso solo se usa con hora desde y hasta.'));
+                }
+                $break = 0;
                 if ($start || $end || $running) {
                     $this->fail('start_time', __('Este servicio se registra con el total de horas del día; no lleva hora desde ni hasta.'));
                 }
@@ -91,6 +100,7 @@ class EntryService
                 if ($running) {
                     $end = null;
                     $hours = 0.0;
+                    $break = 0;
                     if (TimeEntry::where('user_id', $user->id)->where('running', true)
                         ->when($entry, fn ($q) => $q->where('id', '!=', $entry->id))->exists()) {
                         $this->fail('running', __('Ya hay un reloj corriendo.'));
@@ -103,7 +113,14 @@ class EntryService
                     if ($minutes <= 0) {
                         $this->fail('end_time', __('La hora de fin debe ser después de la de inicio.'));
                     }
-                    $hours = $this->roundTo($minutes / 60, $inc);
+                    if ($break >= $minutes && $break > 0) {
+                        $this->fail('break_minutes', __('El descanso debe ser menor que el tiempo entre la hora de inicio y la de fin.'));
+                    }
+                    $step = $rules->stepMinutes();
+                    if ($break > 0 && $step !== null && $break % $step !== 0) {
+                        $this->fail('break_minutes', $step >= 60 ? __('El descanso debe ser en horas completas.') : __('El descanso debe ser múltiplo de :step minutos.', ['step' => $step]));
+                    }
+                    $hours = $this->roundTo(($minutes - $break) / 60, $inc);
                     if ($hours <= 0) {
                         $this->fail('end_time', __('La duración es demasiado corta.'));
                     }
@@ -167,6 +184,7 @@ class EntryService
                 'end_time' => $end ? $end.':00' : null,
                 'running' => $running,
                 'hours' => $hours,
+                'break_minutes' => $break,
                 'note' => isset($data['note']) ? mb_substr((string) $data['note'], 0, 1000) : null,
                 'note_from_submission' => $entry && $entry->note_from_submission && isset($data['note']) && (string) $data['note'] === (string) $entry->note,
                 'billable' => $billable,
@@ -341,6 +359,9 @@ class EntryService
         // La relación puede ser la de antes de cambiar la tarea: se vuelve a leer si no coincide.
         $task = $e->task_id ? ($e->relationLoaded('task') && $e->task?->id === (int) $e->task_id ? $e->task : Task::find($e->task_id)) : null;
         $span = $e->start_time ? substr($e->start_time, 0, 5).'-'.($e->end_time ? substr($e->end_time, 0, 5) : '…') : '';
+        if ((int) $e->break_minutes > 0) {
+            $span .= ' ('.__('descanso :time', ['time' => intdiv((int) $e->break_minutes, 60).':'.str_pad((string) ((int) $e->break_minutes % 60), 2, '0', STR_PAD_LEFT)]).')';
+        }
         return trim($e->work_date->toDateString().' '.$e->project->code.($task ? ' / '.$task->name : '').' '.$span).' '.number_format((float) $e->hours, 2).' h';
     }
 

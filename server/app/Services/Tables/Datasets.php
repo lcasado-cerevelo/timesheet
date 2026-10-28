@@ -197,8 +197,9 @@ class Datasets
                 }
                 $row = [$s->user->name, $s->week_ending->toDateString(), $s->part ? (string) $s->part : '', $status[$s->status] ?? $s->status,
                     $e->project->code.' · '.$e->project->name, (string) ($e->service?->name ?? ''), $day,
-                    $e->start_time ? substr($e->start_time, 0, 5) : '', $e->end_time ? substr($e->end_time, 0, 5) : '', (float) $e->hours, (string) $e->note, $signed];
-                if ($this->matches($f['q'] ?? null, [$row[0], $row[4], $row[5], $row[10]])) {
+                    $e->start_time ? substr($e->start_time, 0, 5) : '', $e->end_time ? substr($e->end_time, 0, 5) : '',
+                    (int) $e->break_minutes > 0 ? round($e->break_minutes / 60, 2) : '', (float) $e->hours, (string) $e->note, $signed];
+                if ($this->matches($f['q'] ?? null, [$row[0], $row[4], $row[5], $row[11]])) {
                     $rows[] = $row;
                 }
             }
@@ -211,9 +212,9 @@ class Datasets
                 ! empty($f['project_id']) ? __('proyecto :name', ['name' => Project::find($f['project_id'])?->code ?? '#'.$f['project_id']]) : null]),
             'columns' => [['h' => __('Persona'), 't' => 'text'], ['h' => __('Semana que termina'), 't' => 'date'], ['h' => __('Parte'), 't' => 'text'], ['h' => __('Estado'), 't' => 'text'],
                 ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Servicio'), 't' => 'text'], ['h' => __('Fecha'), 't' => 'date'], ['h' => __('Desde'), 't' => 'text'],
-                ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Nota'), 't' => 'text'], ['h' => __('Firmas digitales'), 't' => 'text']],
+                ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Descanso'), 't' => 'hours'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Nota'), 't' => 'text'], ['h' => __('Firmas digitales'), 't' => 'text']],
             'rows' => $rows,
-            'total' => [__('Total'), '', '', '', '', '', '', '', '', round(array_sum(array_column($rows, 9)), 2), '', ''],
+            'total' => [__('Total'), '', '', '', '', '', '', '', '', '', round(array_sum(array_column($rows, 10)), 2), '', ''],
         ];
     }
 
