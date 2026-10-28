@@ -109,6 +109,21 @@ class SheetService
             if ($plan === [] && $resubmit->isEmpty()) {
                 throw ValidationException::withMessages(['status' => __('No hay horas para enviar hasta esa fecha.')]);
             }
+            // Una hoja devuelta que cubría la semana completa y se reenvía "hasta" un día anterior al fin de la semana se parte: queda como
+            // una parte hasta ese día y lo que sigue pasa a un borrador, que sigue abierto. (Antes se reenviaba entera y bloqueaba días que aún no llegan.)
+            foreach ($resubmit as $r) {
+                if ($r->period_start === null && $through < $end) {
+                    $r->forceFill(['period_start' => $start, 'period_end' => $through, 'part' => $r->part ?: ((int) $sheets->max('part') + 1)])->save();
+                    $later = TimeEntry::where('timesheet_id', $r->id)->where('work_date', '>', $through)->pluck('id');
+                    if ($later->isNotEmpty()) {
+                        $draft ??= Timesheet::create(['company_id' => $user->company_id, 'user_id' => $user->id, 'week_ending' => $end, 'status' => Timesheet::DRAFT, 'version' => 1]);
+                        TimeEntry::whereIn('id', $later)->update(['timesheet_id' => $draft->id]);
+                        $draft->refresh()->recalcTotal();
+                        $draftEntries = TimeEntry::where('timesheet_id', $draft->id)->get();
+                    }
+                    $r->refresh()->recalcTotal();
+                }
+            }
             // Todo se revisa antes de crear o enviar nada: un error en la segunda hoja no debe dejar la primera enviada.
             foreach ($plan as [, , $ents]) {
                 $this->assertSendable($ents, $note);

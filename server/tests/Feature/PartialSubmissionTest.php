@@ -272,4 +272,61 @@ class PartialSubmissionTest extends TestCase
         $this->assertSame(2, Timesheet::where('user_id', $this->worker->id)->where('week_ending', '2026-10-25')->count());
         $this->assertSame([8.0, 8.0], Timesheet::orderBy('part')->get()->map(fn ($s) => (float) $s->total_hours)->all());
     }
+
+    public function test_submitting_a_week_that_is_still_running_sends_only_through_today_when_parts_are_allowed(): void
+    {
+        $this->world();                                               // hoy: miércoles 2026-10-21; la semana termina el domingo 25
+        $this->company->update(['rules' => ['week_starts_on' => 1, 'partial_submission' => true]]);
+        $this->clientWithApprover($this->project);
+        Sanctum::actingAs($this->worker);
+        $a = $this->hours('2026-10-19');
+        $this->postJson("/api/sheets/{$a['timesheet_id']}/submit")->assertOk();
+
+        $s = Timesheet::find(TimeEntry::find($a['id'])->timesheet_id);          // la hoja de la parte (la del borrador original se vació)
+        $this->assertSame('2026-10-19', $s->period_start->toDateString());
+        $this->assertSame('2026-10-21', $s->period_end->toDateString());          // hasta hoy, no hasta el domingo
+        $this->assertSame(1, (int) $s->part);
+        $days = $this->getJson('/api/sheets/week?date=2026-10-21')->assertOk()->json('days');
+        $this->assertSame([true, true, true, false, false, false, false], array_column($days, 'locked'));   // lo que falta de la semana sigue abierto
+        $this->postJson('/api/entries', $this->entry(['work_date' => '2026-10-21']))->assertStatus(423);     // lo enviado no se toca
+    }
+
+    public function test_without_parts_allowed_a_running_week_is_sent_whole_as_always(): void
+    {
+        $this->world();
+        $this->clientWithApprover($this->project);
+        Sanctum::actingAs($this->worker);
+        $a = $this->hours('2026-10-19');
+        $this->postJson("/api/sheets/{$a['timesheet_id']}/submit")->assertOk();
+        $this->assertNull(Timesheet::find(TimeEntry::find($a['id'])->timesheet_id)->period_start);
+    }
+
+    public function test_resubmitting_a_returned_whole_week_through_a_day_makes_it_a_part_and_leaves_the_rest_open(): void
+    {
+        $this->world();                                               // hoy: miércoles 2026-10-21; la semana va del lunes 19 al domingo 25
+        $this->clientWithApprover($this->project);
+        Sanctum::actingAs($this->worker);
+        $mon = $this->hours('2026-10-19');
+        $this->hours('2026-10-20');
+        $wed = $this->hours('2026-10-21');
+        $sheetId = $mon['timesheet_id'];
+        $this->postJson("/api/sheets/$sheetId/submit")->assertOk();                    // sin partes: se envió la semana entera
+        $this->assertNull(Timesheet::find($sheetId)->period_start);
+        app(\App\Services\SheetService::class)->return(Timesheet::find($sheetId), $this->approver, null, 'link', 'Reenvíala por partes.', 1);
+        $this->company->update(['rules' => ['week_starts_on' => 1, 'partial_submission' => true]]);
+        Sanctum::actingAs($this->worker->fresh());
+
+        $this->postJson('/api/sheets/submit-days', ['through' => '2026-10-20'])->assertOk();
+        $s = Timesheet::find($sheetId);
+        $this->assertSame('submitted', $s->status);
+        $this->assertSame('2026-10-19', $s->period_start->toDateString());
+        $this->assertSame('2026-10-20', $s->period_end->toDateString());             // ahora es una parte hasta el martes
+        $this->assertSame($sheetId, TimeEntry::find($mon['id'])->timesheet_id);
+        $later = Timesheet::find(TimeEntry::find($wed['id'])->timesheet_id);
+        $this->assertNotSame($sheetId, $later->id);                                    // lo del miércoles pasó a un borrador
+        $this->assertSame('draft', $later->status);
+        $days = $this->getJson('/api/sheets/week?date=2026-10-21')->assertOk()->json('days');
+        $this->assertSame([true, true, false, false, false, false, false], array_column($days, 'locked'));
+        $this->putJson('/api/entries/'.$wed['id'], $this->entry(['work_date' => '2026-10-21', 'end_time' => '15:00']))->assertOk();   // el día abierto se sigue editando
+    }
 }

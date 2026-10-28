@@ -81,9 +81,11 @@ class SheetController extends Controller
         // Someter la hoja se firma con la contraseña: se verifica antes de hacer nada y la firma queda cuando la hoja salió bien.
         $sig = app(SignatureService::class);
         $sig->verifyPassword($request, $user);
-        // Una hoja en borrador de una semana que ya tiene partes envía los días abiertos hasta hoy (o hasta el domingo), en bloques.
-        if ($sheet->status === Timesheet::DRAFT && $this->sheets->weekSheets($user, $sheet->week_ending->toDateString())->count() > 1) {
-            $today = CarbonImmutable::now($user->company->timezone)->toDateString();
+        // Una hoja en borrador envía los días abiertos hasta hoy (o hasta el fin de la semana), en bloques, cuando la semana ya tiene partes o
+        // cuando la compañía permite enviar por partes y la semana todavía no termina: enviar la semana completa bloquearía días que aún no llegan.
+        $today = CarbonImmutable::now($user->company->timezone)->toDateString();
+        $running = (bool) $user->company->rules()->get('partial_submission') && $sheet->week_ending->toDateString() > $today;
+        if (($sheet->status === Timesheet::DRAFT || ($sheet->status === Timesheet::RETURNED && $sheet->period_start === null)) && ($running || $this->sheets->weekSheets($user, $sheet->week_ending->toDateString())->count() > 1)) {
             $sent = $this->sheets->submitDays($user, min($today, $sheet->week_ending->toDateString()), $note, 'app', false);
             $this->signSubmitted($sig, $request, $user, $sent);
             return response()->json($this->weekPayload($user, $this->sheets->forWeek($user, $sheet->week_ending->toDateString())));

@@ -622,3 +622,8 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - Con envío por partes, los días de una parte enviada quedan bloqueados y los días abiertos siguen editables.
 - La web dice «Enviada a aprobación y bloqueada. No se puede cambiar a menos que te la devuelvan.»; la app móvil bloquea esas semanas y días con el mismo motivo.
 - Si una persona envía algo mal, la regresa quien la revisa (devolver) o el dueño (devolver / reabrir). El código de avisos de cambio sigue en el servidor pero ya no se alcanza por uso normal.
+
+## Envío por partes: un solo botón y sin bloquear lo que falta (corrección)
+- En la hoja semanal, con el envío por partes activo, hay **un solo botón** de envío: sin ningún día marcado es «Enviar a aprobación»; si se marca «enviar hasta aquí» en un día, ese mismo botón pasa a ser «Enviar hasta <día>». Ya no salen los dos a la vez.
+- «Enviar a aprobación» de una semana que **todavía no termina** (con envío por partes activo) envía solo hasta hoy y deja abierto lo que falta; antes enviaba la semana completa y bloqueaba días que aún no llegaban.
+- Una hoja **devuelta que cubría la semana completa** y se reenvía hasta un día anterior al fin de la semana se parte: queda como una parte hasta ese día y lo que sigue pasa a un borrador abierto. Antes se reenviaba entera (sin parte) aunque se hubiera marcado «hasta el martes».
