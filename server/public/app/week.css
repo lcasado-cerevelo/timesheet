@@ -37,7 +37,7 @@
 .wkd{padding:10px 0 0}.wkd .dl{font-weight:600}.wkdt{text-align:center;font-weight:500}.wkgt{text-align:right;font-weight:600}
 .wkbtns{margin-top:12px;display:flex;flex-wrap:wrap;gap:10px}
 .wkbottom{display:flex;flex-wrap:wrap;gap:20px;align-items:stretch}
-.wktotals{flex:1 1 320px;display:flex;flex-wrap:wrap;gap:16px 36px;align-items:flex-end}
+.wktotals{flex:1 1 320px;display:flex;flex-wrap:wrap;gap:16px 36px;align-items:flex-end;align-self:flex-start}
 .wktotals .big{font-size:26px;font-weight:500}.wktotals .big.acc{font-weight:600;color:var(--primary)}
 .wktotals .note{margin:0;color:var(--muted);max-width:360px}
 .wkcert{flex:1 1 360px;display:flex;flex-direction:column;gap:12px}
