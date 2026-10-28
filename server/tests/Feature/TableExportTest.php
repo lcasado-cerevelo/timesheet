@@ -228,7 +228,7 @@ class TableExportTest extends TestCase
         Sanctum::actingAs($this->worker);
         $this->postJson('/api/sheets/'.$sheet->id.'/submit')->assertOk();
         Sanctum::actingAs($this->owner);
-        $this->postJson('/api/sheets/'.$sheet->id.'/approve')->assertOk();
+        $this->approveSheet($sheet->id);
         $r = $this->post('/api/client-timesheet/download', ['customer_id' => $this->customer->id, 'from' => '2026-10-01', 'to' => '2026-10-31', 'format' => 'csv']);
         $r->assertOk();
         $csv = $r->getContent();

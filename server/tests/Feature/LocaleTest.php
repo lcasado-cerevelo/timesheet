@@ -51,7 +51,7 @@ class LocaleTest extends TestCase
         $e = $this->postJson('/api/entries', $this->entry())->assertCreated()->json();
         $this->postJson('/api/sheets/'.$e['timesheet_id'].'/submit')->assertOk();
         Sanctum::actingAs($this->owner);
-        $this->postJson('/api/sheets/'.$e['timesheet_id'].'/approve')->assertOk();
+        $this->approveSheet($e['timesheet_id']);
         return Mail::sent(BrandedMail::class, fn ($m) => $m->viewName === 'mail.sheet-decision')->last();
     }
 

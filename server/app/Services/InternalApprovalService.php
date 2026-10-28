@@ -29,7 +29,8 @@ use Illuminate\Support\Facades\Mail;
  *   R4  SKIP_PART_WHEN_NO_ELIGIBLE  quien envía nunca aprueba lo suyo (eligibleFor() la excluye); si no queda nadie
  *                                  elegible, la parte se omite y queda registrada (true) o bloquea hasta que el dueño decida (false).
  *   R5  INVALIDATE_ON_CHANGE       un cambio en la hoja durante la etapa interna borra las aprobaciones ya dadas y se vuelve a avisar.
- *   R6  OWNER_CAN_OVERRIDE         el dueño (back office) aprueba o devuelve en cualquier etapa; queda como evento "override".
+ *   R6  OWNER_CAN_OVERRIDE         el dueño (back office) puede DEVOLVER en la etapa interna (queda como evento "override"); NUNCA aprueba por
+ *                                  encima de una etapa: aprueba la interna solo si es uno de los internos, y la del cliente jamás la sustituye.
  *
  * QUIÉNES son los internos de una parte: la lista del servicio (service_internal_approvers). RESPALDO para servicios viejos con la
  * lista vacía: la lista vieja del proyecto (project_internal_approvers, que se conserva solo para esto).

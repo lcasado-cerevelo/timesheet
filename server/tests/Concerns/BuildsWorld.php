@@ -61,4 +61,28 @@ trait BuildsWorld
         preg_match('#/'.$prefix.'/([A-Za-z0-9]{48})#', $mailHtml, $m);
         return $m[1] ?? '';
     }
+
+    /** Aprueba una hoja como lo harían sus aprobadores, en orden (internos y luego externos): nadie aprueba por otro, ni el dueño. */
+    protected function approveSheet(int $sheetId): void
+    {
+        $sheets = app(\App\Services\SheetService::class);
+        $internal = app(\App\Services\InternalApprovalService::class);
+        $external = app(\App\Services\ExternalApprovalService::class);
+        for ($i = 0; $i < 12; $i++) {
+            $s = \App\Models\Timesheet::findOrFail($sheetId);
+            if ($s->status !== \App\Models\Timesheet::SUBMITTED) {
+                return;
+            }
+            if ($s->stage === \App\Models\Timesheet::STAGE_INTERNAL) {
+                $part = $internal->pendingParts($s)->first();
+                $sheets->internalApprove($s, $part['eligible']->first(), null);
+                continue;
+            }
+            $part = $external->pendingParts($s)->first();
+            if (! $part) {
+                return;
+            }
+            $sheets->approve($s, $part['eligible']->first(), null, 'link');
+        }
+    }
 }

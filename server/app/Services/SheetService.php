@@ -415,6 +415,19 @@ class SheetService
         if ($user && $user->id === $sheet->user_id && $via !== 'self') {
             throw ValidationException::withMessages(['status' => __('No puedes aprobar tu propia hoja.')]);
         }
+        // Nadie aprueba por otro ni se salta una etapa: el dueño aprueba la etapa interna solo si es uno de los internos de la hoja (cuenta como
+        // su aprobación interna y la hoja sigue al cliente), y la etapa del cliente nunca la sustituye.
+        if ($approver === null && $user !== null && $via !== 'self') {
+            if ($sheet->stage === Timesheet::STAGE_INTERNAL) {
+                if ($this->internal->pendingPartsOf($sheet, $user)->isNotEmpty()) {
+                    return $this->internalApprove($sheet, $user, $expectedVersion);
+                }
+                throw ValidationException::withMessages(['status' => __('Esta hoja espera la aprobación interna.')]);
+            }
+            if ($this->external->pendingParts($sheet)->isNotEmpty()) {
+                throw ValidationException::withMessages(['status' => __('Esta hoja espera la aprobación del cliente: nadie la aprueba por él.')]);
+            }
+        }
         $override = $this->guardStage($sheet, $approver, $user, $via);
         if ($approver !== null) {
             return $this->externalApprove($sheet, $approver, $via);

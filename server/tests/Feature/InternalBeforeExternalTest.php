@@ -131,4 +131,34 @@ class InternalBeforeExternalTest extends TestCase
         $this->assertCount(1, $this->mails('mail.approval-request', 'jorge@cliente.test'));
         $this->assertContains('internal_skipped', $sheet->events()->pluck('type')->all());
     }
+
+    public function test_the_owner_who_is_an_internal_approver_approves_only_that_stage_and_the_sheet_goes_on_to_the_client(): void
+    {
+        $this->setUpBoth();
+        $account = $this->externalAccount();
+        Sanctum::actingAs($this->owner);
+        foreach ($this->project->services()->get() as $svc) {
+            $this->putJson('/api/services/'.$svc->id, ['approval_mode' => 'both', 'internal_approver_ids' => [$this->owner->id]])->assertOk();
+        }
+        $sheet = $this->submit();
+        $this->assertSame('internal', $sheet->fresh()->stage);
+
+        Sanctum::actingAs($this->owner);
+        $this->assertTrue($this->getJson('/api/sheets/'.$sheet->id)->json('can_approve'));
+        $this->postJson('/api/sheets/'.$sheet->id.'/approve', ['version' => $sheet->fresh()->version])->assertOk()->assertJsonPath('status', 'submitted')->assertJsonPath('stage', 'external');
+        $this->assertContains('internal_approved', $sheet->events()->pluck('type')->all());
+        $this->assertNotContains('override', $sheet->events()->pluck('type')->all());
+        $this->assertNotContains('approved', $sheet->events()->pluck('type')->all());
+
+        // Ya está con el cliente: el dueño no la aprueba por él.
+        $this->assertFalse($this->getJson('/api/sheets/'.$sheet->id)->json('can_approve'));
+        $this->postJson('/api/sheets/'.$sheet->id.'/approve', ['version' => $sheet->fresh()->version])->assertStatus(422)->assertJsonValidationErrors('status');
+        $this->assertSame('submitted', $sheet->fresh()->status);
+
+        Sanctum::actingAs($account);
+        $this->assertCount(1, $this->getJson('/api/approver/sheets?status=pending')->assertOk()->json());
+        $this->postJson('/api/approver/sheets/'.$sheet->id.'/approve', ['version' => $sheet->fresh()->version])->assertOk();
+        $this->assertSame('approved', $sheet->fresh()->status);
+        $this->assertSame('external', $sheet->events()->where('type', 'approved')->first()->data['stage']);
+    }
 }

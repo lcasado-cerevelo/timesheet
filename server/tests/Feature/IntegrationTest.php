@@ -43,7 +43,7 @@ class IntegrationTest extends TestCase
                 'note' => 'Trabajo '.$day]))->assertCreated()->json();
             $this->postJson('/api/sheets/'.$e['timesheet_id'].'/submit')->assertOk();
             Sanctum::actingAs($this->owner);
-            $this->postJson('/api/sheets/'.$e['timesheet_id'].'/approve')->assertOk();
+            $this->approveSheet($e['timesheet_id']);
         }
         Sanctum::actingAs($this->owner);
     }

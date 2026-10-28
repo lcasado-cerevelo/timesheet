@@ -460,12 +460,15 @@ class ExternalApprovalTest extends TestCase
         $this->postJson('/api/sheets/'.$id.'/submit')->assertStatus(422)->assertJsonValidationErrors('approver');
     }
 
-    public function test_the_owner_can_still_override_in_the_external_stage(): void
+    public function test_the_owner_cannot_approve_in_place_of_the_external_approvers(): void
     {
         $sheet = $this->submitBoth();
         Sanctum::actingAs($this->owner);
-        $this->postJson('/api/sheets/'.$sheet->id.'/approve', ['version' => $sheet->version])->assertOk()->assertJsonPath('status', 'approved');
-        $this->get('/a/'.$this->link('jorge@cliente.test'))->assertStatus(410);
+        $this->postJson('/api/sheets/'.$sheet->id.'/approve', ['version' => $sheet->version])->assertStatus(422)->assertJsonValidationErrors('status');
+        $this->assertSame('submitted', $sheet->fresh()->status);
+        $this->assertSame(0, $sheet->externalApprovals()->count());
+        $this->get('/a/'.$this->link('jorge@cliente.test'))->assertOk();                  // el enlace del aprobador sigue valiendo
+        $this->assertFalse($this->getJson('/api/sheets/'.$sheet->id)->json('can_approve'));
     }
 
     public function test_two_services_of_one_project_are_two_parts(): void

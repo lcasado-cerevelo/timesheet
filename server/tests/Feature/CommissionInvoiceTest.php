@@ -42,7 +42,7 @@ class CommissionInvoiceTest extends TestCase
                 $e = $this->postJson('/api/entries', $this->entry(['work_date' => $day, 'end_time' => $end]))->assertCreated()->json();
                 $this->postJson('/api/sheets/'.$e['timesheet_id'].'/submit')->assertOk();
                 Sanctum::actingAs($this->owner);
-                $this->postJson('/api/sheets/'.$e['timesheet_id'].'/approve')->assertOk();
+                $this->approveSheet($e['timesheet_id']);
             }
         }
         // La tarea se crea después de registrar las horas: con una tarea abierta, el proyecto exigiría escogerla en cada entrada.

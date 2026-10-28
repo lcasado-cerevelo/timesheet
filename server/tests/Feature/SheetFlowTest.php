@@ -187,9 +187,12 @@ class SheetFlowTest extends TestCase
         $this->postJson('/api/entries', $this->entry())->assertCreated();
         $this->postJson('/api/sheets/'.$sheet->id.'/submit')->assertOk();
         $this->postJson('/api/sheets/'.$sheet->id.'/approve')->assertForbidden();   // no es dueño
-        $this->owner->approver_id = null;
+        // El dueño tampoco aprueba por el cliente: la hoja espera a su aprobador.
         Sanctum::actingAs($this->owner);
-        $this->postJson('/api/sheets/'.$sheet->id.'/approve')->assertOk()->assertJsonPath('status', 'approved');
+        $this->postJson('/api/sheets/'.$sheet->id.'/approve')->assertStatus(422)->assertJsonValidationErrors('status');
+        $this->assertSame('submitted', $sheet->fresh()->status);
+        $this->approveSheet($sheet->id);
+        $this->assertSame('approved', $sheet->fresh()->status);
     }
 
     public function test_batch_reminder_after_seven_days_requires_a_code_and_skips_changed_or_over_limit(): void
@@ -258,7 +261,7 @@ class SheetFlowTest extends TestCase
         $this->postJson('/api/sheets/'.$sheet->id.'/submit');
         $this->owner->approver_id = null;
         Sanctum::actingAs($this->owner);
-        $this->postJson('/api/sheets/'.$sheet->id.'/approve')->assertOk();
+        $this->approveSheet($sheet->id);
 
         Sanctum::actingAs($this->worker);
         $edit = ['entries' => [$this->entry(['client_uuid' => $uuid, 'end_time' => '17:00'])]];

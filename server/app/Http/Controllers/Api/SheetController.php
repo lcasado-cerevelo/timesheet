@@ -16,7 +16,7 @@ use Illuminate\Http\Request;
 
 class SheetController extends Controller
 {
-    public function __construct(private SheetService $sheets, private ReviewService $review, private InternalApprovalService $internal)
+    public function __construct(private SheetService $sheets, private ReviewService $review, private InternalApprovalService $internal, private \App\Services\ExternalApprovalService $external)
     {
     }
 
@@ -133,8 +133,9 @@ class SheetController extends Controller
         $v = $request->validate(['version' => 'nullable|integer']);
         $sig = app(SignatureService::class);
         $sig->verifyPassword($request, $request->user());
+        $stage = $sheet->stage;
         $sheet = $this->sheets->approve($sheet, null, $request->user(), 'app', $v['version'] ?? null);
-        $sig->record($request, $request->user(), 'sheet.approve', $sheet, ['version' => (int) $sheet->version, 'hours' => (float) $sheet->total_hours]);
+        $sig->record($request, $request->user(), 'sheet.approve', $sheet, ['version' => (int) $sheet->version, 'hours' => (float) $sheet->total_hours] + ($stage === Timesheet::STAGE_INTERNAL ? ['stage' => 'internal'] : []));
         return response()->json($this->payload($sheet));
     }
 
@@ -159,6 +160,19 @@ class SheetController extends Controller
         $sheet = $this->sheets->reopen($sheet, $request->user(), $v['comment']);
         $sig->record($request, $request->user(), 'sheet.reopen', $sheet, ['version' => (int) $sheet->version, 'comment' => $v['comment']]);
         return response()->json($this->payload($sheet, true));
+    }
+
+    /** ¿Puede quien mira (si es el dueño) aprobar esta hoja ahora? Solo si le toca la etapa interna; la del cliente no la sustituye nadie. */
+    private function canApprove(Timesheet $s): ?bool
+    {
+        $u = auth()->user();
+        if (! $u || ! $u->isOwner() || $s->status !== Timesheet::SUBMITTED) {
+            return null;
+        }
+        if ($s->stage === Timesheet::STAGE_INTERNAL) {
+            return $this->internal->pendingPartsOf($s, $u)->isNotEmpty();
+        }
+        return $s->stage === null || $this->external->pendingParts($s)->isEmpty();
     }
 
     /** Deja la firma de quien envió, en cada hoja que salió. */
@@ -206,6 +220,7 @@ class SheetController extends Controller
             'invoice_number' => $s->invoice?->number,
             'return_by' => $s->status === Timesheet::RETURNED ? ($s->decidedByApprover?->name ?? $s->decidedByUser?->name) : null,
             'warnings' => $s->warnings(),
+            'can_approve' => $this->canApprove($s),
         ] + $s->hoursSplit($entries ?? ($s->relationLoaded('entries') ? $s->entries : null)) + $this->internal->info($s);
         if ($withEntries) {
             $out['entries'] = $entries->map(fn ($e) => EntryController::payload($e));
