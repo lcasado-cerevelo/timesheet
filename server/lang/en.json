@@ -441,5 +441,6 @@
     "Solo se puede reabrir una hoja aprobada.": "Only an approved timesheet can be reopened.",
     "Esta hoja ya se facturó: no se puede reabrir.": "This timesheet was already invoiced: it cannot be reopened.",
     "Esta hoja tiene horas de una tarea con comisión calculada: reabre primero esa tarea.": "This timesheet has hours of a task with a calculated commission: reopen that task first.",
-    "Esta hoja ya se envió y no se puede cambiar.": "This timesheet was already sent and cannot be changed."
+    "Esta hoja ya se envió y no se puede cambiar.": "This timesheet was already sent and cannot be changed.",
+    "Esta hoja espera la aprobación del cliente: nadie la aprueba por él.": "This timesheet is waiting for the client approval: nobody approves it for them."
 }

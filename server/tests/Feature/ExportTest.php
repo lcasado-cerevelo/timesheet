@@ -45,7 +45,7 @@ class ExportTest extends TestCase
         $this->postJson('/api/sheets/'.$sheet->id.'/submit')->assertOk();
         $this->owner->approver_id = null;
         Sanctum::actingAs($this->owner);
-        $this->postJson('/api/sheets/'.$sheet->id.'/approve')->assertOk();
+        $this->approveSheet($sheet->id);
     }
 
     public function test_consultorio_1500_template_matches_what_its_importer_reads(): void

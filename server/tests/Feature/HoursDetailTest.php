@@ -37,7 +37,7 @@ class HoursDetailTest extends TestCase
         TimeEntry::find($e['id'])->update(['start_time' => null, 'end_time' => null, 'hours' => 6]);
         $this->postJson('/api/sheets/'.$e['timesheet_id'].'/submit')->assertOk();
         Sanctum::actingAs($this->owner);
-        $this->postJson('/api/sheets/'.$e['timesheet_id'].'/approve')->assertOk();
+        $this->approveSheet($e['timesheet_id']);
     }
 
     public function test_client_timesheet_lines_say_how_they_were_entered(): void

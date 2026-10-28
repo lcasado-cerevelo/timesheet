@@ -259,17 +259,17 @@ class InternalApprovalTest extends TestCase
         $this->assertSame($before, $this->mails('mail.internal-approval-request')->count());
     }
 
-    public function test_owner_can_override_in_the_internal_stage(): void
+    public function test_the_owner_cannot_approve_the_internal_stage_unless_they_are_an_internal_approver_but_can_return(): void
     {
         $this->setUpInternal();
         $sheet = $this->submit();
         Sanctum::actingAs($this->owner);
-        $this->postJson('/api/sheets/'.$sheet->id.'/approve', ['version' => $sheet->version])->assertOk()->assertJsonPath('status', 'approved');
-        $types = $sheet->events()->pluck('type')->all();
-        $this->assertContains('override', $types);
-        $this->assertSame('internal', $sheet->events()->where('type', 'override')->first()->data['stage']);
+        $this->assertFalse($this->getJson('/api/sheets/'.$sheet->id)->json('can_approve'));
+        $this->postJson('/api/sheets/'.$sheet->id.'/approve', ['version' => $sheet->version])->assertStatus(422)->assertJsonValidationErrors('status');
+        $this->assertSame('submitted', $sheet->fresh()->status);
+        $this->assertNotContains('override', $sheet->events()->pluck('type')->all());
 
-        // Devolver también.
+        // Devolver sí puede (no inventa ninguna aprobación).
         $this->assertCount(1, $this->mails('mail.internal-approval-request'));
         Sanctum::actingAs($this->worker);
         $this->postJson('/api/entries', $this->entry(['work_date' => '2026-10-13']))->assertCreated();

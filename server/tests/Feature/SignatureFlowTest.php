@@ -33,6 +33,13 @@ class SignatureFlowTest extends TestCase
         $this->owner->update(['approver_id' => null]);
     }
 
+    /** El dueño es aprobador interno del servicio: aprueba su etapa (no aprueba por nadie más). */
+    private function ownerApprovesInternally(): void
+    {
+        Sanctum::actingAs($this->owner);
+        $this->putJson('/api/services/'.$this->project->services()->first()->id, ['approval_mode' => 'internal', 'internal_approver_ids' => [$this->owner->id]])->assertOk();
+    }
+
     /** La persona carga 8 h (sin firmar nada todavía). */
     private function entry8(): int
     {
@@ -75,6 +82,7 @@ class SignatureFlowTest extends TestCase
     public function test_the_owner_signs_approve_and_return_with_the_password(): void
     {
         $this->ready();
+        $this->ownerApprovesInternally();
         $id = $this->entry8();
         $this->postJson('/api/sheets/'.$id.'/submit', $this->sig())->assertOk();
 
@@ -173,6 +181,7 @@ class SignatureFlowTest extends TestCase
     public function test_the_invoice_is_signed_with_the_password_and_the_pdf_says_who_signed_it(): void
     {
         $this->ready();
+        $this->ownerApprovesInternally();
         $customer = Customer::create(['company_id' => $this->company->id, 'name' => 'Advance Logistics']);
         $this->project->update(['customer_id' => $customer->id]);
         ContractorTerms::create(['user_id' => $this->worker->id, 'rate' => 40, 'retention_pct' => 10, 'ivu_agent' => false, 'ivu_pct' => 0, 'terms_days' => 30]);
@@ -197,6 +206,7 @@ class SignatureFlowTest extends TestCase
     public function test_the_sheets_table_export_lists_the_digital_signatures(): void
     {
         $this->ready();
+        $this->ownerApprovesInternally();
         $id = $this->entry8();
         $this->postJson('/api/sheets/'.$id.'/submit', $this->sig())->assertOk();
         Sanctum::actingAs($this->owner);

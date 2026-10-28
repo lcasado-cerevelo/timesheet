@@ -590,15 +590,6 @@ class DemoSeeder
         }
     }
 
-    /** El dueño aprueba directamente (anula las etapas pendientes). */
-    private function ownerApprove(?Timesheet $sheet): void
-    {
-        if ($sheet && $sheet->refresh()->status === Timesheet::SUBMITTED) {
-            $this->sheets->approve($sheet, null, $this->u['owner'], 'app');
-            $this->sign($this->u['owner'], 'sheet.approve', $sheet->refresh(), ['version' => (int) $sheet->version, 'hours' => (float) $sheet->total_hours]);
-        }
-    }
-
     // ------------------------------------------------------------------------------------------------ la historia, semana por semana
 
     /** @return array<string,array{0:string,1?:string}> qué pasa con la hoja de cada persona en la semana k */
@@ -608,7 +599,7 @@ class DemoSeeder
             1 => ['ricardo' => ['client_pending'], 'sofia' => ['internal_pending'], 'hector' => ['parts'], 'valeria' => ['returned_external', 'Falta el detalle de lo que se hizo el miércoles; por favor añade una nota a esas horas.'],
                 'ana' => ['draft'], 'jorge' => ['client_pending'], 'lucia' => ['approved']],
             2 => ['sofia' => ['late'], 'valeria' => ['late_pending'], 'ricardo' => ['returned_internal', 'Las horas del jueves no coinciden con el parte del proyecto. Revísalas y vuelve a enviar.'],
-                'jorge' => ['returned_external', 'Las horas de pruebas del viernes no están en el reporte de defectos; por favor confirma.'], 'lucia' => ['owner']],
+                'jorge' => ['returned_external', 'Las horas de pruebas del viernes no están en el reporte de defectos; por favor confirma.'], 'lucia' => ['approved']],
         ];
         return $special[$k][$who] ?? ($k === 0 ? ['draft'] : ['approved']);
     }
@@ -671,7 +662,6 @@ class DemoSeeder
                 'client_pending', 'late_pending' => $this->decide($sheet, 'external'),
                 'returned_external' => $this->decide($sheet, 'approved', 'external', $comment),
                 'returned_internal' => $this->decide($sheet, 'approved', 'internal', $comment),
-                'owner' => $this->ownerApprove($sheet),
                 default => $this->decide($sheet),
             };
         }

@@ -41,7 +41,7 @@ class ProjectProgressTest extends TestCase
         $this->postJson('/api/sheets/'.$e['timesheet_id'].'/submit')->assertOk();
         if ($approve) {
             Sanctum::actingAs($this->owner);
-            $this->postJson('/api/sheets/'.$e['timesheet_id'].'/approve')->assertOk();
+            $this->approveSheet($e['timesheet_id']);
         }
     }
 

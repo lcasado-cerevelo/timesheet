@@ -627,3 +627,10 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - En la hoja semanal, con el envío por partes activo, hay **un solo botón** de envío: sin ningún día marcado es «Enviar a aprobación»; si se marca «enviar hasta aquí» en un día, ese mismo botón pasa a ser «Enviar hasta <día>». Ya no salen los dos a la vez.
 - «Enviar a aprobación» de una semana que **todavía no termina** (con envío por partes activo) envía solo hasta hoy y deja abierto lo que falta; antes enviaba la semana completa y bloqueaba días que aún no llegaban.
 - Una hoja **devuelta que cubría la semana completa** y se reenvía hasta un día anterior al fin de la semana se parte: queda como una parte hasta ese día y lo que sigue pasa a un borrador abierto. Antes se reenviaba entera (sin parte) aunque se hubiera marcado «hasta el martes».
+
+## Nadie aprueba por otro ni se salta una etapa (cambio de regla R6)
+- **Regla:** si una hoja requiere aprobador externo (cliente), ese paso no se salta nunca; tampoco el dueño la aprueba por él. La regla R6 (`InternalApprovalService::OWNER_CAN_OVERRIDE`) ahora solo permite al dueño **devolver** en la etapa interna; nunca aprobar por encima de una etapa.
+- **El dueño como aprobador interno:** si es uno de los internos del servicio, su Approve en la etapa interna cuenta como su **aprobación interna** (queda en el historial como «Aprobada (interna)») y la hoja pasa al cliente. Si no es interno de esa hoja, no ve Approve (solo Return) y el servidor responde 422 «Esta hoja espera la aprobación interna».
+- **Con el cliente:** el dueño no ve Approve ni Return, y el servidor rechaza su Approve («Esta hoja espera la aprobación del cliente: nadie la aprueba por él»). La hoja trae `can_approve` para que la pantalla muestre u oculte el botón.
+- **Si un aprobador externo no puede aprobar:** se cambia el aprobador del servicio o se le reenvía la invitación; el dueño no lo sustituye.
+- Las pruebas que usaban «el dueño aprueba» como atajo ahora aprueban con el aprobador (ayuda `approveSheet` de `BuildsWorld`).

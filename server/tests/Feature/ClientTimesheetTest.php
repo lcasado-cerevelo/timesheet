@@ -42,7 +42,7 @@ class ClientTimesheetTest extends TestCase
             if ($approve) {
                 $this->postJson('/api/sheets/'.$r['timesheet_id'].'/submit')->assertOk();
                 Sanctum::actingAs($this->owner);
-                $this->postJson('/api/sheets/'.$r['timesheet_id'].'/approve')->assertOk();
+                $this->approveSheet($r['timesheet_id']);
             }
             return $r;
         };
