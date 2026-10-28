@@ -117,31 +117,38 @@ class CommissionTest extends TestCase
         $this->assertEquals(24, $j->savings_amount);   // 6 h ahorradas × 80% × 5
     }
 
-    public function test_the_commission_can_be_paid_per_hour_worked_or_for_the_percentage_that_corresponded_to_the_person(): void
+    public function test_paying_for_the_assigned_percentage_pays_the_hours_not_worked_at_the_normal_rate_plus_the_extra(): void
     {
-        $this->setUpTask();
-        $this->commission($this->jarvis);                                                    // por defecto: las horas que trabajó
-        $this->commission($this->ana, ['commission_basis' => 'assigned', 'percent_required' => 10]);
-        $this->teamHours(9, 1);                                                              // total 10 h: Jarvis 90%, Ana 10%
+        $this->setUpTask();                                                                  // presupuesto 20 h, meta 16 h
+        \App\Models\ContractorTerms::create(['user_id' => $this->jarvis->id, 'rate' => 15, 'retention_pct' => 0, 'ivu_agent' => false, 'ivu_pct' => 0, 'terms_days' => 30]);
+        $this->commission($this->jarvis, ['commission_basis' => 'assigned', 'percent_required' => 80]);   // le correspondía 80% de 16 = 12.8 h
+        $this->commission($this->ana, ['percent_required' => 10]);                           // por hora trabajada
+        $this->teamHours(9, 1);                                                              // total 10 h: Jarvis 90%
         $this->complete(['release' => true])->assertOk();
         $j = CommissionResult::where('user_id', $this->jarvis->id)->firstOrFail();
         $a = CommissionResult::where('user_id', $this->ana->id)->firstOrFail();
-        $this->assertSame('worked', $j->commission_basis);
-        $this->assertEquals(9, $j->commission_hours);
-        $this->assertEquals(45, $j->commission_amount);        // 9 h × 5
-        $this->assertSame('assigned', $a->commission_basis);
-        $this->assertEquals(1, $a->commission_hours);          // 10% de 10 h
-        $this->assertEquals(5, $a->commission_amount);
+        $this->assertSame('assigned', $j->commission_basis);
+        $this->assertEquals(12.8, $j->assigned_hours);
+        $this->assertEquals(3.8, $j->shortfall_hours);
+        $this->assertEquals(15, $j->base_rate);
+        $this->assertEquals(12.8, $j->commission_hours);
+        $this->assertEquals(9, $j->user_hours, 'las horas trabajadas se siguen mostrando');
+        $this->assertEquals(121, $j->commission_amount);        // 9 h × $5 + 3.8 h × ($15 + $5)
+        $this->assertSame('worked', $a->commission_basis);
+        $this->assertEquals(0, $a->shortfall_hours);
+        $this->assertEquals(5, $a->commission_amount);          // 1 h × $5
+    }
 
-        // El 80% que le correspondía a Jarvis vale 8 h aunque trabajó 9: paga 8 × 5.
-        CommissionResult::query()->delete();
-        $this->postJson('/api/tasks/'.$this->task->id.'/reopen', ['signature' => 'secret-password'])->assertOk();
-        Commission::where('user_id', $this->jarvis->id)->update(['commission_basis' => 'assigned']);
+    public function test_when_the_person_worked_more_than_assigned_the_extra_is_paid_on_everything_worked(): void
+    {
+        $this->setUpTask();
+        $this->commission($this->jarvis, ['commission_basis' => 'assigned', 'percent_required' => 80]);   // 12.8 h asignadas
+        $this->teamHours(13, 1);                                                             // trabajó 13: más que lo asignado; equipo 14 ≤ meta 16
         $this->complete(['release' => true])->assertOk();
         $j = CommissionResult::where('user_id', $this->jarvis->id)->firstOrFail();
-        $this->assertEquals(8, $j->commission_hours);
-        $this->assertEquals(40, $j->commission_amount);
-        $this->assertEquals(9, $j->user_hours, 'las horas trabajadas se siguen mostrando');
+        $this->assertEquals(0, $j->shortfall_hours);
+        $this->assertEquals(13, $j->commission_hours);
+        $this->assertEquals(65, $j->commission_amount);         // 13 h × $5
     }
 
     public function test_the_basis_of_the_commission_is_saved_from_the_api(): void

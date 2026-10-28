@@ -4,10 +4,10 @@ window.I18N_ES = {
   exact: {
     // --- v2: edit approvers/clients, brand, sign-in rule ---
     // --- commission basis ---
-    "Per hour worked by the person": "Por hora trabajada por la persona", "For the % that corresponded to the person (the minimum share) of the task hours": "Por el % que le correspondía a la persona (el mínimo) de las horas de la tarea",
+    "Per hour worked by the person": "Por hora trabajada por la persona", "For the % of the goal hours that corresponded to the person": "Por el % de las horas de la meta que le correspondía a la persona",
     "Commission: paid on": "Comisión: se paga sobre", "On top of the normal rate. It is paid for the hours chosen below.": "Además de su tarifa normal. Se paga por las horas que escojas abajo.",
-    "Per hour worked: 8 h × the extra. By the assigned %: the minimum share of the task (80% of 10 h = 8 h) × the extra, even if the person worked more.": "Por hora trabajada: 8 h × el extra. Por el % asignado: el mínimo de la tarea (80% de 10 h = 8 h) × el extra, aunque la persona haya trabajado más.",
-    "on the assigned %": "sobre el % asignado",
+    "Per hour worked: only the hours the person worked get the extra. For the assigned %: the person is paid as if they had worked the hours that corresponded to them (the minimum share × the goal hours); each hour not worked is paid at their normal rate + the extra. If they worked more, every hour worked gets the extra.": "Por hora trabajada: solo las horas que la persona trabajó llevan el extra. Por el % asignado: se le paga como si hubiera trabajado las horas que le correspondían (el mínimo × las horas de la meta); cada hora que no trabajó se paga a su tarifa normal + el extra. Si trabajó más, todas las horas trabajadas llevan el extra.",
+    "on the assigned %": "sobre el % asignado", "not worked": "no trabajadas", "of the goal": "de la meta",
     // --- project manager (Progress) ---
     "Show unbilled work as courtesy": "Mostrar el trabajo no facturado como cortesía", "Courtesy (h)": "Cortesía (h)", "Courtesy work (not billed)": "Trabajo de cortesía (no facturado)",
     "The client's project manager sees, apart and only in hours, the work of this project that is not billed. Internal hours (vacation, sick, holidays, internal) are never shown.": "El gerente de proyecto del cliente ve, aparte y solo en horas, el trabajo de este proyecto que no se factura. Las horas internas (vacaciones, enfermedad, feriados, internas) nunca se muestran.",

@@ -18,7 +18,7 @@ class CommissionResult extends Model
 
     protected function casts(): array
     {
-        $dec = ['budget_hours', 'goal_hours', 'tolerance_hours', 'total_hours', 'user_hours', 'commission_hours', 'user_pct', 'saved_hours', 'percent_required',
+        $dec = ['budget_hours', 'goal_hours', 'tolerance_hours', 'total_hours', 'user_hours', 'commission_hours', 'assigned_hours', 'shortfall_hours', 'base_rate', 'user_pct', 'saved_hours', 'percent_required',
             'extra_per_hour', 'savings_pct', 'savings_per_hour', 'commission_amount', 'savings_amount', 'adjustment', 'total'];
         return array_fill_keys($dec, 'decimal:2') + [
             'completed_on' => 'date:Y-m-d', 'deadline' => 'date:Y-m-d',
