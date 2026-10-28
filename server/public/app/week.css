@@ -36,7 +36,9 @@
 .icon:hover{background:#FBEDEB;color:var(--danger)}.icon:disabled{opacity:.3;cursor:not-allowed}
 .wkd{padding:10px 0 0}.wkd .dl{font-weight:600}.wkdt{text-align:center;font-weight:500}.wkgt{text-align:right;font-weight:600}
 .wkbtns{margin-top:12px;display:flex;flex-wrap:wrap;gap:10px}
-.wkbottom{display:flex;flex-wrap:wrap;gap:20px;align-items:stretch}
+.wkbottom{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;align-items:stretch}
+.wkbottom>.card{margin:0;align-self:stretch}
+@media (max-width:900px){.wkbottom{grid-template-columns:minmax(0,1fr)}}
 .wktotals{flex:1 1 320px;display:flex;flex-wrap:wrap;gap:16px 36px;align-items:flex-end}
 .wktotals .big{font-size:26px;font-weight:500}.wktotals .big.acc{font-weight:600;color:var(--primary)}
 .wktotals .note{margin:0;color:var(--muted);max-width:360px}
