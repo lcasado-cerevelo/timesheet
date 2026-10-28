@@ -1877,6 +1877,7 @@ async function weekView() {
 
   // E. the editable grid
   const tot = { day: days.map(() => 0), all: 0 };
+  const retParts = (sheet.parts || []).filter(x => x.status === 'returned'); const retIds = new Set(retParts.map(x => x.id));
   const rows = lines.map((ln, li) => {
     const p = projects.find(x => x.id === Number(ln.project_id)); const mode = wkMode(p, ln.service_id);
     const pOpts = projects.filter(x => x.active || x.id === Number(ln.project_id)).map(x => `<option value="${x.id}" ${x.id === Number(ln.project_id) ? 'selected' : ''}>${esc(wkPL(x))}</option>`).join('');
@@ -1900,7 +1901,7 @@ async function weekView() {
       return `<div class="wkcw"><input class="inp num wkc ${dirty ? 'dirty' : ''} ${badc ? 'bad' : ''} ${dl ? 'lk' : ''}" type="number" min="0" max="${maxDay}" step="${inc}" data-di="${di}" data-cell="${esc(key)}" data-orig="${orig}" aria-label="${aria}" ${badc ? `aria-invalid="true" title="${esc(wkIncMsg(inc))}"` : ''} value="${esc(v)}" ${dl ? 'readonly' : ''}>${noteBtn}</div>`;
     }).join('');
     tot.all += lt;
-    return `<div class="wkrow wkg ${emp ? 'emp' : ''}"><div class="wkproj"><select data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="project_id" aria-label="Project" ${locked ? 'disabled' : ''}>${pOpts}</select>${sSel}${kSel}</div>${tSel}${cells}
+    return `<div class="wkrow wkg ${emp ? 'emp' : ''} ${retIds.size && ln.ents.some(e => retIds.has(e.timesheet_id)) ? 'wkret' : ''}"><div class="wkproj"><select data-act-change="wk-line" data-lid="${esc(ln.lid)}" data-fld="project_id" aria-label="Project" ${locked ? 'disabled' : ''}>${pOpts}</select>${sSel}${kSel}</div>${tSel}${cells}
       <div class="mono wktot">${h1(lt)}</div><button class="icon" type="button" data-act="wk-del" data-lid="${esc(ln.lid)}" aria-label="Remove line" ${locked ? 'disabled' : ''}>${wkClose}</button></div>`;
   }).join('');
   const grid = `<div class="card wkcard"><div class="wkscroll"><div class="wkmin">
@@ -1927,7 +1928,16 @@ async function weekView() {
       ${canSubmit ? `<button class="btn pri" type="button" data-act="wk-submit" ${st.cert && tot.all > 0 ? '' : 'disabled'}>${sheet.status === 'returned' ? 'Corrected: submit again' : 'Submit for approval'}</button>` : ''}</div>
       ${sheet.status === 'submitted' ? '<p class="muted" style="margin:0">Waiting for a decision. If you change it, the approver gets a notice that it changed.</p>' : ''}</div>`;
   const warn = (sheet.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('');
-  const ret = sheet.status === 'returned' && sheet.return_comment ? `<div class="msg err" role="alert"><b>Returned for correction:</b> ${esc(sheet.return_comment)}${sheet.return_by ? ` <span class="muted">${T('Returned by')} ${esc(sheet.return_by.name || sheet.return_by)}</span>` : ''}</div>` : '';
+  const retCard = x => {
+    const es = (sheet.entries || []).filter(e => e.timesheet_id === x.id); const g = new Map();
+    for (const e of es) { const k = [e.project_id, e.service_id ?? '', e.task_id ?? ''].join('|'); if (!g.has(k)) g.set(k, { e, h: 0, days: [] }); const r = g.get(k); r.h += Number(e.hours); if (!r.days.includes(e.work_date)) r.days.push(e.work_date); }
+    const items = [...g.values()].map(r => `<li><b>${esc(r.e.project ? r.e.project.code + ' · ' + r.e.project.name : '')}</b>${r.e.service ? ' · ' + esc(r.e.service.name) : ''}${r.e.task ? ' · ' + esc(r.e.task.name) : ''} <span class="mono">${h1(r.h)} h</span> <span class="muted">(${r.days.map(d => esc(dayLabel(d))).join(', ')})</span></li>`).join('');
+    const part = x.is_part ? ` · ${T('Part')} ${x.part} (${nice(x.period_starting)}${x.period_starting === x.period_ending ? '' : ' – ' + nice(x.period_ending)})` : '';
+    const by = x.return_by ? ` · ${T('Returned by')} ${esc(x.return_by)}${x.decided_at ? ' · ' + nice(String(x.decided_at).slice(0, 10)) : ''}` : '';
+    return `<div class="msg err wkretmsg" role="alert"><div><b>Returned for correction:</b> ${esc(x.return_comment || '')}</div><div class="muted">${T('Week ending')} ${nice(sheet.week_ending)}${part}${by}</div>${items ? `<ul class="wkretl">${items}</ul>` : ''}</div>`;
+  };
+  const ret = retParts.length ? retParts.map(retCard).join('')
+    : sheet.status === 'returned' && sheet.return_comment ? `<div class="msg err" role="alert"><b>Returned for correction:</b> ${esc(sheet.return_comment)}${sheet.return_by ? ` <span class="muted">${T('Returned by')} ${esc(sheet.return_by.name || sheet.return_by)}</span>` : ''}</div>` : '';
   return `<div class="wk">${head}${ret}${warn}${nav}${alert}${facts}${sigLines(sheet.signatures)}${wkPeriods(sheet)}${wkParts(sheet)}${grid}<div class="wkbottom">${left}${right}</div></div>`;
 }
 

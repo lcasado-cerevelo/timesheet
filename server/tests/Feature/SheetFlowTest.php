@@ -130,6 +130,12 @@ class SheetFlowTest extends TestCase
 
         // La persona ve el comentario, corrige y reenvía desde la app (también vale desde el móvil).
         $this->getJson('/api/sheets/'.$sheet->id)->assertJsonPath('return_comment', 'Falta el viernes');
+        // La pantalla de la semana sabe qué parte volvió, quién la devolvió y cuándo, y de qué hoja es cada línea.
+        $week = $this->getJson('/api/sheets/week?date='.$sheet->week_ending->toDateString())->assertOk();
+        $week->assertJsonPath('parts.0.status', 'returned')->assertJsonPath('parts.0.return_comment', 'Falta el viernes');
+        $this->assertNotEmpty($week->json('parts.0.return_by'));
+        $this->assertNotEmpty($week->json('parts.0.decided_at'));
+        $this->assertSame($sheet->id, $week->json('entries.0.timesheet_id'));
         $this->postJson('/api/entries', $this->entry(['work_date' => '2026-10-19']))->assertCreated();
         $this->assertSame('returned', $sheet->fresh()->status);
         $this->postJson('/api/sheets/'.$sheet->id.'/submit')->assertOk()->assertJsonPath('status', 'submitted');

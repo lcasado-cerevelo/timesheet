@@ -51,6 +51,8 @@ class SheetController extends Controller
             'id' => $s->id, 'part' => $s->part, 'status' => $s->status, 'stage' => $s->stage, 'version' => $s->version, 'locked' => $s->isLocked(),
             'period_starting' => $s->periodStarting(), 'period_ending' => $s->periodEnding(), 'is_part' => $s->period_start !== null,
             'total_hours' => (float) $s->total_hours, 'submitted_at' => $s->submitted_at, 'return_comment' => $s->return_comment,
+            'decided_at' => $s->decided_at,
+            'return_by' => $s->status === Timesheet::RETURNED ? ($s->decidedByApprover?->name ?? $s->decidedByUser?->name) : null,
         ])->values();
         $days = [];
         for ($d = CarbonImmutable::parse(Week::starting($end)); $d->toDateString() <= $end; $d = $d->addDay()) {
