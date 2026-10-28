@@ -437,5 +437,9 @@
     "Listo. Contraseña de las cuentas de ejemplo: :password": "Done. Password of the example accounts: :password",
     "Demo · datos de ejemplo": "Demo · example data",
     "En la demostración no se puede cambiar la contraseña de las cuentas de ejemplo.": "In the demo the password of the example accounts cannot be changed.",
-    "Motivo de la devolución": "Reason for the return"
+    "Motivo de la devolución": "Reason for the return",
+    "Escribe el motivo para reabrir la hoja.": "Write the reason to reopen the timesheet.",
+    "Solo se puede reabrir una hoja aprobada.": "Only an approved timesheet can be reopened.",
+    "Esta hoja ya se facturó: no se puede reabrir.": "This timesheet was already invoiced: it cannot be reopened.",
+    "Esta hoja tiene horas de una tarea con comisión calculada: reabre primero esa tarea.": "This timesheet has hours of a task with a calculated commission: reopen that task first."
 }

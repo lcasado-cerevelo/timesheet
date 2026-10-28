@@ -108,6 +108,7 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
     // Solo el dueño de la compañía
     Route::middleware('owner')->group(function () {
         // Avance de cualquier proyecto (solo lectura), como el del gerente de proyecto pero sin límite de cliente
+        Route::post('/sheets/{sheet}/reopen', [SheetController::class, 'reopen']);
         Route::get('/progress', [\App\Http\Controllers\Api\ProjectProgressController::class, 'index']);
         Route::get('/progress/{project}', [\App\Http\Controllers\Api\ProjectProgressController::class, 'show']);
         Route::get('/progress/{project}/export', [\App\Http\Controllers\Api\ProjectProgressController::class, 'export']);

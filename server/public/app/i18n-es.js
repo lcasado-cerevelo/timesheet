@@ -8,6 +8,12 @@ window.I18N_ES = {
     "Commission: paid on": "Comisión: se paga sobre", "On top of the normal rate. It is paid for the hours chosen below.": "Además de su tarifa normal. Se paga por las horas que escojas abajo.",
     "Per hour worked: only the hours the person worked get the extra. For the assigned %: the person is paid as if they had worked the hours that corresponded to them (the minimum share × the goal hours); each hour not worked is paid at their normal rate + the extra. If they worked more, every hour worked gets the extra.": "Por hora trabajada: solo las horas que la persona trabajó llevan el extra. Por el % asignado: se le paga como si hubiera trabajado las horas que le correspondían (el mínimo × las horas de la meta); cada hora que no trabajó se paga a su tarifa normal + el extra. Si trabajó más, todas las horas trabajadas llevan el extra.",
     "on the assigned %": "sobre el % asignado", "not worked": "no trabajadas", "of the goal": "de la meta",
+    // --- reopen and wrong-button protection ---
+    "Clear the comment to approve, or use Return for correction.": "Borra el comentario para aprobar, o usa Devolver para corregir.",
+    "This timesheet is with the client; the external approver decides now.": "Esta hoja está con el cliente; ahora decide el aprobador externo.",
+    "Approved by mistake?": "¿Se aprobó por error?", "Reason to reopen it": "Motivo para reabrirla", "Example: I approved it by mistake; please review it.": "Ejemplo: la aprobé por error; por favor revísala.",
+    "Reopen (return to the person)": "Reabrir (devolver a la persona)", "Write the reason to reopen the timesheet.": "Escribe el motivo para reabrir la hoja.",
+    "Timesheet reopened and returned to the person.": "Hoja reabierta y devuelta a la persona.", "Reopened digitally by": "Reabierta digitalmente por", "Reopened": "Reabierta",
     // --- history of a sheet ---
     "History": "Historial", "Sent": "Enviada", "Sent again": "Enviada de nuevo", "Approved (internal)": "Aprobada (interna)", "Approved (external)": "Aprobada (externa)",
     "Approved by the owner": "Aprobada por el dueño", "Approved automatically": "Aprobada automáticamente", "internal stage": "etapa interna", "external stage": "etapa externa",

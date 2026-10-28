@@ -502,6 +502,36 @@ class SheetService
     }
 
     /**
+     * El dueño reabre una hoja aprobada (se aprobó por error o hay que corregirla): vuelve a la persona como devuelta, con el motivo, y
+     * tiene que reenviarse y aprobarse de nuevo. No se reabre lo que ya se facturó, ni lo que cuenta en una comisión calculada.
+     */
+    public function reopen(Timesheet $sheet, User $owner, string $comment): Timesheet
+    {
+        $comment = trim($comment);
+        if (mb_strlen($comment) < 3) {
+            throw ValidationException::withMessages(['comment' => __('Escribe el motivo para reabrir la hoja.')]);
+        }
+        $sheet->refresh();
+        if ($sheet->status !== Timesheet::APPROVED) {
+            throw ValidationException::withMessages(['status' => __('Solo se puede reabrir una hoja aprobada.')]);
+        }
+        $entries = $sheet->entries()->get();
+        if ($sheet->contractor_invoice_id || $entries->whereNotNull('sales_sync_id')->isNotEmpty()) {
+            throw ValidationException::withMessages(['status' => __('Esta hoja ya se facturó: no se puede reabrir.')]);
+        }
+        if (\App\Models\CommissionResult::whereIn('task_id', $entries->pluck('task_id')->filter()->unique())->exists()) {
+            throw ValidationException::withMessages(['status' => __('Esta hoja tiene horas de una tarea con comisión calculada: reabre primero esa tarea.')]);
+        }
+        $sheet->fill([
+            'status' => Timesheet::RETURNED, 'stage' => null, 'decided_at' => now(), 'decided_by_approver_id' => null, 'decided_by_user_id' => $owner->id,
+            'decided_via' => 'reopen', 'return_comment' => mb_substr($comment, 0, 1000), 'return_stage' => 'internal', 'change_notice_due_at' => null,
+        ])->save();
+        $this->log($sheet, 'reopened', $owner->name, 'app', ['comment' => $comment, 'stage' => 'internal']);
+        $this->approvals->notifyWorkerDecision($sheet, 'returned', $owner->name);
+        return $sheet->refresh();
+    }
+
+    /**
      * El aprobador externo no decide mientras la hoja está en la etapa interna. El dueño sí (R6, "override").
      * @return bool true si es una anulación del dueño sobre la etapa interna
      */

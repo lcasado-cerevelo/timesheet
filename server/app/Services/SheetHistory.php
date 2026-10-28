@@ -19,7 +19,7 @@ class SheetHistory
     public function for(Timesheet $sheet, string $scope = self::ALL): array
     {
         $out = [];
-        foreach (TimesheetEvent::where('timesheet_id', $sheet->id)->whereIn('type', ['submitted', 'resubmitted', 'internal_approved', 'external_approved', 'approved', 'self_approved', 'auto_approved', 'returned'])
+        foreach (TimesheetEvent::where('timesheet_id', $sheet->id)->whereIn('type', ['submitted', 'resubmitted', 'internal_approved', 'external_approved', 'approved', 'self_approved', 'auto_approved', 'returned', 'reopened'])
             ->orderBy('id')->get() as $e) {
             $stage = $e->data['stage'] ?? null;
             if ($scope === self::EXTERNAL) {
@@ -28,7 +28,7 @@ class SheetHistory
                     continue;
                 }
             }
-            $out[] = ['type' => $e->type, 'stage' => $stage, 'by' => $e->actor, 'at' => $e->created_at?->toIso8601String(), 'comment' => $e->type === 'returned' ? ($e->data['comment'] ?? null) : null];
+            $out[] = ['type' => $e->type, 'stage' => $stage, 'by' => $e->actor, 'at' => $e->created_at?->toIso8601String(), 'comment' => in_array($e->type, ['returned', 'reopened'], true) ? ($e->data['comment'] ?? null) : null];
         }
         return $out;
     }

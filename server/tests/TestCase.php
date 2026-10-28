@@ -26,7 +26,7 @@ abstract class TestCase extends BaseTestCase
     private function signaturePath(string $uri): bool
     {
         $path = parse_url($uri, PHP_URL_PATH) ?: $uri;
-        return (bool) preg_match('#^/api/(sheets/(\d+/(submit|approve|return)|submit-days)|internal/sheets/\d+/(approve|return)|approver/sheets/\d+/(approve|return)|contractor-invoices)$#', $path);
+        return (bool) preg_match('#^/api/(sheets/(\d+/(submit|approve|return|reopen)|submit-days)|internal/sheets/\d+/(approve|return)|approver/sheets/\d+/(approve|return)|contractor-invoices)$#', $path);
     }
 
     public function postJson($uri, array $data = [], array $headers = [], $options = 0)

@@ -147,6 +147,18 @@ class SheetController extends Controller
         return response()->json($this->payload($sheet));
     }
 
+    /** El dueño reabre una hoja aprobada (por error o para corregirla). Firma con su contraseña. */
+    public function reopen(Request $request, Timesheet $sheet)
+    {
+        abort_unless($sheet->company_id === $request->user()->company_id, 404);
+        $v = $request->validate(['comment' => 'required|string|min:3|max:1000']);
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $request->user());
+        $sheet = $this->sheets->reopen($sheet, $request->user(), $v['comment']);
+        $sig->record($request, $request->user(), 'sheet.reopen', $sheet, ['version' => (int) $sheet->version, 'comment' => $v['comment']]);
+        return response()->json($this->payload($sheet, true));
+    }
+
     /** Deja la firma de quien envió, en cada hoja que salió. */
     private function signSubmitted(SignatureService $sig, Request $request, User $user, \Illuminate\Support\Collection $sheets): void
     {

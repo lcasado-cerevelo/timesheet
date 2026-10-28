@@ -611,3 +611,8 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - **Aprobador externo:** una hoja devuelta en la etapa interna no le sale en ninguna lista ni en el detalle ni en la exportación; le llega a sus listas solo cuando él la tiene (etapa externa). Los aprobadores internos ven en Devueltas y Aprobadas todo lo de sus servicios (también lo que devolvió otro interno o un externo).
 - **Listas y exportes:** las filas devueltas llevan un icono 💬 que abre el motivo completo. CSV, Excel y PDF de la tabla de Aprobaciones traen la columna «Motivo de la devolución».
 - **Filtros:** Proyecto, Servicio y Tarea quedan en su propia línea, alineados.
+
+## Aprobaciones: botón equivocado y reabrir (construido)
+- Al escribir un comentario en el cuadro de devolución, el botón **Approve se desactiva** hasta que se borre el comentario (no se aprueba por equivocación). Devolver sigue exigiendo comentario.
+- Una hoja que ya está **con el cliente** (etapa externa) no muestra al dueño los botones de aprobar ni devolver: «Esta hoja está con el cliente; ahora decide el aprobador externo». (Solo la pantalla: el servidor sigue aceptando la decisión del dueño por si hiciera falta.)
+- **Reabrir una hoja aprobada** (`POST /api/sheets/{hoja}/reopen`, solo el dueño, con su contraseña y un motivo): vuelve a la persona como devuelta con el motivo, se registra en el historial y en la firma (`sheet.reopen`), y la persona debe reenviarla y aprobarse de nuevo. No se reabre lo ya facturado ni lo que tiene horas de una tarea con comisión calculada. El aprobador externo no ve la hoja reabierta (cuenta como devolución de la etapa interna).

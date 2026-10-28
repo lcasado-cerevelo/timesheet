@@ -1038,6 +1038,12 @@ const actions = {
     const r = await api(`/approver/sheets/${id}/code`, { method: 'POST' }); (S.cache.apCode ??= {})[id] = true;
     flash('Code sent to your email. It is valid for ' + Math.max(1, Math.round((r.expires_in || 600) / 60)) + ' minutes.'); render();
   },
+  async 'sheet-reopen'(el) {
+    const reason = (document.getElementById('ap-reopen')?.value || '').trim();
+    if (reason.length < 3) throw new Error('Write the reason to reopen the timesheet.');
+    await api(`/sheets/${el.dataset.id}/reopen`, { method: 'POST', body: { comment: reason, signature: sigPage() } });
+    flash('Timesheet reopened and returned to the person.'); render();
+  },
   async 'apr-approve'(el) { await aprDecide(el, 'approve'); },
   async 'apr-return'(el) { await aprDecide(el, 'return'); },
   async 'int-approve'(el) { await aprDecide(el, 'approve', '/internal/sheets/'); },
@@ -1266,7 +1272,9 @@ async function reviewScreen() {
     const days = Array.from({ length: wkSpan(d?.period_starting || addDays(sel.week_ending, -6), d?.period_ending || sel.week_ending) }, (_, i) => addDays(d?.period_starting || addDays(sel.week_ending, -6), i));
     const lines = new Map();
     for (const e of (d?.entries || [])) { const k = e.project_id + '|' + (e.service_id || '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: e.service, t: e.task, by: {}, es: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; (r.es[e.work_date] ||= []).push(e); }
-    const open = sel.status === 'submitted' || sel.status === 'pending';
+    // With the client (external stage) the owner has nothing to decide: the external approver does.
+    const withClient = !ap && !inn && sel.status === 'submitted' && sel.stage === 'external';
+    const open = (sel.status === 'submitted' || sel.status === 'pending') && !withClient;
     const dr = S.cache.apDraft && S.cache.apDraft.id === sel.id ? S.cache.apDraft : { comment: '', code: '' };
     const needs = ap && open && (d?.needs_code || sel.needs_code || (S.cache.apCode || {})[sel.id]);
     const ret = sel.status === 'returned' && (d?.return_comment || sel.return_comment) ? `<div class="msg err"><b>Returned for correction:</b> ${esc(d?.return_comment || sel.return_comment)}${(d?.return_by || sel.return_by) ? ` <span class="muted">${T('Returned by')} ${esc(d?.return_by?.name || d?.return_by || sel.return_by?.name || sel.return_by)}</span>` : ''}</div>` : '';
@@ -1275,7 +1283,10 @@ async function reviewScreen() {
       ${needs ? `<div class="msg warn">This decision needs a 6-digit code. We send it to your email.</div><div class="row" style="align-items:end"><button class="btn ghost" type="button" data-act="apr-code" data-id="${sel.id}">Send me a code</button>
         <label class="lbl" style="max-width:200px">6-digit code<input id="ap-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="${esc(dr.code)}" style="letter-spacing:.2em"></label></div>` : ''}
       ${sigField()}
-      <div class="decided"><button class="btn" data-act="${A[0]}" data-id="${sel.id}" data-v="${sel.version}">Approve</button><button class="btn danger" data-act="${A[1]}" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></div></div>`
+      <div class="decided"><button class="btn" data-act="${A[0]}" data-id="${sel.id}" data-v="${sel.version}" ${dr.comment.trim() ? 'disabled title="' + esc(T('Clear the comment to approve, or use Return for correction.')) + '"' : ''}>Approve</button><button class="btn danger" data-act="${A[1]}" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></div></div>`
+      : withClient ? `<p class="note" style="margin:0">${T('This timesheet is with the client; the external approver decides now.')}</p>`
+      : sel.status === 'approved' && !ap && !inn && !sel.invoice_number ? `<div style="display:flex;flex-direction:column;gap:10px;margin-top:6px"><b>${T('Approved by mistake?')}</b><label class="lbl">${T('Reason to reopen it')}<textarea id="ap-reopen" placeholder="${esc(T('Example: I approved it by mistake; please review it.'))}"></textarea></label>${sigField()}
+        <div class="decided"><button class="btn danger" data-act="sheet-reopen" data-id="${sel.id}">${T('Reopen (return to the person)')}</button></div></div>`
       : (sel.decided_at ? `<p class="muted" style="margin:0">Decided on ${esc(String(sel.decided_at).slice(0, 10))}.</p>` : '');
     const cell = (v, extra = '', html = '') => `<div class="mono" style="text-align:center;${extra}">${v ? (html || h1(v)) : ''}</div>`;
     detail = `<div class="card r"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><div><h2 style="font-size:19px">${esc(nameOf(sel))}</h2><p style="margin:0">${typeName(sel)} · week ending ${nice(sel.week_ending)}${sel.is_part ? ' · ' + T('Part') + ' ' + sel.part + ' (' + nice(sel.period_starting) + (sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)) + ')' : ''}</p></div>${pill(stOf(sel), stColor[sel.status] || 'gray')}</div>${wkParts(d && (d.internal || d.external) ? d : sel, 'in') || waitTxt(sel)}
@@ -1302,6 +1313,12 @@ async function reviewScreen() {
       <div class="revscroll"><div style="min-width:620px"><div class="hd cols-rev" style="padding:0 8px 8px"><div class="th">Person</div><div class="th">Week ending</div><div class="th">Type</div><div class="th">Project</div><div class="th r">Hours</div><div class="th">Status</div></div>
       ${rows || `<div class="empty">${pend && !R.q && !R.type ? 'Nothing is waiting for approval.' : 'No timesheet matches the filter.'}</div>`}</div></div></div>${detail}</div></div>`;
 }
+/* A comment is typed: this is a return, so Approve is disabled until the comment is cleared (no wrong button by mistake). */
+document.addEventListener('input', e => {
+  if (e.target.id !== 'ap-comment') return;
+  const b = e.target.closest('.card')?.querySelector('.decided .btn:not(.danger)'); if (!b) return;
+  const typed = e.target.value.trim() !== ''; b.disabled = typed; b.title = typed ? T('Clear the comment to approve, or use Return for correction.') : '';
+});
 let rvTimer = 0;
 /* picking in the project / service / task filters: wait a moment so several can be picked, then reload the list */
 document.addEventListener('mselchange', e => {
@@ -1407,9 +1424,9 @@ function signedAction(title, save, intro, run) {
   });
 }
 /* "Submitted and signed digitally by Ana on Oct 21 · Approved digitally by Jorge (email code) on Oct 22" */
-const SIG_ACTIONS = { 'sheet.submit': 'Submitted and signed digitally by', 'sheet.approve': 'Approved digitally by', 'sheet.return': 'Returned digitally by' };
+const SIG_ACTIONS = { 'sheet.submit': 'Submitted and signed digitally by', 'sheet.approve': 'Approved digitally by', 'sheet.return': 'Returned digitally by', 'sheet.reopen': 'Reopened digitally by' };
 /* What happened to a sheet (kept forever): sent, approved, returned with its reason. The server filters it by who is looking. */
-const HIST_ACTIONS = { submitted: 'Sent', resubmitted: 'Sent again', internal_approved: 'Approved (internal)', external_approved: 'Approved (external)', approved: 'Approved', self_approved: 'Approved by the owner', auto_approved: 'Approved automatically', returned: 'Returned' };
+const HIST_ACTIONS = { submitted: 'Sent', resubmitted: 'Sent again', internal_approved: 'Approved (internal)', external_approved: 'Approved (external)', approved: 'Approved', self_approved: 'Approved by the owner', auto_approved: 'Approved automatically', returned: 'Returned', reopened: 'Reopened' };
 const histLines = list => (list || []).length
   ? `<div class="hist"><b>${T('History')}</b>${list.map(x => `<div class="hl ${x.type === 'returned' ? 'ret' : ''}"><span class="muted mono">${esc(nice(String(x.at).slice(0, 10)))}</span> ${T(HIST_ACTIONS[x.type] || x.type)}${x.by ? ' · <b>' + esc(x.by) + '</b>' : ''}${x.type === 'returned' && x.stage ? ' <span class="muted">(' + T(x.stage === 'internal' ? 'internal stage' : 'external stage') + ')</span>' : ''}${x.comment ? `<div class="hc">${esc(x.comment)}</div>` : ''}</div>`).join('')}</div>`
   : '';
