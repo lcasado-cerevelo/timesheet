@@ -15,10 +15,10 @@ use Tests\Concerns\BuildsWorld;
 use Tests\TestCase;
 
 /**
- * Comisiones por productividad. Ejemplo del diseño: tarea de 20 h con meta de ahorro del 20% (16 h), plazo el 2026-10-23 (hoy es el 2026-10-21).
- * Jarvis hace 13 h y Ana 3 h (16 en total, a tiempo): el equipo cumple. El bono del equipo se paga sobre las horas de la META (16 h, no sobre
- * las 4 ahorradas): con parte fija del 100% y 5 por hora, ambos ganan 16 × 5 = 80; Jarvis cumple su 80% y gana además 13 × 5 = 65 (145 en
- * total); Ana no llega a su mínimo y solo gana el bono del equipo (80).
+ * Comisiones por productividad. Ejemplo del diseño: tarea de 20 h con meta de ahorro del 20% (meta = 16 h), plazo el 2026-10-23 (hoy es el
+ * 2026-10-21). Se termina en 10 h (Jarvis 8 y Ana 2): el equipo cumple y se ahorran 6 h respecto a la META (16 − 10). El bono del equipo
+ * es 6 × parte del bono × 5 por hora = 30 para cada persona con comisión (con parte fija del 100%). Jarvis cumple su 80% y gana además
+ * 8 × 5 = 40 (70 en total); Ana, con un mínimo del 25%, no lo cumple (2 de 10 = 20%) y solo gana el bono del equipo (30).
  */
 class CommissionTest extends TestCase
 {
@@ -71,7 +71,7 @@ class CommissionTest extends TestCase
         return $this->postJson('/api/tasks/'.$this->task->id.'/complete', $body + ['signature' => 'secret-password']);
     }
 
-    private function teamHours(float $jarvis = 13, float $ana = 3): void
+    private function teamHours(float $jarvis = 8, float $ana = 2): void
     {
         $this->approvedHours($this->jarvis, $jarvis, '2026-10-19');
         $this->approvedHours($this->ana, $ana, '2026-10-20');
@@ -79,31 +79,31 @@ class CommissionTest extends TestCase
 
     // ---------- el cálculo ----------
 
-    public function test_the_example_of_the_design_pays_the_team_saving_to_both_and_the_commission_only_to_who_did_their_share(): void
+    public function test_the_example_of_the_design_pays_the_team_bonus_to_both_and_the_commission_only_to_who_did_their_share(): void
     {
         $this->setUpTask();
         $this->commission($this->jarvis);
-        $this->commission($this->ana, ['percent_required' => 20]);   // Ana tiene su propio mínimo; aquí hace 3 de 16 = 18.75%
+        $this->commission($this->ana, ['percent_required' => 25]);   // Ana tiene su propio mínimo; aquí hace 2 de 10 = 20%
         $this->teamHours();
 
         $this->complete(['completed_on' => '2026-10-21', 'release' => true])->assertOk();
         $j = CommissionResult::where('user_id', $this->jarvis->id)->firstOrFail();
         $a = CommissionResult::where('user_id', $this->ana->id)->firstOrFail();
-        $this->assertEquals(16, $j->total_hours);
-        $this->assertEquals(4, $j->saved_hours);
-        $this->assertEquals(13, $j->user_hours);
-        $this->assertEquals(81.25, $j->user_pct);
-        $this->assertEquals(16, $j->bonus_hours);           // el bono es sobre las horas de la meta, no sobre las ahorradas
-        $this->assertEquals(65, $j->commission_amount);     // 13 h × 5
-        $this->assertEquals(80, $j->savings_amount);        // 16 h × 100% × 5
-        $this->assertEquals(145, $j->total);
+        $this->assertEquals(10, $j->total_hours);
+        $this->assertEquals(16, $j->goal_hours);
+        $this->assertEquals(6, $j->bonus_hours);            // horas ahorradas respecto a la meta: 16 − 10
+        $this->assertEquals(8, $j->user_hours);
+        $this->assertEquals(80, $j->user_pct);
+        $this->assertEquals(40, $j->commission_amount);     // 8 h × 5
+        $this->assertEquals(30, $j->savings_amount);        // 6 h × 100% × 5
+        $this->assertEquals(70, $j->total);
         $this->assertSame('released', $j->status);
         $this->assertTrue($j->met_goal && $j->met_date && $j->met_share && $j->worked_min);
-        // Ana: 3 de 16 = 18.75% < 20%: no cumple su parte, pero el bono es del equipo.
+        // Ana: 2 de 10 = 20% < 25%: no cumple su parte, pero el bono es del equipo.
         $this->assertFalse((bool) $a->met_share);
         $this->assertEquals(0, $a->commission_amount);
-        $this->assertEquals(80, $a->savings_amount);
-        $this->assertEquals(80, $a->total);
+        $this->assertEquals(30, $a->savings_amount);
+        $this->assertEquals(30, $a->total);
     }
 
     public function test_the_savings_share_can_be_the_percentage_that_corresponded_to_the_person(): void
@@ -114,7 +114,7 @@ class CommissionTest extends TestCase
         $this->complete(['release' => true])->assertOk();
         $j = CommissionResult::where('user_id', $this->jarvis->id)->firstOrFail();
         $this->assertEquals(80, $j->savings_pct);
-        $this->assertEquals(64, $j->savings_amount);   // 16 h de la meta × 80% × 5
+        $this->assertEquals(24, $j->savings_amount);   // 6 h ahorradas × 80% × 5
     }
 
     public function test_the_tolerance_forgives_going_over_the_goal_by_a_little(): void
@@ -125,9 +125,21 @@ class CommissionTest extends TestCase
         $this->complete(['release' => true])->assertOk();
         $r = CommissionResult::firstOrFail();
         $this->assertTrue($r->met_goal);
-        $this->assertEquals(3.5, $r->saved_hours);
-        $this->assertEquals(16, $r->bonus_hours);                         // el bono sigue siendo sobre las 16 h de la meta
-        $this->assertEquals(16.5 * 5 + 16 * 5, (float) $r->total);        // 82.5 de comisión + 80 de bono
+        $this->assertEquals(0, $r->bonus_hours);                          // no se ahorró nada respecto a la meta: no hay bono del equipo
+        $this->assertEquals(16.5 * 5, (float) $r->total);                 // solo la comisión por hora
+    }
+
+    public function test_finishing_exactly_on_the_goal_pays_the_commission_but_no_team_bonus(): void
+    {
+        $this->setUpTask();
+        $this->commission($this->jarvis);
+        $this->approvedHours($this->jarvis, 16);
+        $this->complete(['release' => true])->assertOk();
+        $r = CommissionResult::firstOrFail();
+        $this->assertTrue($r->met_goal);
+        $this->assertEquals(0, $r->bonus_hours);
+        $this->assertEquals(0, $r->savings_amount);
+        $this->assertEquals(80, $r->commission_amount);                   // 16 h × 5
     }
 
     public function test_going_over_the_goal_or_the_deadline_pays_nobody(): void
@@ -211,7 +223,7 @@ class CommissionTest extends TestCase
         $this->teamHours();
 
         $this->complete()->assertStatus(422)->assertJsonPath('code', 'commission_decision_required')
-            ->assertJsonPath('commissions.payable', true)->assertJsonPath('commissions.rows.0.total', 145);
+            ->assertJsonPath('commissions.payable', true)->assertJsonPath('commissions.rows.0.total', 70);
         $this->complete(['release' => false])->assertStatus(422)->assertJsonPath('code', 'commission_decision_required');
         $this->assertTrue($this->task->fresh()->active);     // revisarla: la tarea no se completa
         $this->assertSame(0, \App\Models\Signature::count());
@@ -291,14 +303,14 @@ class CommissionTest extends TestCase
         $this->putJson($url, ['adjustment' => -25, 'signature' => 'secret-password'])->assertStatus(422)->assertJsonValidationErrors('adjustment_note');
         $this->putJson($url, ['adjustment' => -200, 'adjustment_note' => 'Excepción', 'signature' => 'secret-password'])->assertStatus(422)->assertJsonValidationErrors('adjustment');
         $this->putJson($url, ['adjustment' => -25, 'adjustment_note' => 'Entregó tarde una parte', 'signature' => 'secret-password'])->assertOk()
-            ->assertJsonPath('commission_amount', 65)->assertJsonPath('savings_amount', 80)->assertJsonPath('adjustment', -25)->assertJsonPath('total', 120);
+            ->assertJsonPath('commission_amount', 40)->assertJsonPath('savings_amount', 30)->assertJsonPath('adjustment', -25)->assertJsonPath('total', 45);
         $this->putJson($url, ['adjustment' => -25, 'adjustment_note' => 'Motivo del ajuste', 'signature' => 'mala'])->assertStatus(422)->assertJsonValidationErrors('signature');
         $this->assertSame('Entregó tarde una parte', $r->fresh()->adjustment_note);
         // Quitar todo lo ganado la deja sin comisión.
-        $this->putJson($url, ['adjustment' => -145, 'adjustment_note' => 'No se paga', 'signature' => 'secret-password'])->assertOk()->assertJsonPath('status', 'none')->assertJsonPath('total', 0);
+        $this->putJson($url, ['adjustment' => -70, 'adjustment_note' => 'No se paga', 'signature' => 'secret-password'])->assertOk()->assertJsonPath('status', 'none')->assertJsonPath('total', 0);
         // Y se puede conceder a mano una que no se ganó: queda por liberar.
         $this->putJson($url, ['adjustment' => 30, 'adjustment_note' => 'Bono acordado', 'signature' => 'secret-password'])->assertOk()
-            ->assertJsonPath('status', 'pending')->assertJsonPath('total', 175);
+            ->assertJsonPath('status', 'pending')->assertJsonPath('total', 100);
     }
 
     public function test_only_released_commissions_of_employees_are_marked_as_paid(): void
@@ -385,7 +397,7 @@ class CommissionTest extends TestCase
 
         $csv = $this->get('/api/tables/commissions/export?format=csv')->assertOk()->getContent();
         $this->assertStringContainsString('Jarvis Rodríguez', $csv);
-        $this->assertStringContainsString('145.00', $csv);
+        $this->assertStringContainsString('70.00', $csv);
         $this->get('/api/tables/commissions/export?format=csv&status=paid')->assertOk();
         Sanctum::actingAs($this->worker);
         $this->get('/api/tables/commissions/export?format=csv')->assertForbidden();
@@ -415,7 +427,7 @@ class CommissionTest extends TestCase
         $this->assertEquals(80, $t['mine']['pct']);
         $this->assertEquals(1.5, $t['mine']['pending_hours']);
         $this->assertTrue($t['conditions']['goal'] && $t['conditions']['share'] && $t['conditions']['min_hours']);
-        $this->assertEquals(8 * 5 + 16 * 5, $t['would_earn']['total']);   // 40 de comisión + 16 h de la meta × 5
+        $this->assertEquals(8 * 5 + 6 * 5, $t['would_earn']['total']);   // 40 de comisión + 6 h ahorradas respecto a la meta × 5
         $json = json_encode($list);
         $this->assertStringNotContainsString('Ana Torres', $json);
 
@@ -444,8 +456,8 @@ class CommissionTest extends TestCase
         CommissionResult::query()->update(['status' => 'released']);
         $t = $this->getJsonAs($this->jarvis, '/api/me/commissions')[0]['tasks'][0];
         $this->assertSame('released', $t['status']);
-        $this->assertEquals(145, $t['earned']['total']);
-        $this->assertEquals(65, $t['earned']['commission']);
+        $this->assertEquals(70, $t['earned']['total']);
+        $this->assertEquals(40, $t['earned']['commission']);
     }
 
     private function getJsonAs(User $u, string $url): array

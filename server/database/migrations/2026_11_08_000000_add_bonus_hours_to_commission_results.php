@@ -6,9 +6,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * El bono del equipo se paga sobre las horas de la META (p. ej. 16 h), no sobre las horas ahorradas (20 − 16 = 4). Se guarda con qué
- * horas se calculó cada resultado. Los resultados anteriores se calcularon sobre las horas ahorradas: se les deja eso, para que su detalle
- * siga cuadrando con lo ya guardado.
+ * El bono del equipo se paga por las horas ahorradas RESPECTO A LA META (meta − total trabajado; p. ej. meta 16 h, terminada en 10 h = 6 h),
+ * no respecto al presupuesto (20 − 10). Se guarda con cuántas horas se calculó cada resultado. Los resultados anteriores se calcularon contra
+ * el presupuesto: se les deja eso, para que su detalle siga cuadrando con lo ya guardado.
  */
 return new class extends Migration
 {

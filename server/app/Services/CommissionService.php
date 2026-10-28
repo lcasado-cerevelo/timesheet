@@ -16,9 +16,9 @@ use Illuminate\Support\Collection;
  *
  * Condiciones del equipo (las mismas para todos): (1) el total de horas de la tarea no pasa de la meta (presupuesto × (1 − ahorro%))
  * más la tolerancia de la comisión; (2) la tarea se completa a más tardar en su fecha estimada. Si falla alguna, no hay bono para nadie.
- * - Bono del equipo: con las dos condiciones, toda persona con comisión en la tarea que trabajó al menos 1 hora lo gana. Se paga sobre las
- *   horas de la META (p. ej. 16 h de una tarea de 20 h con meta de ahorro del 20%), no sobre las horas ahorradas:
- *   horas de la meta × parte del bono (% fijo, o el % que le correspondía) × monto por hora.
+ * - Bono del equipo: con las dos condiciones, toda persona con comisión en la tarea que trabajó al menos 1 hora lo gana. Se paga por las
+ *   horas ahorradas RESPECTO A LA META (meta − total trabajado; p. ej. meta de 16 h y tarea terminada en 10 h = 6 h; terminada justo en la
+ *   meta = 0): horas ahorradas × parte del bono (% fijo, o el % que le correspondía) × monto por hora.
  * - Comisión por hora (individual): además, sus horas deben ser al menos su % mínimo del total trabajado; gana sus horas × extra por hora.
  */
 class CommissionService
@@ -63,7 +63,7 @@ class CommissionService
         $deadline = $task->estimated_end?->toDateString();
         $metDate = $deadline === null || $completedOn <= $deadline;
         $saved = round(max(0.0, $budget - $total), 2);
-        $bonusHours = $goal;   // el bono del equipo es sobre las horas de la meta, no sobre las ahorradas
+        $bonusHours = round(max(0.0, $goal - $total), 2);   // el bono del equipo es por las horas ahorradas respecto a la META
 
         $rows = [];
         foreach ($commissions as $c) {

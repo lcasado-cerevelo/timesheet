@@ -653,7 +653,7 @@ async function openCommissionModal(uid, cid) {
       <div><label>Extra per hour</label><input name="extra_per_hour" type="number" step="0.01" min="0" required value="${esc(c?.extra_per_hour ?? 0)}"><small class="help">On top of the normal rate, for each hour this person worked on the task.</small></div>
       <div><label>Team bonus: how it is shared</label><select name="savings_mode">${Object.entries(SAVINGS_MODES).map(([k, l]) => `<option value="${k}" ${(c?.savings_mode || 'fixed') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <div data-comm-fixed><label>Share of the team bonus (%)</label><input name="savings_pct" type="number" step="0.5" min="0" max="100" required value="${esc(c?.savings_pct ?? 100)}"></div>
-      <div><label>Team bonus per hour of the goal</label><input name="savings_per_hour" type="number" step="0.01" min="0" required value="${esc(c?.savings_per_hour ?? 0)}"><small class="help">Paid for each hour of the goal (for example 16 h) when the team meets it, times the share above.</small></div>
+      <div><label>Team bonus per hour saved</label><input name="savings_per_hour" type="number" step="0.01" min="0" required value="${esc(c?.savings_per_hour ?? 0)}"><small class="help">Paid for each hour the team saves against the goal (goal 16 h, done in 10 h = 6 h), times the share above.</small></div>
       <div><label>Tolerance (hours)</label><input name="tolerance_hours" type="number" step="0.25" min="0" max="999" required value="${esc(c?.tolerance_hours ?? 0)}"><small class="help">Hours over the savings goal that are forgiven.</small></div></div>
       <label class="chk"><input type="checkbox" name="withhold" ${c ? (c.withhold ? 'checked' : '') : 'checked'}> Withholding applies to this commission</label>
       <label class="chk"><input type="checkbox" name="ivu" ${c?.ivu ? 'checked' : ''}> IVU withholding applies to this commission</label>
@@ -716,7 +716,7 @@ function commCalcHtml(r) {
     ${li(r.worked_min, `${T('Hours of the person')}: ${h1(r.user_hours)} h (${T('at least 1 h')})`)}
     ${li(r.met_share, `${T('Share of the team')}: ${pct(r.user_pct)} · ${T('needs')} ${pct(r.percent_required)}`)}</ul>
     <p style="margin:8px 0 0">${T('Commission')}: ${h1(r.user_hours)} h × ${money(r.extra_per_hour)} = <b>${money(r.commission_amount)}</b><br>
-    ${T('Team bonus')}: ${h1(r.bonus_hours)} h ${T('of the goal')} × ${pct(r.savings_pct)} × ${money(r.savings_per_hour)} = <b>${money(r.savings_amount)}</b>
+    ${T('Team bonus')}: ${h1(r.bonus_hours)} h ${T('under the goal')} × ${pct(r.savings_pct)} × ${money(r.savings_per_hour)} = <b>${money(r.savings_amount)}</b>
     ${Number(r.adjustment) ? `<br>${T('Adjustment')}: <b>${money(r.adjustment)}</b> <span class="muted">${esc(r.adjustment_note || '')}</span>` : ''}<br>${T('Total')}: <b>${money(r.total)}</b></p>`;
 }
 function openCommissionDetail(r) {
