@@ -1,10 +1,13 @@
 import React, { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import NetInfo from '@react-native-community/netinfo';
 import * as Notifications from 'expo-notifications';
 import '../src/lib/geofence';
+import { LockScreen } from '../src/lock';
+import { biometricAvailable } from '../src/lib/biometric';
+import { kv } from '../src/lib/storage';
 import { useT } from '../src/i18n';
 import { setupNotifications, setWeeklyReminder } from '../src/lib/notify';
 import { useAuth } from '../src/store/auth';
@@ -15,7 +18,7 @@ import { useSelection } from '../src/store/selection';
 import { useSettings } from '../src/store/settings';
 
 export default function Root() {
-  const { ready, token, brand, init, me, limited } = useAuth();
+  const { ready, token, brand, init, me, limited, locked, biometric } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const { t, locale } = useT();
@@ -38,6 +41,20 @@ export default function Root() {
     if (!ready || !token || !me) return;
     void reconcileOwner(me.id).then(() => useEntries.getState().sync());
   }, [ready, token, me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Una sola vez por sesión se ofrece entrar con huella, si el teléfono la tiene registrada.
+  useEffect(() => {
+    if (!ready || !token || !me || locked || biometric || Platform.OS === 'web') return;
+    void (async () => {
+      if (await kv.get<boolean>('bio.asked.v1', false)) return;
+      if (!(await biometricAvailable())) return;
+      await kv.set('bio.asked.v1', true);
+      Alert.alert(t('bio.offer_title'), t('bio.offer_text'), [
+        { text: t('bio.not_now'), style: 'cancel' },
+        { text: t('bio.enable'), onPress: () => void useAuth.getState().setBiometric(true) },
+      ]);
+    })();
+  }, [ready, token, me?.id, locked, biometric]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Al recuperar la conexión se sincroniza solo.
   useEffect(() => {
@@ -80,6 +97,7 @@ export default function Root() {
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="entry" options={{ presentation: 'modal', title: t('entry.title') }} />
       </Stack>
+      {token && locked ? <LockScreen /> : null}
     </>
   );
 }

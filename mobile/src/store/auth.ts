@@ -7,6 +7,7 @@ import { loadLocale, pendingLocale, saveLocale } from '../i18n/persist';
 import { bootDecision } from '../lib/access';
 import { isOnline } from '../lib/net';
 import { kv, secure } from '../lib/storage';
+import { biometricAvailable, biometricPrompt } from '../lib/biometric';
 import { devDefaultServerUrl, fixedServerUrl, normalizeServerUrl, resolveServer } from '../lib/server';
 import type { Brand, Me } from '../lib/types';
 
@@ -28,6 +29,10 @@ interface AuthState {
   token: string | null;
   me: Me | null;
   brand: Brand;
+  /** Entrar con huella está activado en este teléfono. */
+  biometric: boolean;
+  /** Hay sesión guardada pero falta la huella para verla. */
+  locked: boolean;
   init: () => Promise<void>;
   /** devUrl solo se usa en desarrollo y sin servidor fijo. */
   login: (email: string, password: string, devUrl?: string) => Promise<LoginCodeStep | null>;
@@ -42,6 +47,10 @@ interface AuthState {
   sessionExpired: () => Promise<void>;
   refreshMe: () => Promise<void>;
   logout: () => Promise<void>;
+  /** Pide la huella para abrir la sesión guardada. */
+  unlock: () => Promise<boolean>;
+  /** Activa o desactiva la entrada con huella. Activarla exige una huella válida ahora mismo. */
+  setBiometric: (on: boolean) => Promise<boolean>;
   /** Cambia el idioma de la persona: se aplica y se guarda en el teléfono al instante; el servidor se avisa en cuanto haya conexión. */
   setLanguage: (l: Locale) => Promise<void>;
 }
@@ -65,10 +74,12 @@ export const useAuth = create<AuthState>((set, get) => ({
   token: null,
   me: null,
   brand: NEUTRAL,
+  biometric: false,
+  locked: false,
 
   async init() {
     await loadLocale();
-    const [storedToken, baseUrl, me] = await Promise.all([secure.get('token'), kv.get<string>('baseUrl', ''), kv.get<Me | null>('me', null)]);
+    const [storedToken, baseUrl, me, bio] = await Promise.all([secure.get('token'), kv.get<string>('baseUrl', ''), kv.get<Me | null>('me', null), kv.get<boolean>('biometric.v1', false)]);
     const srv = resolveServer({ fixed: fixedServerUrl(), stored: baseUrl, devDefault: devDefaultServerUrl(), dev: __DEV__ });
     // Con remember_days = 0 el token guardado nunca se reutiliza: cada apertura en frío pide la contraseña.
     const rememberDays = me?.remember_days;
@@ -76,7 +87,8 @@ export const useAuth = create<AuthState>((set, get) => ({
     if (rememberDays === 0 && storedToken) await secure.del('token');
     const token = decision === 'resume' ? storedToken : null;
     configureApi({ baseUrl: srv.url, token, onUnauthorized: () => void get().sessionExpired() });
-    set({ ready: true, token, limited: decision === 'limited', baseUrl: srv.url, serverFixed: srv.fixed, misconfigured: srv.misconfigured, me, brand: me?.brand ?? NEUTRAL });
+    // Con la huella activada, la sesión guardada no se muestra hasta que la persona se verifique.
+    set({ ready: true, token, biometric: bio, locked: !!token && bio, limited: decision === 'limited', baseUrl: srv.url, serverFixed: srv.fixed, misconfigured: srv.misconfigured, me, brand: me?.brand ?? NEUTRAL });
     if (token) void get().refreshMe().catch(() => undefined); // la marca se actualiza sola si hay conexión
   },
 
@@ -124,6 +136,25 @@ export const useAuth = create<AuthState>((set, get) => ({
     set({ me, brand: me.brand });
   },
 
+  async unlock() {
+    const ok = await biometricPrompt(t('bio.prompt'), t('bio.cancel'));
+    if (ok) set({ locked: false });
+    return ok;
+  },
+
+  async setBiometric(on) {
+    if (!on) {
+      await kv.set('biometric.v1', false);
+      set({ biometric: false, locked: false });
+      return true;
+    }
+    if (!(await biometricAvailable())) return false;
+    if (!(await biometricPrompt(t('bio.prompt'), t('bio.cancel')))) return false;
+    await kv.set('biometric.v1', true);
+    set({ biometric: true });
+    return true;
+  },
+
   async setLanguage(l) {
     await saveLocale(l);
     const me = get().me;
@@ -158,7 +189,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     // 'me' se conserva en el teléfono (con remember_days): permite el modo limitado si la regla es 0 y no hay señal.
     await secure.del('token');
     configureApi({ token: null });
-    set({ token: null, me: null, brand: NEUTRAL, sessionClosed: true });
+    set({ token: null, me: null, brand: NEUTRAL, sessionClosed: true, locked: false });
   },
 
   async logout() {
@@ -167,9 +198,10 @@ export const useAuth = create<AuthState>((set, get) => ({
     } catch {
       /* sin conexión: igual se cierra localmente */
     }
-    await Promise.all([secure.del('token'), kv.del('me')]);
+    // Al cerrar la sesión se olvida la huella: la próxima persona que entre decide si la quiere.
+    await Promise.all([secure.del('token'), kv.del('me'), kv.del('biometric.v1'), kv.del('bio.asked.v1')]);
     configureApi({ token: null });
-    set({ token: null, me: null, brand: NEUTRAL, sessionClosed: false });
+    set({ token: null, me: null, brand: NEUTRAL, sessionClosed: false, biometric: false, locked: false });
   },
 }));
 

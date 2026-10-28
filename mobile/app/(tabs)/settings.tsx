@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScrollView, Switch, Text, View } from 'react-native';
 import { ensureNotificationPermission, setWeeklyReminder } from '../../src/lib/notify';
 import { startWatching, stopWatching } from '../../src/lib/geofence';
 import { useT } from '../../src/i18n';
 import { api } from '../../src/lib/api';
+import { biometricAvailable } from '../../src/lib/biometric';
 import { MIN_PASSWORD, passwordServerErrors, validatePasswordChange } from '../../src/lib/authErrors';
 import { useAuth } from '../../src/store/auth';
 import { useEntries } from '../../src/store/entries';
@@ -77,6 +78,10 @@ export default function Settings() {
   const setLanguage = useAuth((s) => s.setLanguage);
   const logout = useAuth((s) => s.logout);
   const { decimal, arriveAlerts, weeklyReminder, set } = useSettings();
+  const biometric = useAuth((s) => s.biometric);
+  const setBiometric = useAuth((s) => s.setBiometric);
+  const [bioAvail, setBioAvail] = useState(false);
+  useEffect(() => { void biometricAvailable().then(setBioAvail); }, []);
   const { entries, projects, sync, syncing, lastSync, lastError } = useEntries();
   const [note, setNote] = useState<{ kind: 'ok' | 'err' | 'warn'; text: string } | null>(null);
   const pending = entries.filter((e) => e.sync === 'dirty' || e.sync === 'deleted').length;
@@ -94,6 +99,12 @@ export default function Settings() {
     if (!r.ok) return setNote({ kind: 'warn', text: r.message ?? t('settings.arrive_fail') });
     set({ arriveAlerts: true });
     setNote({ kind: 'ok', text: t('settings.watching', { n: r.count }) });
+  };
+
+  const toggleBiometric = async (on: boolean) => {
+    setNote(null);
+    const ok = await setBiometric(on);
+    if (on && !ok) setNote({ kind: 'warn', text: t('bio.not_available') });
   };
 
   const toggleReminder = async (on: boolean) => {
@@ -126,6 +137,7 @@ export default function Settings() {
         <Row testID="decimal" label={t('settings.decimal')} hint={t('settings.decimal_hint')} value={decimal} onChange={(v) => set({ decimal: v })} />
         <Row testID="arrive" label={t('settings.arrive')} hint={withPlace ? t('settings.arrive_hint', { n: withPlace }) : t('settings.arrive_none')} value={arriveAlerts} onChange={toggleArrive} />
         <Row testID="weekly" label={t('settings.weekly')} hint={t('settings.weekly_hint')} value={weeklyReminder} onChange={toggleReminder} />
+        {bioAvail || biometric ? <Row testID="biometric" label={t('settings.biometric')} hint={t('settings.biometric_hint')} value={biometric} onChange={toggleBiometric} /> : null}
       </Card>
 
       <Card>
