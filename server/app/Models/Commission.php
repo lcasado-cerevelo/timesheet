@@ -13,6 +13,9 @@ class Commission extends Model
     /** Cómo se reparte el bono del equipo: fixed = un % fijo; assigned = el % que le correspondía hacer (percent_required); actual = el % que realmente trabajó. */
     public const SAVINGS_MODES = ['fixed', 'assigned', 'actual'];
 
+    /** Sobre qué horas se paga la comisión individual: las trabajadas por la persona o el % que le correspondía del total de la tarea. */
+    public const COMMISSION_BASES = ['worked', 'assigned'];
+
     protected $guarded = [];
 
     protected function casts(): array

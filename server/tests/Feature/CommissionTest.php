@@ -117,6 +117,65 @@ class CommissionTest extends TestCase
         $this->assertEquals(24, $j->savings_amount);   // 6 h ahorradas × 80% × 5
     }
 
+    public function test_paying_for_the_assigned_percentage_pays_the_hours_not_worked_at_the_normal_rate_plus_the_extra(): void
+    {
+        $this->setUpTask();                                                                  // presupuesto 20 h, meta 16 h
+        \App\Models\ContractorTerms::create(['user_id' => $this->jarvis->id, 'rate' => 15, 'retention_pct' => 0, 'ivu_agent' => false, 'ivu_pct' => 0, 'terms_days' => 30]);
+        $this->commission($this->jarvis, ['commission_basis' => 'assigned', 'percent_required' => 80]);   // le correspondía 80% de 16 = 12.8 h
+        $this->commission($this->ana, ['percent_required' => 10]);                           // por hora trabajada
+        $this->teamHours(9, 1);                                                              // total 10 h: Jarvis 90%
+        $this->complete(['release' => true])->assertOk();
+        $j = CommissionResult::where('user_id', $this->jarvis->id)->firstOrFail();
+        $a = CommissionResult::where('user_id', $this->ana->id)->firstOrFail();
+        $this->assertSame('assigned', $j->commission_basis);
+        $this->assertEquals(12.8, $j->assigned_hours);
+        $this->assertEquals(3.8, $j->shortfall_hours);
+        $this->assertEquals(15, $j->base_rate);
+        $this->assertEquals(12.8, $j->commission_hours);
+        $this->assertEquals(9, $j->user_hours, 'las horas trabajadas se siguen mostrando');
+        $this->assertEquals(121, $j->commission_amount);        // 9 h × $5 + 3.8 h × ($15 + $5)
+        $this->assertSame('worked', $a->commission_basis);
+        $this->assertEquals(0, $a->shortfall_hours);
+        $this->assertEquals(5, $a->commission_amount);          // 1 h × $5
+    }
+
+    public function test_when_the_person_worked_more_than_assigned_the_extra_is_paid_on_everything_worked(): void
+    {
+        $this->setUpTask();
+        $this->commission($this->jarvis, ['commission_basis' => 'assigned', 'percent_required' => 80]);   // 12.8 h asignadas
+        $this->teamHours(13, 1);                                                             // trabajó 13: más que lo asignado; equipo 14 ≤ meta 16
+        $this->complete(['release' => true])->assertOk();
+        $j = CommissionResult::where('user_id', $this->jarvis->id)->firstOrFail();
+        $this->assertEquals(0, $j->shortfall_hours);
+        $this->assertEquals(13, $j->commission_hours);
+        $this->assertEquals(65, $j->commission_amount);         // 13 h × $5
+    }
+
+    public function test_going_over_the_goal_pays_nothing_even_if_the_person_did_their_share_with_the_assigned_percentage(): void
+    {
+        $this->setUpTask(['budget_hours' => 15, 'savings_goal_pct' => 20]);                  // meta: 12 h
+        $this->commission($this->jarvis, ['commission_basis' => 'assigned', 'percent_required' => 80]);
+        $this->teamHours(11, 2);                                                             // Jarvis hizo 11 (84.6%, cumple su parte) pero el equipo hizo 13 > 12
+        $this->complete(['release' => true])->assertOk();
+        $j = CommissionResult::where('user_id', $this->jarvis->id)->firstOrFail();
+        $this->assertTrue((bool) $j->met_share);
+        $this->assertFalse((bool) $j->met_goal);
+        $this->assertEquals(0, $j->commission_amount);
+        $this->assertEquals(0, $j->total);
+        $this->assertSame('none', $j->status);
+    }
+
+    public function test_the_basis_of_the_commission_is_saved_from_the_api(): void
+    {
+        $this->setUpTask();
+        Sanctum::actingAs($this->owner);
+        $body = ['user_id' => $this->jarvis->id, 'project_id' => $this->project->id, 'task_ids' => [$this->task->id], 'percent_required' => 80, 'extra_per_hour' => 5,
+            'savings_mode' => 'fixed', 'savings_pct' => 100, 'savings_per_hour' => 5, 'tolerance_hours' => 0];
+        $id = $this->postJson('/api/commissions', $body + ['commission_basis' => 'assigned'])->assertCreated()->assertJsonPath('commission_basis', 'assigned')->json('id');
+        $this->putJson('/api/commissions/'.$id, ['commission_basis' => 'worked'])->assertOk()->assertJsonPath('commission_basis', 'worked');
+        $this->putJson('/api/commissions/'.$id, ['commission_basis' => 'otra'])->assertStatus(422);
+    }
+
     public function test_the_savings_share_can_be_the_percentage_the_person_actually_worked(): void
     {
         $this->setUpTask();

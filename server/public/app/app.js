@@ -653,8 +653,9 @@ const pct = n => String(Math.round(Number(n || 0) * 100) / 100) + '%';
 const ck = ok => `<span class="ck ${ok ? 'ok' : 'no'}" aria-label="${ok ? 'Yes' : 'No'}">${ok ? '✔' : '✘'}</span>`;
 const COMM_STATUS = { pending: ['To release', 'amber'], released: ['Released', 'green'], invoiced: ['Invoiced', 'blue'], paid: ['Paid', 'gray'], none: ['No commission', 'gray'], in_review: ['In review', 'amber'], open: ['Open', 'green'] };
 const commPill = k => { const a = COMM_STATUS[k] || [k, 'gray']; return pill(a[0], a[1]); };
+const COMM_BASES = { worked: 'Per hour worked by the person', assigned: 'For the % of the goal hours that corresponded to the person' };
 const SAVINGS_MODES = { fixed: 'A fixed % of the team bonus', assigned: 'The % that corresponded to the person (the minimum share)', actual: 'The % the person actually worked' };
-const commTerms = c => `${pct(c.percent_required)} ${T('of the task')} · +${money(c.extra_per_hour)}/h · ${T('team bonus')} ${c.savings_mode === 'assigned' ? T('by assigned %') : c.savings_mode === 'actual' ? T('by worked %') : pct(c.savings_pct)} × ${money(c.savings_per_hour)}/h${Number(c.tolerance_hours) ? ' · ' + T('tolerance') + ' ' + h1(c.tolerance_hours) + ' h' : ''}`;
+const commTerms = c => `${pct(c.percent_required)} ${T('of the task')} · +${money(c.extra_per_hour)}/h${c.commission_basis === 'assigned' ? ' ' + T('on the assigned %') : ''} · ${T('team bonus')} ${c.savings_mode === 'assigned' ? T('by assigned %') : c.savings_mode === 'actual' ? T('by worked %') : pct(c.savings_pct)} × ${money(c.savings_per_hour)}/h${Number(c.tolerance_hours) ? ' · ' + T('tolerance') + ' ' + h1(c.tolerance_hours) + ' h' : ''}`;
 
 /* in the person's window: their commissions (one per project) */
 function commBox(u, list, projects) {
@@ -688,7 +689,8 @@ async function openCommissionModal(uid, cid) {
     body: `${c ? '' : `<div><label>Project</label><select name="project_id" data-comm-project>${choices.map(p => `<option value="${p.id}">${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select></div>`}
       <div data-comm-scope>${scope(first, c?.service_ids || [], c?.task_ids || [])}</div>
       <div class="grid"><div><label>Minimum share of the task (%)</label><input name="percent_required" type="number" step="0.5" min="0" max="100" required value="${esc(c?.percent_required ?? 80)}"><small class="help">How much of the hours worked on the task this person must have worked. 80 = 80% of the total.</small></div>
-      <div><label>Extra per hour</label><input name="extra_per_hour" type="number" step="0.01" min="0" required value="${esc(c?.extra_per_hour ?? 0)}"><small class="help">On top of the normal rate, for each hour this person worked on the task.</small></div>
+      <div><label>Extra per hour</label><input name="extra_per_hour" type="number" step="0.01" min="0" required value="${esc(c?.extra_per_hour ?? 0)}"><small class="help">On top of the normal rate. It is paid for the hours chosen below.</small></div>
+      <div><label>Commission: paid on</label><select name="commission_basis">${Object.entries(COMM_BASES).map(([k, l]) => `<option value="${k}" ${(c?.commission_basis || 'worked') === k ? 'selected' : ''}>${l}</option>`).join('')}</select><small class="help">Per hour worked: only the hours the person worked get the extra. For the assigned %: the person is paid as if they had worked the hours that corresponded to them (the minimum share × the goal hours); each hour not worked is paid at their normal rate + the extra. If they worked more, every hour worked gets the extra.</small></div>
       <div><label>Team bonus: how it is shared</label><select name="savings_mode">${Object.entries(SAVINGS_MODES).map(([k, l]) => `<option value="${k}" ${(c?.savings_mode || 'fixed') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <div data-comm-fixed><label>Share of the team bonus (%)</label><input name="savings_pct" type="number" step="0.5" min="0" max="100" required value="${esc(c?.savings_pct ?? 100)}"></div>
       <div><label>Team bonus per hour saved</label><input name="savings_per_hour" type="number" step="0.01" min="0" required value="${esc(c?.savings_per_hour ?? 0)}"><small class="help">Paid for each hour the team saves against the goal (goal 16 h, done in 10 h = 6 h), times the share above.</small></div>
@@ -753,7 +755,7 @@ function commCalcHtml(r) {
     ${li(r.met_date, `${T('Completed on')} ${esc(nice(r.completed_on))}${r.deadline ? ' · ' + T('estimated end') + ' ' + esc(nice(r.deadline)) : ''}`)}
     ${li(r.worked_min, `${T('Hours of the person')}: ${h1(r.user_hours)} h (${T('at least 1 h')})`)}
     ${li(r.met_share, `${T('Share of the team')}: ${pct(r.user_pct)} · ${T('needs')} ${pct(r.percent_required)}`)}</ul>
-    <p style="margin:8px 0 0">${T('Commission')}: ${h1(r.user_hours)} h × ${money(r.extra_per_hour)} = <b>${money(r.commission_amount)}</b><br>
+    <p style="margin:8px 0 0">${T('Commission')}: ${h1(r.user_hours)} h × ${money(r.extra_per_hour)}${Number(r.shortfall_hours) ? ` + ${h1(r.shortfall_hours)} h ${T('not worked')} (${pct(r.percent_required)} ${T('of the goal')} = ${h1(r.assigned_hours)} h) × ${money(Number(r.base_rate) + Number(r.extra_per_hour))}` : ''} = <b>${money(r.commission_amount)}</b><br>
     ${T('Team bonus')}: ${h1(r.bonus_hours)} h ${T('under the goal')} × ${pct(r.savings_pct)} × ${money(r.savings_per_hour)} = <b>${money(r.savings_amount)}</b>
     ${Number(r.adjustment) ? `<br>${T('Adjustment')}: <b>${money(r.adjustment)}</b> <span class="muted">${esc(r.adjustment_note || '')}</span>` : ''}<br>${T('Total')}: <b>${money(r.total)}</b></p>`;
 }
