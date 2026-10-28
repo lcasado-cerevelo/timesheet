@@ -37,3 +37,6 @@ Sube los dos archivos con el File Manager a UNA de estas carpetas:
 La misma aplicación, instalada como arriba pero con su propio subdominio (`timesheet-demo.cerevelo.com`), su propia base de datos y su propio `.env`, llena de datos de ejemplo.
 Los pasos completos (subdominio, base nueva, `.env` con `DEMO_MODE=true` y `MAIL_MAILER=log`, cron temporal con `migrate` + `tiempo:demo --fresh` y cron nocturno para refrescarla) están en **[DEMO.md](../DEMO.md)**.
 Nunca pongas `DEMO_MODE=true` en el `.env` de producción.
+
+## Después de actualizar: que nadie vea la versión vieja
+Con el `.htaccess` de esta versión el navegador pregunta cada vez si la web cambió, así que una actualización llega sola. La **primera vez** que se sube esta versión, quien tenga guardada la versión vieja debe hacer **Ctrl+F5** una vez (en el teléfono: borrar los datos del sitio). Si algo nuevo no aparece, es lo primero que se prueba.

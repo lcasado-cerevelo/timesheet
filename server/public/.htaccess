@@ -7,6 +7,14 @@
     Header always set Strict-Transport-Security "max-age=31536000" "expr=%{HTTPS} == 'on'"
 </IfModule>
 
+# La web (HTML, JS y CSS) no pasa por PHP: sin esto el navegador puede guardar días una versión vieja. Con no-cache pregunta cada vez
+# si cambió (si no cambió, responde 304 y no baja nada): una actualización llega a todos sin pedirles Ctrl+F5.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(html|js|css|webmanifest)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes
