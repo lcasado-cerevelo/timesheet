@@ -27,20 +27,32 @@ class ProjectProgressService
             ->whereIn('customer_id', $a->customers()->pluck('customers.id'))->orderByDesc('active')->orderBy('code')->get();
     }
 
+    /** Todos los proyectos de la compañía (para el dueño). */
+    public function projectsOfCompany(int $companyId): Collection
+    {
+        return Project::with('customer:id,name')->where('company_id', $companyId)->orderByDesc('active')->orderBy('code')->get();
+    }
+
     public function canSee(Approver $a, Project $p): bool
     {
         return $p->company_id === $a->company_id && $a->customers()->where('customers.id', $p->customer_id)->exists();
     }
 
-    public function build(Project $p, Approver $a): array
+    /**
+     * Con $a (el gerente de proyecto de un cliente) se ve lo que ese aprobador puede ver y la cortesía solo si el proyecto la muestra.
+     * Sin $a (el dueño) se ve todo el proyecto: también lo que sigue en la etapa interna y siempre las horas de cortesía.
+     */
+    public function build(Project $p, \App\Models\Company $company, ?Approver $a = null): array
     {
-        $tz = $a->company->timezone ?: 'UTC';
+        $owner = $a === null;
+        $showCourtesy = $owner || $p->show_courtesy;
+        $tz = $company->timezone ?: 'UTC';
         $today = CarbonImmutable::now($tz)->toDateString();
         $entries = TimeEntry::with('timesheet:id,status,stage', 'user:id,name', 'service:id,name')
             ->where('project_id', $p->id)->whereIn('hour_type', TimeEntry::BILLABLE_HOUR_TYPES)->where('running', false)
-            ->when(! $p->show_courtesy, fn ($q) => $q->where('billable', true))
+            ->when(! $showCourtesy, fn ($q) => $q->where('billable', true))
             ->whereHas('timesheet', fn ($t) => $t->where(fn ($q) => $q->where('status', Timesheet::APPROVED)
-                ->orWhere(fn ($w) => $w->where('status', Timesheet::SUBMITTED)->where(fn ($s) => $s->whereNull('stage')->orWhere('stage', '!=', Timesheet::STAGE_INTERNAL)))))
+                ->orWhere(fn ($w) => $w->where('status', Timesheet::SUBMITTED)->when(! $owner, fn ($x) => $x->where(fn ($s) => $s->whereNull('stage')->orWhere('stage', '!=', Timesheet::STAGE_INTERNAL))))))
             ->get();
         // Cortesía: horas no facturadas (de servicios que no se cobran) del proyecto, solo si el dueño lo activó. Siempre aparte de lo facturable.
         $courtesy = $entries->reject(fn ($e) => $e->billable);
@@ -55,7 +67,7 @@ class ProjectProgressService
         $budget = $p->budget_hours !== null ? (float) $p->budget_hours : null;
         $done = $hours($approved);
 
-        $dow = (int) $a->company->rules()->get('week_starts_on');
+        $dow = (int) $company->rules()->get('week_starts_on');
         $weekOf = fn (string $d) => Week::starting(Week::ending($d, $dow));
         $weekStart = $weekOf($today);
         $weeks = [];
@@ -97,10 +109,11 @@ class ProjectProgressService
             'budget_hours' => $budget, 'hours' => $done, 'pending_hours' => $hours($pending),
             'remaining_hours' => $budget !== null ? round($budget - $done, 2) : null,
             'pct' => $budget ? round($done / $budget * 100, 1) : null,
-            'courtesy_enabled' => (bool) $p->show_courtesy, 'courtesy_hours' => $hours($cOk), 'courtesy_pending' => $hours($cPend),
+            'courtesy_enabled' => $showCourtesy, 'courtesy_hours' => $hours($cOk), 'courtesy_pending' => $hours($cPend),
             'this_week' => $thisWeek['hours'], 'last_week' => $lastWeek['hours'],
-            'awaiting_you' => app(ExternalApprovalService::class)->pendingSheetsFor($a)
-                ->filter(fn ($s) => $all->contains('timesheet_id', $s->id))->count(),
+            'awaiting_you' => $owner
+                ? Timesheet::where('company_id', $p->company_id)->where('status', Timesheet::SUBMITTED)->whereHas('entries', fn ($q) => $q->where('project_id', $p->id))->count()
+                : app(ExternalApprovalService::class)->pendingSheetsFor($a)->filter(fn ($s) => $all->contains('timesheet_id', $s->id))->count(),
             'weeks' => $weeks,
             'tasks' => $tasks,
             'completed_this_week' => $tasks->filter(fn ($t) => $t['completed_on'] !== null && $t['completed_on'] > $weekAgo)->count(),

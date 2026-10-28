@@ -26,7 +26,7 @@ class ApproverProgressController extends Controller
     {
         $a = $this->manager($request);
         abort_unless($this->progress->canSee($a, $project), 404);
-        return response()->json($this->progress->build($project, $a));
+        return response()->json($this->progress->build($project, $a->company, $a));
     }
 
     public function export(Request $request, Project $project)
@@ -35,7 +35,7 @@ class ApproverProgressController extends Controller
         abort_unless($this->progress->canSee($a, $project), 404);
         $format = $request->input('format', 'pdf');
         abort_unless(in_array($format, ['xlsx', 'pdf'], true), 422, __('Formato no válido: csv, xlsx o pdf.'));
-        $table = $this->progress->tables($this->progress->build($project, $a));
+        $table = $this->progress->tables($this->progress->build($project, $a->company, $a));
         $file = $this->exporter->render($a->company, $table, $format);
         return response($file['body'], 200, ['Content-Type' => $file['mime'], 'Content-Disposition' => 'attachment; filename="'.$file['name'].'"', 'X-Export-Rows' => count($table['rows'])]);
     }

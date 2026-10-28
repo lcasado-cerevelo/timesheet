@@ -172,4 +172,62 @@ class ProjectProgressTest extends TestCase
         $this->assertEquals(0, $d['courtesy_hours']);
         $this->assertEquals(0, $d['hours']);
     }
+
+    // ---------- el dueño ve el avance de cualquier proyecto ----------
+
+    public function test_the_owner_lists_every_project_of_the_company_and_nobody_else_does(): void
+    {
+        Project::create(['company_id' => $this->company->id, 'code' => 'INT-1', 'name' => 'Interno']);                    // sin cliente
+        $other = \App\Models\Company::create(['name' => 'Otra', 'slug' => 'otra']);
+        $foreign = Project::create(['company_id' => $other->id, 'code' => 'X-1', 'name' => 'De otra compañía']);
+        Sanctum::actingAs($this->owner);
+        $codes = collect($this->getJson('/api/progress')->assertOk()->json())->pluck('code')->all();
+        $this->assertEqualsCanonicalizing(['P-1', 'INT-1'], $codes);
+        $this->getJson('/api/progress/'.$this->project->id)->assertOk()->assertJsonPath('project.code', 'P-1');
+        $this->getJson('/api/progress/'.$foreign->id)->assertNotFound();
+        $this->get('/api/progress/'.$this->project->id.'/export?format=xlsx')->assertOk();
+        $this->get('/api/progress/'.$this->project->id.'/export?format=csv')->assertStatus(422);
+
+        foreach ([$this->worker, $this->pm] as $who) {
+            Sanctum::actingAs($who);
+            $this->getJson('/api/progress')->assertForbidden();
+        }
+    }
+
+    public function test_the_owner_sees_the_same_numbers_as_the_project_manager(): void
+    {
+        $this->logDay('2026-10-13', true);
+        Sanctum::actingAs($this->pm);
+        $pm = $this->getJson('/api/approver/progress/'.$this->project->id)->assertOk()->json();
+        Sanctum::actingAs($this->owner);
+        $o = $this->getJson('/api/progress/'.$this->project->id)->assertOk()->json();
+        foreach (['hours', 'pending_hours', 'budget_hours', 'remaining_hours', 'pct', 'this_week', 'last_week', 'weeks', 'tasks', 'by_person', 'by_service'] as $k) {
+            $this->assertEquals($pm[$k], $o[$k], $k);
+        }
+        $this->assertEquals(8, $o['hours']);
+        $this->assertEquals(32, $o['remaining_hours']);
+    }
+
+    public function test_the_owner_also_sees_what_waits_for_the_internal_approval_and_always_the_courtesy_hours(): void
+    {
+        $supervisor = User::create(['company_id' => $this->company->id, 'name' => 'Supervisora', 'email' => 'sup@cerevelo.test', 'password' => 'secret-password', 'role' => 'member', 'worker_type' => 'employee']);
+        $internal = Service::create(['company_id' => $this->company->id, 'project_id' => $this->project->id, 'name' => 'Interno', 'approval_mode' => 'internal']);
+        $internal->internalApprovers()->sync([$supervisor->id]);
+        $free = Service::create(['company_id' => $this->company->id, 'project_id' => $this->project->id, 'name' => 'Garantía', 'billable' => false]);
+        $this->logDay('2026-10-20', false, '16:00', ['service_id' => $internal->id]);       // 8 h esperando a la aprobación interna
+        $this->logDay('2026-10-13', true, '16:00', ['service_id' => $free->id]);            // 8 h de cortesía aprobadas (el proyecto no las muestra al cliente)
+        $this->assertFalse((bool) $this->project->fresh()->show_courtesy);
+
+        Sanctum::actingAs($this->pm);
+        $pm = $this->getJson('/api/approver/progress/'.$this->project->id)->assertOk()->json();
+        $this->assertEquals(0, $pm['pending_hours']);
+        $this->assertFalse($pm['courtesy_enabled']);
+
+        Sanctum::actingAs($this->owner);
+        $o = $this->getJson('/api/progress/'.$this->project->id)->assertOk()->json();
+        $this->assertEquals(8, $o['pending_hours']);
+        $this->assertTrue($o['courtesy_enabled']);
+        $this->assertEquals(8, $o['courtesy_hours']);
+        $this->assertEquals(1, $o['awaiting_you']);
+    }
 }

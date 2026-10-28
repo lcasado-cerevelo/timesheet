@@ -183,7 +183,7 @@ const route = () => (location.hash.replace('#/', '') || 'week').split('?')[0];
 const isAp = () => S.me?.role === 'approver';
 /* The approver (an outside person with an account) only has Approvals, plus My account to change the password. */
 const isIn = () => !!S.me?.internal_approver && S.me.role !== 'owner' && !isAp();   // an employee who approves hours internally
-const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' || (k === 'progress' && !!S.me.project_manager) : ROUTES[k].pm ? false : ROUTES[k].mine ? !!S.me.has_commissions : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (k === 'approvals' && isIn()));
+const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' || (k === 'progress' && !!S.me.project_manager) : ROUTES[k].pm ? S.me.role === 'owner' : ROUTES[k].mine ? !!S.me.has_commissions : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (k === 'approvals' && isIn()));
 const home = () => (isAp() ? 'approvals' : 'week');
 const roleLabel = u => (u.role === 'approver' ? 'Approver' : u.role === 'owner' ? 'Owner' : u.worker_type === 'employee' ? 'Employee' : 'Consultant');
 const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
@@ -640,11 +640,13 @@ const meter = (done, budget, pend) => {
   return `<div class="meter" role="img" aria-label="${esc(h1(done))} / ${esc(h1(budget))} h"><i class="ok" style="width:${a}%;${done > budget ? 'background:var(--danger)' : ''}"></i><i class="pd" style="width:${b}%"></i></div>`;
 };
 document.addEventListener('change', e => { const x = e.target.closest?.('[data-pr-project]'); if (x) { S.cache.prProject = Number(x.value); render(); } });
+/* The project manager (an approver account) reads its own projects; the owner reads every project of the company. */
+const prBase = () => (isAp() ? '/approver/progress' : '/progress');
 async function progressView() {
-  const list = await api('/approver/progress');
+  const list = await api(prBase());
   if (!list.length) return `<div class="pghead"><div><h1>Progress</h1></div></div><div class="card"><p class="muted">There are no projects for your clients yet.</p></div>`;
   let pid = Number(S.cache.prProject) || list[0].id; if (!list.some(x => x.id === pid)) pid = list[0].id; S.cache.prProject = pid;
-  const d = await api('/approver/progress/' + pid);
+  const d = await api(prBase() + '/' + pid);
   const p = d.project, trend = d.this_week - d.last_week;
   const cy = d.courtesy_enabled, cyc = (a, b) => (a || b) ? h1(a) + (b > 0 ? ` <span class="muted">+${h1(b)}</span>` : '') : '<span class="muted">—</span>';
   const kpi = (v, l) => `<div class="kpi"><b>${v}</b><small>${l}</small></div>`;
@@ -1725,7 +1727,7 @@ Object.assign(actions, {
   'project-new': () => openProjectModal(), 'edit-project': el => openProjectModal(el.dataset.id),
   'svc-add': el => openServiceModal(el.dataset.pid), 'svc-edit': el => openServiceModal(el.dataset.pid, el.dataset.id),
   'tk-status'(el) { S.cache.tkStatus = el.dataset.s; render(); },
-  async 'pr-export'(el) { await download('/approver/progress/' + S.cache.prProject + '/export?format=' + el.dataset.f, {}, 'progress.' + el.dataset.f); },
+  async 'pr-export'(el) { await download(prBase() + '/' + S.cache.prProject + '/export?format=' + el.dataset.f, {}, 'progress.' + el.dataset.f); },
   'cm-status'(el) { S.cache.cmStatus = el.dataset.s; render(); },
   'cm-detail'(el) { return openCommissionDetail(S.cache.cm.find(x => x.id === Number(el.dataset.id))); },
   'cm-release'(el) { return openReleaseModal(S.cache.cm.find(x => x.id === Number(el.dataset.id))); },
