@@ -149,6 +149,24 @@ class AuthController extends Controller
         return response()->json($this->userPayload($request->user()->fresh()));
     }
 
+    /**
+     * El teléfono activó (o quitó) la entrada con huella: la sesión de ese teléfono se marca y deja de vencer por inactividad
+     * (con "Recordar por" en 0 el respaldo es de 12 horas). El tope absoluto de la sesión sigue valiendo.
+     */
+    public function setBiometric(Request $request)
+    {
+        $v = $request->validate(['enabled' => 'required|boolean']);
+        $token = $request->user()->currentAccessToken();
+        if ($token instanceof \Laravel\Sanctum\PersonalAccessToken) {
+            $abilities = array_values(array_diff((array) ($token->abilities ?: ['*']), ['bio']));
+            if ($v['enabled']) {
+                $abilities[] = 'bio';
+            }
+            $token->forceFill(['abilities' => $abilities])->save();
+        }
+        return response()->json(['enabled' => (bool) $v['enabled']]);
+    }
+
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()?->delete();

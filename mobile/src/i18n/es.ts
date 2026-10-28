@@ -250,7 +250,7 @@ export const es = {
   'bio.offer_text': 'La próxima vez podrás abrir la aplicación con tu huella en lugar de escribir la contraseña. Puedes cambiarlo en Ajustes.',
   'bio.not_now': 'Ahora no',
   'bio.enable': 'Activar',
-  'bio.not_available': 'Este teléfono no tiene una huella o un rostro registrado.',
+  'bio.not_available': 'No se pudo activar: el teléfono necesita una huella o un rostro registrado y conexión a internet.',
   'settings.biometric': 'Entrar con huella',
   'settings.biometric_hint': 'Pide tu huella al abrir la aplicación. La sesión dura lo que define la compañía.',
   'settings.allow_notifications': 'Permite las notificaciones para recibir el aviso.',

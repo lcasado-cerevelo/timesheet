@@ -60,6 +60,9 @@ describe('entrar con huella: desbloquea la sesión guardada', () => {
   });
 
   test('activarla exige sensor y una huella válida; desactivarla siempre se puede', async () => {
+    const f = jest.fn().mockResolvedValue({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ enabled: true }), text: async () => '{}' });
+    globalThis.fetch = f as any;
+    useAuth.setState({ token: 'tok' });
     mockBio.available = false;
     expect(await useAuth.getState().setBiometric(true)).toBe(false);
     expect(useAuth.getState().biometric).toBe(false);
@@ -73,6 +76,7 @@ describe('entrar con huella: desbloquea la sesión guardada', () => {
     expect(await useAuth.getState().setBiometric(true)).toBe(true);
     expect(useAuth.getState().biometric).toBe(true);
     expect(await AsyncStorage.getItem('biometric.v1')).toBe('true');
+    expect(JSON.parse(f.mock.calls[0][1].body)).toEqual({ enabled: true });   // el servidor marca esta sesión
 
     expect(await useAuth.getState().setBiometric(false)).toBe(true);
     expect(useAuth.getState().biometric).toBe(false);
@@ -86,5 +90,30 @@ describe('entrar con huella: desbloquea la sesión guardada', () => {
     expect(useAuth.getState().biometric).toBe(false);
     expect(useAuth.getState().locked).toBe(false);
     expect(await AsyncStorage.getItem('biometric.v1')).toBeNull();
+  });
+  test('con la regla "recordar" en 0 y la huella activada, la app conserva la sesión y abre bloqueada', async () => {
+    await AsyncStorage.setItem('biometric.v1', 'true');
+    await AsyncStorage.setItem('me', JSON.stringify({ ...me, remember_days: 0 }));
+    mockSecure.token = 'tok';
+    await useAuth.getState().init();
+    expect(useAuth.getState().token).toBe('tok');
+    expect(mockSecure.token).toBe('tok');
+    expect(useAuth.getState().locked).toBe(true);
+  });
+
+  test('con la regla en 0 y sin huella, la sesión guardada se borra al abrir (como siempre)', async () => {
+    await AsyncStorage.setItem('me', JSON.stringify({ ...me, remember_days: 0 }));
+    mockSecure.token = 'tok';
+    globalThis.fetch = jest.fn() as any;
+    await useAuth.getState().init();
+    expect(useAuth.getState().token).toBeNull();
+    expect(mockSecure.token).toBeUndefined();
+  });
+
+  test('sin conexión no se puede activar la huella: el servidor tiene que marcar la sesión', async () => {
+    useAuth.setState({ token: 'tok' });
+    globalThis.fetch = jest.fn().mockRejectedValue(new TypeError('Network request failed')) as any;
+    expect(await useAuth.getState().setBiometric(true)).toBe(false);
+    expect(useAuth.getState().biometric).toBe(false);
   });
 });

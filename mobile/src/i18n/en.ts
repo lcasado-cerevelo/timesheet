@@ -252,7 +252,7 @@ export const en: Record<keyof typeof es, string> = {
   'bio.offer_text': 'Next time you can open the app with your fingerprint instead of typing your password. You can change it in Settings.',
   'bio.not_now': 'Not now',
   'bio.enable': 'Turn on',
-  'bio.not_available': 'This phone has no fingerprint or face registered.',
+  'bio.not_available': 'Could not turn it on: the phone needs a fingerprint or face registered and an internet connection.',
   'settings.biometric': 'Sign in with fingerprint',
   'settings.biometric_hint': 'Asks for your fingerprint when you open the app. The session lasts as long as the company sets.',
   'settings.allow_notifications': 'Allow notifications to receive the alert.',

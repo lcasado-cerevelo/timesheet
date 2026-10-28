@@ -63,6 +63,11 @@ describe('arranque según remember_days y conexión', () => {
   test('remember_days = 0: con señal pide la contraseña aunque haya token', () => {
     expect(bootDecision({ ...base, rememberDays: 0, online: true })).toBe('login');
   });
+  test('remember_days = 0 con la huella activada: se reutiliza la sesión guardada (la huella la desbloquea), con o sin señal', () => {
+    expect(bootDecision({ ...base, rememberDays: 0, online: true, biometric: true })).toBe('resume');
+    expect(bootDecision({ ...base, rememberDays: 0, online: false, biometric: true })).toBe('resume');
+    expect(bootDecision({ hasToken: false, hasSavedSession: true, rememberDays: 0, online: true, biometric: true })).toBe('login');
+  });
   test('remember_days = 0: sin señal y con sesión previa, modo limitado', () => {
     expect(bootDecision({ ...base, rememberDays: 0, online: false })).toBe('limited');
   });

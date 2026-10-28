@@ -3,10 +3,13 @@
  * - remember_days > 0 (o desconocido): se reutiliza el token guardado; nada cambia.
  * - remember_days = 0: en cada apertura en frío se pide la contraseña. Con señal, login. Sin señal, y si ya hubo
  *   una sesión en este teléfono (hay datos guardados), MODO LIMITADO: solo anotar horas.
+ * - Con la huella activada la sesión guardada se reutiliza aunque la regla sea 0: la huella reemplaza a la contraseña
+ *   y la sesión dura hasta el tope máximo de las Reglas.
  */
 export type BootDecision = 'resume' | 'login' | 'limited';
 
-export function bootDecision(i: { rememberDays: number | null | undefined; online: boolean; hasToken: boolean; hasSavedSession: boolean }): BootDecision {
+export function bootDecision(i: { rememberDays: number | null | undefined; online: boolean; hasToken: boolean; hasSavedSession: boolean; biometric?: boolean }): BootDecision {
+  if (i.rememberDays === 0 && i.biometric && i.hasToken) return 'resume';
   if (i.rememberDays === 0) {
     if (i.online) return 'login';
     return i.hasSavedSession ? 'limited' : 'login';

@@ -95,6 +95,7 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
     Route::get('/brand', [BrandController::class, 'show']);
 
     Route::put('/me/locale', [AuthController::class, 'setLocale']);
+    Route::post('/me/biometric', [AuthController::class, 'setBiometric']);
     Route::get('/export-templates', [ExportController::class, 'templates']);
     Route::get('/export/patients', [ExportController::class, 'patients']);
     Route::match(['get', 'post'], '/export', [ExportController::class, 'export']);

@@ -8,6 +8,7 @@ use Laravel\Sanctum\PersonalAccessToken;
  * Vencimiento deslizante de la sesión (token de Sanctum) por inactividad.
  * Un token vence cuando pasaron más de rules.remember_days días desde su último uso (o desde su creación si nunca se usó).
  * Con remember_days = 0 el servidor aplica un respaldo de 12 horas sin uso; el "no recordar" real lo hace el cliente.
+ * Una sesión marcada con la habilidad 'bio' (el teléfono activó la huella) no vence por inactividad: solo por el tope absoluto.
  */
 class SessionExpiry
 {
@@ -39,8 +40,9 @@ class SessionExpiry
         $days = $company ? (int) $company->rules()->get('remember_days') : 0;
         $limit = $days > 0 ? now()->subDays($days) : now()->subHours(self::FALLBACK_HOURS);
         $last = $token->last_used_at ?? $token->created_at;
+        $bio = in_array('bio', (array) $token->abilities, true);
 
-        if ($last->lt($limit)) {
+        if (! $bio && $last->lt($limit)) {
             $token->delete();
             request()->attributes->set('session_expired', true);
             return false;

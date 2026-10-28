@@ -83,8 +83,9 @@ export const useAuth = create<AuthState>((set, get) => ({
     const srv = resolveServer({ fixed: fixedServerUrl(), stored: baseUrl, devDefault: devDefaultServerUrl(), dev: __DEV__ });
     // Con remember_days = 0 el token guardado nunca se reutiliza: cada apertura en frío pide la contraseña.
     const rememberDays = me?.remember_days;
-    const decision = bootDecision({ rememberDays, online: rememberDays === 0 ? await isOnline() : true, hasToken: !!storedToken, hasSavedSession: !!me });
-    if (rememberDays === 0 && storedToken) await secure.del('token');
+    const decision = bootDecision({ rememberDays, online: rememberDays === 0 && !bio ? await isOnline() : true, hasToken: !!storedToken, hasSavedSession: !!me, biometric: bio });
+    // Con la huella activada la sesión se conserva aunque la regla sea 0: la huella reemplaza a la contraseña (dura hasta el tope máximo).
+    if (rememberDays === 0 && storedToken && !bio) await secure.del('token');
     const token = decision === 'resume' ? storedToken : null;
     configureApi({ baseUrl: srv.url, token, onUnauthorized: () => void get().sessionExpired() });
     // Con la huella activada, la sesión guardada no se muestra hasta que la persona se verifique.
@@ -116,6 +117,8 @@ export const useAuth = create<AuthState>((set, get) => ({
     const serverFixed = get().serverFixed;
     await Promise.all([secure.set('token', r.token), serverFixed ? Promise.resolve() : kv.set('baseUrl', url), kv.set('me', r.user)]);
     configureApi({ baseUrl: url, token: r.token });
+    // Si este teléfono ya usa la huella, la sesión nueva se marca igual en el servidor (si no hay señal, se reintenta al activar de nuevo).
+    if (get().biometric) void api('/me/biometric', { method: 'POST', body: { enabled: true } }).catch(() => undefined);
     const l = normalizeLocale(r.user.locale);
     if (l) await saveLocale(l);
     await pendingLocale.clear();
@@ -144,12 +147,19 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   async setBiometric(on) {
     if (!on) {
+      if (get().token) await api('/me/biometric', { method: 'POST', body: { enabled: false } }).catch(() => undefined);
       await kv.set('biometric.v1', false);
       set({ biometric: false, locked: false });
       return true;
     }
     if (!(await biometricAvailable())) return false;
     if (!(await biometricPrompt(t('bio.prompt'), t('bio.cancel')))) return false;
+    // El servidor marca esta sesión: sin esa marca vencería por inactividad. Hace falta señal para activarla.
+    try {
+      await api('/me/biometric', { method: 'POST', body: { enabled: true } });
+    } catch {
+      return false;
+    }
     await kv.set('biometric.v1', true);
     set({ biometric: true });
     return true;
