@@ -67,3 +67,7 @@
 .mdl .msel.bad{border:0!important;background:none}.msel.bad .msel-q{border-color:var(--danger)}
 .pchips{display:flex;flex-wrap:wrap;gap:4px}
 .pchip{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--tint);color:#085A88;white-space:nowrap}
+
+.ck{font-weight:700}.ck.ok{color:#14603B}.ck.no{color:var(--danger)}
+.cmcalc{list-style:none;margin:6px 0 0;padding:0}.cmcalc li{margin:2px 0}
+.cmtask{border-top:1px solid var(--line);padding:10px 0}.cmtask:first-of-type{border-top:0}

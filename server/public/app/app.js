@@ -142,6 +142,8 @@ const ROUTES = {
   weeks: { t: 'All weeks', f: weeksView },
   approvals: { t: 'Approvals', owner: true, f: reviewScreen },
   tasks: { t: 'Tasks', staff: true, f: tasksView },
+  commissions: { t: 'Commissions', owner: true, f: commissionsView },
+  mycommissions: { t: 'My commissions', mine: true, f: myCommissionsView },
   invoices: { t: 'Invoices', f: invoicesView },
   reports: { t: 'Hours report', f: reportsView },
   clientsheet: { t: 'Client timesheet', owner: true, f: clientSheetView },
@@ -159,7 +161,8 @@ const ROUTES = {
 const GROUPS = [
   { t: 'Timesheet', r: ['week', 'weeks'] },
   { t: 'Approvals', r: ['approvals'] },
-  { t: 'Tasks', r: ['tasks'] },
+  { t: 'Tasks', r: ['tasks', 'commissions'] },
+  { t: 'My commissions', r: ['mycommissions'] },
   { t: 'Invoices', r: ['invoices'] },
   { t: 'Reports', r: ['reports', 'clientsheet', 'export'] },
   { t: 'People & projects', r: ['people', 'approvers', 'customers', 'projects'] },
@@ -169,7 +172,7 @@ const route = () => (location.hash.replace('#/', '') || 'week').split('?')[0];
 const isAp = () => S.me?.role === 'approver';
 /* The approver (an outside person with an account) only has Approvals, plus My account to change the password. */
 const isIn = () => !!S.me?.internal_approver && S.me.role !== 'owner' && !isAp();   // an employee who approves hours internally
-const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (k === 'approvals' && isIn()));
+const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' : ROUTES[k].mine ? !!S.me.has_commissions : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (k === 'approvals' && isIn()));
 const home = () => (isAp() ? 'approvals' : 'week');
 const roleLabel = u => (u.role === 'approver' ? 'Approver' : u.role === 'owner' ? 'Owner' : u.worker_type === 'employee' ? 'Employee' : 'Consultant');
 const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
@@ -595,6 +598,165 @@ async function tasksView() {
   return `<div class="pghead"><div><h1>Tasks</h1><p class="sub">${owner ? 'The tasks of every project.' : 'The tasks of the projects you approve.'} Completing a task is signed with your password.</p></div></div>
     <div class="card"><div class="pills" style="margin-bottom:12px">${pills}</div>
     ${list.length ? `<div class="scrollx"><table><tr><th>Project</th><th>Task</th><th class="r">Budget (h)</th><th class="r">Used (h)</th><th class="r">Not approved (h)</th><th>Estimated end</th><th>Status</th><th></th></tr>${list.map(row).join('')}</table></div>` : '<p class="muted">No tasks here.</p>'}</div>`;
+}
+
+
+/* ================= Commissions (see diseno.md, v1.11) ================= */
+const pct = n => String(Math.round(Number(n || 0) * 100) / 100) + '%';
+const ck = ok => `<span class="ck ${ok ? 'ok' : 'no'}" aria-label="${ok ? 'Yes' : 'No'}">${ok ? '✔' : '✘'}</span>`;
+const COMM_STATUS = { pending: ['To release', 'amber'], released: ['Released', 'green'], invoiced: ['Invoiced', 'blue'], paid: ['Paid', 'gray'], none: ['No commission', 'gray'], in_review: ['In review', 'amber'], open: ['Open', 'green'] };
+const commPill = k => { const a = COMM_STATUS[k] || [k, 'gray']; return pill(a[0], a[1]); };
+const SAVINGS_MODES = { fixed: 'A fixed % of the savings', assigned: 'The % that corresponded to the person (the minimum share)' };
+const commTerms = c => `${pct(c.percent_required)} ${T('of the task')} · +${money(c.extra_per_hour)}/h · ${T('savings')} ${c.savings_mode === 'assigned' ? T('by assigned %') : pct(c.savings_pct)} × ${money(c.savings_per_hour)}/h${Number(c.tolerance_hours) ? ' · ' + T('tolerance') + ' ' + h1(c.tolerance_hours) + ' h' : ''}`;
+
+/* in the person's window: their commissions (one per project) */
+function commBox(u, list, projects) {
+  const row = c => { const p = (projects || []).find(x => x.id === c.project.id); const names = c.task_ids.map(id => (p?.tasks || []).find(t => t.id === id)?.name).filter(Boolean);
+    return `<tr><td><b>${esc(c.project.code)}</b> · ${esc(c.project.name)}</td><td>${esc(commTerms(c))}</td><td>${names.length ? esc(names.join(', ')) : '<span class="muted">—</span>'}</td><td>${activePill(c.active)}</td>
+    <td class="r"><button type="button" class="btn ghost sm" data-act="comm-edit" data-uid="${u.id}" data-id="${c.id}">Edit</button>${c.results_count ? '' : ` <button type="button" class="btn ghost sm" data-act="comm-del" data-uid="${u.id}" data-id="${c.id}">Delete</button>`}</td></tr>`; };
+  return `<div class="mdl-sech"><h3>Commissions</h3><button type="button" class="btn ghost sm" data-act="comm-add" data-uid="${u.id}">Add commission</button></div>
+    <p class="muted" style="margin:0 0 8px">Productivity commissions: one per project. The person keeps being paid their normal rate for every hour; the commission is a separate amount, earned when a task is completed on time and under its savings goal.</p>
+    ${list.length ? `<div class="scrollx"><table class="svct"><tr><th>Project</th><th>Terms</th><th>Tasks</th><th>Status</th><th></th></tr>${list.map(row).join('')}</table></div>` : '<p class="muted" style="margin:0">No commissions.</p>'}`;
+}
+async function refreshCommBox(uid) {
+  const [list, projects] = await Promise.all([api('/commissions?user_id=' + uid), api('/projects')]); S.cache.pl = projects;
+  const pm = MDL.find(x => x.el.dataset.uid === String(uid)); if (!pm) return;
+  pm.el.querySelector('[data-comm-box]').innerHTML = localizeHtml(commBox({ id: Number(uid) }, list, projects));
+}
+/* add / edit a commission (the small window over the person's) */
+async function openCommissionModal(uid, cid) {
+  const [projects, list] = await Promise.all([api('/projects'), api('/commissions?user_id=' + uid)]);
+  const c = cid ? list.find(x => x.id === Number(cid)) : null;
+  const taken = new Set(list.map(x => x.project.id));
+  const choices = projects.filter(p => p.active && !taken.has(p.id));
+  if (!c && !choices.length) throw new Error('This person already has a commission in every active project.');
+  const proj = id => projects.find(p => p.id === Number(id));
+  const scope = (p, svcSel, taskSel) => {
+    const tasks = (p?.tasks || []).filter(t => t.commissionable);
+    return `<div><label>Services that count</label>${msel({ name: 'service_ids', ef: 'service_ids', label: 'Services', placeholder: 'Search services', empty: 'This project has no services.', selected: svcSel, options: (p?.services || []).filter(x => x.active).map(x => ({ id: x.id, label: x.name })) })}<small class="help">The person's hours only count in these services. Leave it empty for all.</small></div>
+      <div><label>Tasks that count</label>${msel({ name: 'task_ids', ef: 'task_ids', label: 'Tasks', placeholder: 'Search tasks', empty: 'No task of this project is marked "Counts toward a commission".', selected: taskSel, options: tasks.map(x => ({ id: x.id, label: x.name + (x.active ? '' : ' (' + T('completed') + ')') })) })}<small class="help">Only tasks marked "Counts toward a commission" in the project show here.</small></div>`;
+  };
+  const first = c ? proj(c.project.id) : choices[0];
+  const m = modalOpen({ title: c ? 'Edit commission' : 'Add commission', sub: c ? `${c.project.code} · ${c.project.name}` : '', size: 'lg', save: c ? 'Save' : 'Add',
+    body: `${c ? '' : `<div><label>Project</label><select name="project_id" data-comm-project>${choices.map(p => `<option value="${p.id}">${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select></div>`}
+      <div data-comm-scope>${scope(first, c?.service_ids || [], c?.task_ids || [])}</div>
+      <div class="grid"><div><label>Minimum share of the task (%)</label><input name="percent_required" type="number" step="0.5" min="0" max="100" required value="${esc(c?.percent_required ?? 80)}"><small class="help">How much of the hours worked on the task this person must have worked. 80 = 80% of the total.</small></div>
+      <div><label>Extra per hour</label><input name="extra_per_hour" type="number" step="0.01" min="0" required value="${esc(c?.extra_per_hour ?? 0)}"><small class="help">On top of the normal rate, for each hour this person worked on the task.</small></div>
+      <div><label>Savings bonus: how it is shared</label><select name="savings_mode">${Object.entries(SAVINGS_MODES).map(([k, l]) => `<option value="${k}" ${(c?.savings_mode || 'fixed') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div data-comm-fixed><label>Share of the savings (%)</label><input name="savings_pct" type="number" step="0.5" min="0" max="100" required value="${esc(c?.savings_pct ?? 100)}"></div>
+      <div><label>Savings bonus per hour saved</label><input name="savings_per_hour" type="number" step="0.01" min="0" required value="${esc(c?.savings_per_hour ?? 0)}"><small class="help">Hours saved = estimated hours minus the hours worked.</small></div>
+      <div><label>Tolerance (hours)</label><input name="tolerance_hours" type="number" step="0.25" min="0" max="999" required value="${esc(c?.tolerance_hours ?? 0)}"><small class="help">Hours over the savings goal that are forgiven.</small></div></div>
+      <label class="chk"><input type="checkbox" name="withhold" ${c ? (c.withhold ? 'checked' : '') : 'checked'}> Withholding applies to this commission</label>
+      <label class="chk"><input type="checkbox" name="ivu" ${c?.ivu ? 'checked' : ''}> IVU withholding applies to this commission</label>
+      ${c ? `<label class="chk"><input type="checkbox" name="active" ${c.active ? 'checked' : ''}> Active</label>` : ''}`,
+    init(mm) {
+      const f = mm.form; const modeSync = () => { f.querySelector('[data-comm-fixed]').hidden = f.elements.savings_mode.value === 'assigned'; };
+      f.elements.savings_mode.addEventListener('change', modeSync); modeSync();
+      f.querySelector('[data-comm-project]')?.addEventListener('change', e => {
+        const slot = f.querySelector('[data-comm-scope]'); slot.innerHTML = localizeHtml(scope(proj(e.target.value), [], [])); slot.querySelectorAll('[data-msel]').forEach(mselSync);
+      });
+    },
+    async onSubmit(mm) {
+      const o = formObj(mm.form); o.service_ids = o.service_ids || []; o.task_ids = o.task_ids || [];
+      for (const k of ['percent_required', 'extra_per_hour', 'savings_pct', 'savings_per_hour', 'tolerance_hours']) o[k] = Number(o[k] || 0);
+      o.withhold = !!o.withhold; o.ivu = !!o.ivu;
+      if (c) { o.active = !!o.active; delete o.project_id; await api('/commissions/' + c.id, { method: 'PUT', body: o }); }
+      else { o.user_id = Number(uid); o.project_id = Number(o.project_id); await api('/commissions', { method: 'POST', body: o }); }
+      await mm.finish('Commission saved.', () => refreshCommBox(uid));
+    } });
+  return m;
+}
+/* the commission of each person for a task, as it would come out: used by the completion window */
+function commPreview(c) {
+  if (!c || !c.applicable) return '';
+  const row = r => `<tr><td><b>${esc(r.user.name)}</b></td><td class="r">${h1(r.user_hours)} h · ${pct(r.user_pct)}</td><td>${ck(r.met_goal)}</td><td>${ck(r.met_date)}</td><td>${ck(r.worked_min)}</td><td>${ck(r.met_share)} <span class="muted">${pct(r.percent_required)}</span></td>
+    <td class="r">${money(r.commission_amount)}</td><td class="r">${money(r.savings_amount)}</td><td class="r"><b>${money(r.total)}</b></td></tr>`;
+  return `<div class="mdl-sec"><h3>Commissions</h3>
+    <p class="muted" style="margin:0 0 6px">${T('Team hours (approved)')}: <b>${h1(c.rows[0]?.total_hours)}</b> · ${T('goal')}: <b>${h1(c.goal_hours)}</b> h</p>
+    ${c.pending_hours > 0 ? `<div class="msg err" role="alert">${T('There are')} ${h1(c.pending_hours)} ${T('h on this task that are not approved yet. Approve them first: the commission is calculated with approved hours.')}</div>` : ''}
+    <div class="scrollx"><table class="svct"><tr><th>Person</th><th class="r">Hours · share</th><th title="${esc(T('Team hours within the goal'))}">Goal</th><th title="${esc(T('Completed on time'))}">Date</th><th title="${esc(T('At least 1 hour worked'))}">1 h</th><th>Share</th><th class="r">Commission</th><th class="r">Savings</th><th class="r">Total</th></tr>${c.rows.map(row).join('')}</table></div>
+    ${c.pending_hours > 0 ? '' : c.payable
+      ? (c.can_release ? `<label class="chk" style="margin-top:8px"><input type="checkbox" name="release" required> ${T('I release these commissions to be paid')}</label><small class="help">${T('If you want to review them first, close this window: the task stays open.')}</small>`
+        : `<p class="note" style="margin:8px 0 0">${T('The owner will release these commissions after you complete the task.')}</p>`)
+      : `<p class="note" style="margin:8px 0 0">${T('With these numbers no commission is earned.')}</p>`}</div>`;
+}
+
+
+/* --- Commissions report (owner): what was earned, to release, adjust or mark as paid --- */
+const CM_VIEWS = [['pending', 'To release'], ['released', 'Released'], ['invoiced', 'Invoiced'], ['paid', 'Paid'], ['all', 'All']];
+async function commissionsView() {
+  const st = S.cache.cmStatus || 'pending';
+  const list = await api('/commission-results?status=' + st); S.cache.cm = list;
+  const pills = CM_VIEWS.map(([k, l]) => `<button type="button" class="${k === st ? 'on' : ''}" data-act="cm-status" data-s="${k}">${l}${k === st ? ` (${list.length})` : ''}</button>`).join('');
+  const row = r => `<tr><td><b>${esc(r.user.name)}</b></td><td>${esc(r.project.code)} · ${esc(r.task.name)}</td><td>${esc(nice(r.completed_on))}</td><td class="r">${h1(r.user_hours)} h · ${pct(r.user_pct)}</td>
+    <td class="r">${money(r.commission_amount)}</td><td class="r">${money(r.savings_amount)}</td><td class="r">${Number(r.adjustment) ? `<span title="${esc(r.adjustment_note || '')}">${money(r.adjustment)}</span>` : '<span class="muted">—</span>'}</td>
+    <td class="r"><b>${money(r.total)}</b></td><td>${commPill(r.status)}</td>
+    <td class="r"><button type="button" class="btn ghost sm" data-act="cm-detail" data-id="${r.id}">Details</button>${r.status === 'pending' ? ` <button type="button" class="btn pri sm" data-act="cm-release" data-id="${r.id}">Release</button>` : ''}${['pending', 'released', 'none'].includes(r.status) ? ` <button type="button" class="btn ghost sm" data-act="cm-adjust" data-id="${r.id}">Adjust</button>` : ''}${r.status === 'released' && r.worker_type === 'employee' ? ` <button type="button" class="btn ghost sm" data-act="cm-paid" data-id="${r.id}">Mark as paid</button>` : ''}</td></tr>`;
+  const tot = list.reduce((a, r) => a + Number(r.total), 0);
+  return `<div class="pghead"><div><h1>Commissions</h1><p class="sub">Productivity commissions earned when a task is completed. Release them to be paid: consultants collect them on their invoice, employees are marked as paid here.</p></div></div>
+    <div class="card"><div class="pills" style="margin-bottom:12px">${pills}</div>
+    <div style="text-align:right;margin-bottom:8px">${exportBar('commissions', { status: st })}</div>
+    ${list.length ? `<div class="scrollx"><table><tr><th>Person</th><th>Project · task</th><th>Completed</th><th class="r">Hours · share</th><th class="r">Commission</th><th class="r">Savings</th><th class="r">Adjustment</th><th class="r">Total</th><th>Status</th><th></th></tr>${list.map(row).join('')}
+      <tr><td colspan="7"><b>Total</b></td><td class="r"><b>${money(tot)}</b></td><td colspan="2"></td></tr></table></div>` : '<p class="muted">Nothing here.</p>'}</div>`;
+}
+/* the whole calculation of one result, so the owner can see why */
+function commCalcHtml(r) {
+  const li = (ok, text) => `<li>${ck(ok)} ${text}</li>`;
+  return `<ul class="cmcalc">${li(r.met_goal, `${T('Team hours')} ${h1(r.total_hours)} h · ${T('goal')} ${h1(r.goal_hours)} h${Number(r.tolerance_hours) ? ' + ' + h1(r.tolerance_hours) + ' h ' + T('tolerance') : ''}`)}
+    ${li(r.met_date, `${T('Completed on')} ${esc(nice(r.completed_on))}${r.deadline ? ' · ' + T('estimated end') + ' ' + esc(nice(r.deadline)) : ''}`)}
+    ${li(r.worked_min, `${T('Hours of the person')}: ${h1(r.user_hours)} h (${T('at least 1 h')})`)}
+    ${li(r.met_share, `${T('Share of the team')}: ${pct(r.user_pct)} · ${T('needs')} ${pct(r.percent_required)}`)}</ul>
+    <p style="margin:8px 0 0">${T('Commission')}: ${h1(r.user_hours)} h × ${money(r.extra_per_hour)} = <b>${money(r.commission_amount)}</b><br>
+    ${T('Savings bonus')}: ${h1(r.saved_hours)} h ${T('saved')} × ${pct(r.savings_pct)} × ${money(r.savings_per_hour)} = <b>${money(r.savings_amount)}</b>
+    ${Number(r.adjustment) ? `<br>${T('Adjustment')}: <b>${money(r.adjustment)}</b> <span class="muted">${esc(r.adjustment_note || '')}</span>` : ''}<br>${T('Total')}: <b>${money(r.total)}</b></p>`;
+}
+function openCommissionDetail(r) {
+  const m = modalOpen({ title: 'Commission', sub: `${r.user.name} · ${r.project.code} · ${r.task.name}`, size: 'sm', save: 'Close', body: commCalcHtml(r) + `<p style="margin:8px 0 0">${commPill(r.status)}</p>`, async onSubmit(mm) { mm.close(true); } });
+  return m;
+}
+function openReleaseModal(r) {
+  return modalOpen({ title: 'Release commission', sub: `${r.user.name} · ${r.project.code} · ${r.task.name}`, size: 'sm', save: 'Sign and release',
+    body: `${commCalcHtml(r)}<p class="muted" style="margin:8px 0">${T('Once released it can be invoiced (consultants) or marked as paid (employees).')}</p>${sigField()}`,
+    async onSubmit(mm) { const o = formObj(mm.form); const signature = sigTake(mm.form, o); await api(`/commission-results/${r.id}/release`, { method: 'POST', body: { signature } }); await mm.finish('Commission released.'); } });
+}
+function openAdjustModal(r) {
+  return modalOpen({ title: 'Adjust commission', sub: `${r.user.name} · ${r.project.code} · ${r.task.name}`, size: 'sm', save: 'Sign and save',
+    body: `${commCalcHtml(r)}
+      <div><label>Adjustment (+ or −)</label><input name="adjustment" type="number" step="0.01" required value="${esc(r.adjustment)}"><small class="help">Added to the calculated amount. The calculation above is kept as it came out.</small></div>
+      <div><label>Reason</label><input name="adjustment_note" maxlength="500" value="${esc(r.adjustment_note)}"></div>${sigField()}`,
+    async onSubmit(mm) { const o = formObj(mm.form); const signature = sigTake(mm.form, o); await api('/commission-results/' + r.id, { method: 'PUT', body: { adjustment: Number(o.adjustment || 0), adjustment_note: o.adjustment_note || null, signature } }); await mm.finish('Commission saved.'); } });
+}
+function openPaidModal(r) {
+  return modalOpen({ title: 'Mark as paid', sub: `${r.user.name} · ${r.project.code} · ${r.task.name}`, size: 'sm', save: 'Sign and mark as paid',
+    body: `<p style="margin:0">${T('Total')}: <b>${money(r.total)}</b></p>${sigField()}`,
+    async onSubmit(mm) { const o = formObj(mm.form); const signature = sigTake(mm.form, o); await api(`/commission-results/${r.id}/paid`, { method: 'POST', body: { signature } }); await mm.finish('Marked as paid.'); } });
+}
+
+/* --- My commissions (a person with a commission): their terms and how each task is going. Never anyone else's name or hours. --- */
+async function myCommissionsView() {
+  const list = await api('/me/commissions');
+  const card = t => {
+    const done = t.status !== 'open'; const c = t.conditions;
+    const left = t.task.days_left;
+    const head = `<div class="row"><b>${esc(t.task.name)}</b><span class="spacer"></span>${commPill(t.status)}</div>`;
+    const due = t.task.estimated_end ? `<span class="muted">${T('Estimated end')}: ${esc(nice(t.task.estimated_end))}${!done && left != null ? ' · ' + (left >= 0 ? left + ' ' + T('days left') : -left + ' ' + T('days late')) : ''}</span>` : '';
+    const lines = `<ul class="cmcalc">
+      <li>${ck(c.goal)} ${T('Team hours')}: <b>${h1(t.team.total_hours)}</b> ${T('of')} <b>${h1(t.team.goal_hours)}</b> h ${T('(the goal)')}</li>
+      <li>${ck(c.date)} ${T('Deadline')}${done ? '' : ' (' + T('if completed today') + ')'}</li>
+      <li>${ck(c.min_hours)} ${T('At least 1 hour worked')}</li>
+      <li>${ck(c.share)} ${T('Your share')}: <b>${h1(t.mine.hours)}</b> h = <b>${pct(t.mine.pct)}</b> ${T('of the team; you need')} <b>${pct(t.mine.percent_required)}</b></li></ul>`;
+    const pend = !done && t.mine.pending_hours > 0 ? `<p class="muted" style="margin:4px 0">${T('You have')} ${h1(t.mine.pending_hours)} h ${T('not approved yet: they count once approved.')}</p>` : '';
+    const out = !done ? `<p style="margin:6px 0 0">${T('If the task were completed today you would earn')}: ${money(t.would_earn.commission)} ${T('commission')} + ${money(t.would_earn.savings)} ${T('savings')} = <b>${money(t.would_earn.total)}</b></p>`
+      : t.status === 'in_review' ? `<p class="note" style="margin:6px 0 0">${T('Your commission is being reviewed. You will see the amount when it is released.')}</p>`
+      : t.earned ? `<p style="margin:6px 0 0">${T('You earned')}: ${money(t.earned.commission)} ${T('commission')} + ${money(t.earned.savings)} ${T('savings')}${Number(t.earned.adjustment) ? ` ${Number(t.earned.adjustment) > 0 ? '+' : '−'} ${money(Math.abs(t.earned.adjustment))} ${T('adjustment')}` : ''} = <b>${money(t.earned.total)}</b></p>`
+      : `<p class="note" style="margin:6px 0 0">${T('No commission was earned on this task.')}</p>`;
+    return `<div class="cmtask">${head}${due}${lines}${pend}${out}</div>`;
+  };
+  const box = c => `<div class="card"><h2 style="margin:0 0 4px">${esc(c.project.code)} · ${esc(c.project.name)}</h2>
+    <p class="muted" style="margin:0 0 10px">${T('Your terms')}: ${esc(commTerms(c.terms))}${c.terms.withhold ? ' · ' + T('withholding applies') : ''}</p>
+    ${c.tasks.length ? c.tasks.map(card).join('') : `<p class="muted">${T('No task counts toward your commission yet.')}</p>`}</div>`;
+  return `<div class="pghead"><div><h1>My commissions</h1><p class="sub">Your hours are always paid at your normal rate. The commission is a separate amount, earned when a task is completed on time and under its savings goal. This page shows only your own situation.</p></div></div>
+    ${list.length ? list.map(box).join('') : '<div class="card"><p class="muted" style="margin:0">You have no active commission.</p></div>'}`;
 }
 
 /* --- Branding --- */
@@ -1207,7 +1369,8 @@ function openInviteModal() {
 async function openPersonModal(id) {
   const [users, approvers, projects] = await Promise.all([api('/users'), api('/approvers'), api('/projects')]);
   const u = users.find(x => x.id === Number(id)); if (!u) throw new Error('That person no longer exists.'); const t = u.terms || {};
-  modalOpen({ title: 'Edit person', sub: u.name, size: 'lg',
+  const comms = u.role === 'approver' ? null : await api('/commissions?user_id=' + u.id); S.cache.pl = projects;
+  const pm = modalOpen({ title: 'Edit person', sub: u.name, size: 'lg',
     body: `<div class="grid"><div><label>Name</label><input name="name" required value="${esc(u.name)}"></div><div><label>Email</label><input name="email" type="email" required value="${esc(u.email)}"></div>
       <div><label>ID number</label><input name="employee_number" maxlength="40" value="${esc(u.employee_number)}"></div>
       <div><label>Worker type</label><select name="worker_type"><option value="consultant" ${u.worker_type !== 'employee' ? 'selected' : ''}>Consultant (invoices)</option><option value="employee" ${u.worker_type === 'employee' ? 'selected' : ''}>Employee (no invoices)</option></select></div>
@@ -1222,6 +1385,7 @@ async function openPersonModal(id) {
       <div><label>Accountisi vendor id</label><input name="t_accountisi_vendor_id" value="${esc(t.accountisi_vendor_id)}"></div></div>
       <p class="row" style="margin:12px 0 0"><label class="chk"><input type="checkbox" name="t_ivu_agent" ${t.ivu_agent ? 'checked' : ''}> IVU withholding agent</label></p></div>
       <div class="mdl-sec"><h3>Assigned projects</h3>${msel({ name: 'project_ids', ef: 'project_ids', label: 'Assigned projects', placeholder: 'Search by code or name', empty: 'There are no projects yet.', selected: u.project_ids, options: projects.filter(p => p.active || u.project_ids?.includes(p.id)).map(p => ({ id: p.id, label: p.code, sub: p.name })) })}</div>
+      ${comms ? `<div class="mdl-sec" data-comm-box>${commBox(u, comms, projects)}</div>` : ''}
       <label class="chk"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}> Active</label>`,
     async onSubmit(m) {
       const o = formObj(m.form);
@@ -1231,6 +1395,7 @@ async function openPersonModal(id) {
       if (o.worker_type === 'consultant') o.terms = terms;
       await api('/users/' + u.id, { method: 'PUT', body: o }); await m.finish('Person saved.');
     } });
+  pm.el.dataset.uid = u.id;
 }
 /* --- Approvers: add / edit --- */
 async function openApproverModal(id) {
@@ -1322,15 +1487,24 @@ function openTaskModal(pid, tid) {
 /* Completing a task is signed with the password. The date defaults to the last hours logged on it and can be changed. */
 async function openCompleteTaskModal(t, label, after) {
   const info = await api('/tasks/' + t.id + '/completion');
-  modalOpen({ title: 'Complete task', sub: label, size: 'sm', save: 'Sign and complete',
+  modalOpen({ title: 'Complete task', sub: label, size: info.commissions?.applicable ? 'lg' : 'sm', save: 'Sign and complete',
     body: `<p style="margin:0"><b>${esc(t.name)}</b></p>
       <p class="muted" style="margin:0">${T('Hours logged')}: <b>${h1(info.total_hours)}</b> · ${T('not approved yet')}: <b>${h1(info.pending_hours)}</b></p>
-      ${info.pending_hours > 0 ? `<div class="msg warn">${T('Some hours of this task are not approved yet. They will not count toward a commission.')}</div>` : ''}
+      ${info.pending_hours > 0 && !info.commissions?.applicable ? `<div class="msg warn">${T('Some hours of this task are not approved yet. They will not count toward a commission.')}</div>` : ''}
       <div><label>Completed on</label><input name="completed_on" type="date" required max="${esc(info.today)}" value="${esc(info.default_completed_on)}"><small class="help">${info.last_work_date ? T('By default: the date of the last hours logged on the task.') : T('The task has no hours yet: by default, today.')}</small></div>
+      <div data-comm>${commPreview(info.commissions)}</div>
       ${sigField()}`,
+    init(mm) {
+      const f = mm.form, sb = f.querySelector('[type=submit]'); const sync = c => { sb.disabled = !!(c?.applicable && c.pending_hours > 0); }; sync(info.commissions);
+      f.elements.completed_on.addEventListener('change', async () => {
+        if (!f.elements.completed_on.value) return;
+        try { const r = await api('/tasks/' + t.id + '/completion?completed_on=' + encodeURIComponent(f.elements.completed_on.value)); f.querySelector('[data-comm]').innerHTML = localizeHtml(commPreview(r.commissions)); sync(r.commissions); }
+        catch (e) { toast(e.message, 'err'); }
+      });
+    },
     async onSubmit(mm) {
       const o = formObj(mm.form); const signature = sigTake(mm.form, o);
-      await api('/tasks/' + t.id + '/complete', { method: 'POST', body: { completed_on: o.completed_on, signature } });
+      await api('/tasks/' + t.id + '/complete', { method: 'POST', body: { completed_on: o.completed_on, signature, release: !!o.release } });
       await mm.finish('Task completed.', after);
     } });
 }
@@ -1435,6 +1609,17 @@ Object.assign(actions, {
   'project-new': () => openProjectModal(), 'edit-project': el => openProjectModal(el.dataset.id),
   'svc-add': el => openServiceModal(el.dataset.pid), 'svc-edit': el => openServiceModal(el.dataset.pid, el.dataset.id),
   'tk-status'(el) { S.cache.tkStatus = el.dataset.s; render(); },
+  'cm-status'(el) { S.cache.cmStatus = el.dataset.s; render(); },
+  'cm-detail'(el) { return openCommissionDetail(S.cache.cm.find(x => x.id === Number(el.dataset.id))); },
+  'cm-release'(el) { return openReleaseModal(S.cache.cm.find(x => x.id === Number(el.dataset.id))); },
+  'cm-adjust'(el) { return openAdjustModal(S.cache.cm.find(x => x.id === Number(el.dataset.id))); },
+  'cm-paid'(el) { return openPaidModal(S.cache.cm.find(x => x.id === Number(el.dataset.id))); },
+  'comm-add'(el) { return openCommissionModal(el.dataset.uid); },
+  'comm-edit'(el) { return openCommissionModal(el.dataset.uid, el.dataset.id); },
+  async 'comm-del'(el) {
+    if (!confirm(T('Delete this commission? This cannot be undone.'))) return;
+    await api('/commissions/' + el.dataset.id, { method: 'DELETE' }); await refreshCommBox(el.dataset.uid); toast('Commission deleted.');
+  },
   'tk-complete'(el) { const t = S.cache.tk.find(x => x.id === Number(el.dataset.id)); return openCompleteTaskModal(t, `${t.project.code} · ${t.project.name}`, () => render()); },
   'tk-reopen'(el) { const t = S.cache.tk.find(x => x.id === Number(el.dataset.id)); return openReopenTaskModal(t, `${t.project.code} · ${t.project.name}`, () => render()); },
   'task-add': el => openTaskModal(el.dataset.pid), 'task-edit': el => openTaskModal(el.dataset.pid, el.dataset.id),
