@@ -37,12 +37,19 @@ class ProjectProgressService
         $tz = $a->company->timezone ?: 'UTC';
         $today = CarbonImmutable::now($tz)->toDateString();
         $entries = TimeEntry::with('timesheet:id,status,stage', 'user:id,name', 'service:id,name')
-            ->where('project_id', $p->id)->where('billable', true)->whereIn('hour_type', TimeEntry::BILLABLE_HOUR_TYPES)->where('running', false)
+            ->where('project_id', $p->id)->whereIn('hour_type', TimeEntry::BILLABLE_HOUR_TYPES)->where('running', false)
+            ->when(! $p->show_courtesy, fn ($q) => $q->where('billable', true))
             ->whereHas('timesheet', fn ($t) => $t->where(fn ($q) => $q->where('status', Timesheet::APPROVED)
                 ->orWhere(fn ($w) => $w->where('status', Timesheet::SUBMITTED)->where(fn ($s) => $s->whereNull('stage')->orWhere('stage', '!=', Timesheet::STAGE_INTERNAL)))))
             ->get();
+        // Cortesía: horas no facturadas (de servicios que no se cobran) del proyecto, solo si el dueño lo activó. Siempre aparte de lo facturable.
+        $courtesy = $entries->reject(fn ($e) => $e->billable);
+        $entries = $entries->filter(fn ($e) => $e->billable)->values();
         $approved = $entries->filter(fn ($e) => $e->timesheet->status === Timesheet::APPROVED);
         $pending = $entries->reject(fn ($e) => $e->timesheet->status === Timesheet::APPROVED);
+        $isDone = fn ($e) => $e->timesheet->status === Timesheet::APPROVED;
+        $cOk = $courtesy->filter($isDone);
+        $cPend = $courtesy->reject($isDone);
 
         $hours = fn (Collection $c) => round((float) $c->sum('hours'), 2);
         $budget = $p->budget_hours !== null ? (float) $p->budget_hours : null;
@@ -55,12 +62,13 @@ class ProjectProgressService
         for ($i = self::WEEKS - 1; $i >= 0; $i--) {
             $s = CarbonImmutable::parse($weekStart)->subWeeks($i)->toDateString();
             $in = fn (Collection $c) => $c->filter(fn ($e) => $weekOf($e->work_date->toDateString()) === $s);
-            $weeks[] = ['week_starting' => $s, 'hours' => $hours($in($approved)), 'pending' => $hours($in($pending))];
+            $weeks[] = ['week_starting' => $s, 'hours' => $hours($in($approved)), 'pending' => $hours($in($pending)),
+                'courtesy' => $hours($in($cOk)), 'courtesy_pending' => $hours($in($cPend))];
         }
         $thisWeek = $weeks[self::WEEKS - 1];
         $lastWeek = $weeks[self::WEEKS - 2];
 
-        $tasks = Task::where('project_id', $p->id)->orderByDesc('active')->orderBy('estimated_end')->orderBy('id')->get()->map(function (Task $t) use ($approved, $pending, $hours, $today) {
+        $tasks = Task::where('project_id', $p->id)->orderByDesc('active')->orderBy('estimated_end')->orderBy('id')->get()->map(function (Task $t) use ($approved, $pending, $cOk, $cPend, $hours, $today) {
             $used = $hours($approved->where('task_id', $t->id));
             $budgetT = $t->budget_hours !== null ? (float) $t->budget_hours : null;
             $end = $t->estimated_end?->toDateString();
@@ -69,16 +77,19 @@ class ProjectProgressService
                 'completed_on' => $t->completed_on?->toDateString(), 'estimated_end' => $end,
                 'late' => $t->active ? ($end !== null && $end < $today) : ($end !== null && $t->completed_on !== null && $t->completed_on->toDateString() > $end),
                 'budget_hours' => $budgetT, 'hours' => $used, 'pending_hours' => $hours($pending->where('task_id', $t->id)),
+                'courtesy_hours' => $hours($cOk->where('task_id', $t->id)), 'courtesy_pending' => $hours($cPend->where('task_id', $t->id)),
                 'pct' => $budgetT ? round($used / $budgetT * 100, 1) : null,
                 'over_budget' => $budgetT !== null && $used > $budgetT,
                 'created_on' => $t->created_at?->toDateString(),
             ];
         })->values();
 
-        $group = fn (string $key, callable $name) => $entries->groupBy($key)->map(fn ($c) => [
-            'name' => $name($c->first()), 'hours' => $hours($c->filter(fn ($e) => $e->timesheet->status === Timesheet::APPROVED)),
-            'pending_hours' => $hours($c->reject(fn ($e) => $e->timesheet->status === Timesheet::APPROVED)),
-        ])->sortByDesc('hours')->values();
+        $all = $entries->concat($courtesy);
+        $group = fn (string $key, callable $name) => $all->groupBy($key)->map(fn ($c) => [
+            'name' => $name($c->first()),
+            'hours' => $hours($c->filter(fn ($e) => $e->billable && $isDone($e))), 'pending_hours' => $hours($c->filter(fn ($e) => $e->billable && ! $isDone($e))),
+            'courtesy_hours' => $hours($c->filter(fn ($e) => ! $e->billable && $isDone($e))), 'courtesy_pending' => $hours($c->filter(fn ($e) => ! $e->billable && ! $isDone($e))),
+        ])->sortByDesc(fn ($r) => $r['hours'] + $r['pending_hours'] + $r['courtesy_hours'] + $r['courtesy_pending'])->values();
 
         $weekAgo = CarbonImmutable::parse($today)->subDays(7)->toDateString();
         return [
@@ -86,9 +97,10 @@ class ProjectProgressService
             'budget_hours' => $budget, 'hours' => $done, 'pending_hours' => $hours($pending),
             'remaining_hours' => $budget !== null ? round($budget - $done, 2) : null,
             'pct' => $budget ? round($done / $budget * 100, 1) : null,
+            'courtesy_enabled' => (bool) $p->show_courtesy, 'courtesy_hours' => $hours($cOk), 'courtesy_pending' => $hours($cPend),
             'this_week' => $thisWeek['hours'], 'last_week' => $lastWeek['hours'],
             'awaiting_you' => app(ExternalApprovalService::class)->pendingSheetsFor($a)
-                ->filter(fn ($s) => $entries->contains('timesheet_id', $s->id))->count(),
+                ->filter(fn ($s) => $all->contains('timesheet_id', $s->id))->count(),
             'weeks' => $weeks,
             'tasks' => $tasks,
             'completed_this_week' => $tasks->filter(fn ($t) => $t['completed_on'] !== null && $t['completed_on'] > $weekAgo)->count(),
@@ -107,10 +119,13 @@ class ProjectProgressService
             'title' => __('Avance').' · '.$d['project']['code'],
             'subtitle' => $d['project']['name'].' · '.$d['project']['customer'],
             'columns' => [['h' => __('Tarea'), 't' => 'text'], ['h' => __('Estado'), 't' => 'text'], ['h' => __('Fecha estimada'), 't' => 'date'], ['h' => __('Completada'), 't' => 'date'],
-                ['h' => __('Presupuesto (h)'), 't' => 'hours'], ['h' => __('Horas aprobadas'), 't' => 'hours'], ['h' => __('Por aprobar'), 't' => 'hours'], ['h' => __('Atrasada'), 't' => 'bool']],
+                ['h' => __('Presupuesto (h)'), 't' => 'hours'], ['h' => __('Horas aprobadas'), 't' => 'hours'], ['h' => __('Por aprobar'), 't' => 'hours'], ['h' => __('Atrasada'), 't' => 'bool']]
+                + ($d['courtesy_enabled'] ? [8 => ['h' => __('Cortesía (no facturado)'), 't' => 'hours']] : []),
             'rows' => collect($d['tasks'])->map(fn ($t) => [$t['name'], $label[$t['status']], (string) $t['estimated_end'], (string) $t['completed_on'],
-                $hr($t['budget_hours']), $t['hours'], $t['pending_hours'], (bool) $t['late']])->all(),
-            'total' => [__('Total del proyecto'), '', '', '', $hr($d['budget_hours']), $d['hours'], $d['pending_hours'], ''],
+                $hr($t['budget_hours']), $t['hours'], $t['pending_hours'], (bool) $t['late']]
+                + ($d['courtesy_enabled'] ? [8 => $t['courtesy_hours'] + $t['courtesy_pending']] : []))->all(),
+            'total' => [__('Total del proyecto'), '', '', '', $hr($d['budget_hours']), $d['hours'], $d['pending_hours'], '']
+                + ($d['courtesy_enabled'] ? [8 => $d['courtesy_hours'] + $d['courtesy_pending']] : []),
         ];
     }
 }

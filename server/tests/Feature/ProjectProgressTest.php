@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Customer;
 use App\Models\Project;
+use App\Models\Service;
+use App\Models\TimeEntry;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,10 +34,10 @@ class ProjectProgressTest extends TestCase
     }
 
     /** Un día enviado por la trabajadora; con $approve el dueño lo aprueba. */
-    private function logDay(string $day, bool $approve, ?string $end = '16:00'): void
+    private function logDay(string $day, bool $approve, ?string $end = '16:00', array $extra = []): void
     {
         Sanctum::actingAs($this->worker);
-        $e = $this->postJson('/api/entries', $this->entry(['work_date' => $day, 'end_time' => $end]))->assertCreated()->json();
+        $e = $this->postJson('/api/entries', $this->entry(['work_date' => $day, 'end_time' => $end] + $extra))->assertCreated()->json();
         $this->postJson('/api/sheets/'.$e['timesheet_id'].'/submit')->assertOk();
         if ($approve) {
             Sanctum::actingAs($this->owner);
@@ -109,5 +111,65 @@ class ProjectProgressTest extends TestCase
         foreach (['pdf', 'xlsx'] as $f) {
             $this->get('/api/approver/progress/'.$this->project->id.'/export?format='.$f)->assertOk();
         }
+    }
+
+    /** 8 h facturables aprobadas (semana pasada), 8 h de cortesía aprobadas (hace dos semanas) y 8 h de cortesía enviadas (esta semana). */
+    private function courtesyWorld(bool $flag): Service
+    {
+        $this->project->update(['show_courtesy' => $flag]);
+        $general = $this->project->services()->where('name', 'General')->first();
+        $free = Service::create(['company_id' => $this->company->id, 'project_id' => $this->project->id, 'name' => 'Garantía', 'billable' => false]);
+        $this->logDay('2026-10-13', true, '16:00', ['service_id' => $general->id]);
+        $this->logDay('2026-10-06', true, '16:00', ['service_id' => $free->id]);
+        $this->logDay('2026-10-20', false, '16:00', ['service_id' => $free->id]);
+        return $free;
+    }
+
+    public function test_courtesy_hours_are_hidden_unless_the_project_shows_them(): void
+    {
+        $this->courtesyWorld(false);
+        Sanctum::actingAs($this->pm);
+        $d = $this->getJson('/api/approver/progress/'.$this->project->id)->assertOk()->json();
+        $this->assertFalse($d['courtesy_enabled']);
+        $this->assertEquals(0, $d['courtesy_hours']);
+        $this->assertEquals(0, $d['courtesy_pending']);
+        $this->assertCount(1, $d['by_service'], 'el servicio de cortesía no aparece');
+        $this->assertEquals(8, $d['hours']);
+    }
+
+    public function test_courtesy_hours_are_separate_from_the_billable_ones(): void
+    {
+        $free = $this->courtesyWorld(true);
+        $task = \App\Models\Task::create(['company_id' => $this->company->id, 'project_id' => $this->project->id, 'name' => 'Soporte', 'budget_hours' => 10]);
+        TimeEntry::where('service_id', $free->id)->where('work_date', '2026-10-06')->update(['task_id' => $task->id]);
+        Sanctum::actingAs($this->pm);
+        $json = $this->getJson('/api/approver/progress/'.$this->project->id)->assertOk();
+        $d = $json->json();
+        $this->assertTrue($d['courtesy_enabled']);
+        $this->assertEquals(8, $d['courtesy_hours']);
+        $this->assertEquals(8, $d['courtesy_pending']);
+        $this->assertEquals(8, $d['hours'], 'lo facturable no cambia');
+        $this->assertEquals(20, $d['pct'], 'el presupuesto solo mide lo facturable');
+        $this->assertEquals(0, $d['tasks'][0]['hours'], 'las horas usadas de la tarea son solo las facturables');
+        $this->assertEquals(8, $d['tasks'][0]['courtesy_hours']);
+        $row = collect($d['by_service'])->firstWhere('name', 'Garantía');
+        $this->assertEquals(8, $row['courtesy_hours']);
+        $this->assertEquals(0, $row['hours']);
+        $this->assertEquals(8, $d['weeks'][5]['courtesy']);
+        $this->assertEquals(8, $d['weeks'][7]['courtesy_pending']);
+        // solo horas: ningún valor en dinero
+        $this->assertStringNotContainsString('$', $json->getContent());
+        $this->get('/api/approver/progress/'.$this->project->id.'/export?format=xlsx')->assertOk();
+    }
+
+    public function test_internal_hour_types_are_never_courtesy(): void
+    {
+        $this->project->update(['show_courtesy' => true]);
+        $this->logDay('2026-10-13', true);
+        TimeEntry::query()->update(['hour_type' => 'nb', 'billable' => false]);
+        Sanctum::actingAs($this->pm);
+        $d = $this->getJson('/api/approver/progress/'.$this->project->id)->json();
+        $this->assertEquals(0, $d['courtesy_hours']);
+        $this->assertEquals(0, $d['hours']);
     }
 }

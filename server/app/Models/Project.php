@@ -16,6 +16,7 @@ class Project extends Model
         return [
             'billable' => 'boolean',
             'active' => 'boolean',
+            'show_courtesy' => 'boolean',
             'requires_internal_approval' => 'boolean',
             'meta' => 'array',
             'bill_rate' => 'decimal:2',

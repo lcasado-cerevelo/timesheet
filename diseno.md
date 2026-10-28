@@ -587,3 +587,9 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - Nunca sale: tarifas, pagos, comisiones, meta de ahorro, "aplica comisión", tipos de hora internos (una prueba lo verifica).
 - Decisión tomada por defecto: solo horas facturables; la opción de mostrar trabajo no facturado como cortesía queda para después (por confirmar).
 - "Desde la última reunión" se aproxima con los últimos 7 días. Pruebas: `ProjectProgressTest` (5) y recorrido en navegador.
+
+### Horas de cortesía (construido)
+- Casilla por proyecto `projects.show_courtesy` (migración 2026_11_11), solo la pone el dueño, apagada por defecto.
+- Con ella encendida, la pantalla Avance muestra aparte, **solo en horas** (nunca en dinero), el trabajo no facturado del proyecto: horas con `billable = false` y tipo reg/ot (servicios que no se cobran). Las horas de vacaciones, enfermedad, feriados y las internas ("nb") nunca salen.
+- Se separa de lo facturable: no suma al total ni al presupuesto, y en una tarea las **horas usadas** son solo las facturables; la cortesía de la tarea es otra columna. Igual que lo facturable, cuenta aprobada y, aparte, pendiente; nunca borradores ni etapa interna.
+- Sale en el resumen, en tareas, por servicio, por persona y en el PDF/Excel. Facturas, comisiones y el timesheet del cliente no cambian.

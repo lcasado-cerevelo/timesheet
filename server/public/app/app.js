@@ -628,11 +628,12 @@ async function progressView() {
   let pid = Number(S.cache.prProject) || list[0].id; if (!list.some(x => x.id === pid)) pid = list[0].id; S.cache.prProject = pid;
   const d = await api('/approver/progress/' + pid);
   const p = d.project, trend = d.this_week - d.last_week;
+  const cy = d.courtesy_enabled, cyc = (a, b) => (a || b) ? h1(a) + (b > 0 ? ` <span class="muted">+${h1(b)}</span>` : '') : '<span class="muted">—</span>';
   const kpi = (v, l) => `<div class="kpi"><b>${v}</b><small>${l}</small></div>`;
   const taskRow = t => `<tr><td><b>${esc(t.name)}</b></td><td>${t.status === 'open' ? pill('Open', 'green') : pill('Completed', 'gray')}${t.status === 'completed' && t.completed_on ? ` <span class="muted">${esc(nice(t.completed_on))}</span>` : ''}${t.late ? ' ' + pill('Late', 'red') : ''}</td>
     <td>${t.estimated_end ? esc(nice(t.estimated_end)) : '<span class="muted">—</span>'}</td><td class="r">${t.budget_hours != null ? h1(t.budget_hours) : '<span class="muted">—</span>'}</td>
-    <td class="r" ${t.over_budget ? 'style="color:var(--danger);font-weight:600"' : ''}>${h1(t.hours)}${t.pending_hours > 0 ? ` <span class="muted">+${h1(t.pending_hours)}</span>` : ''}</td><td style="min-width:110px">${t.budget_hours != null ? meter(t.hours, t.budget_hours, t.pending_hours) + `<small class="muted">${t.pct}%</small>` : ''}</td></tr>`;
-  const grp = (title, rows) => `<div class="card"><h2>${title}</h2>${rows.length ? `<div class="scrollx"><table><tr><th>Name</th><th class="r">Approved (h)</th><th class="r">To approve (h)</th></tr>${rows.map(r => `<tr><td>${esc(r.name)}</td><td class="r">${h1(r.hours)}</td><td class="r">${r.pending_hours > 0 ? h1(r.pending_hours) : '<span class="muted">—</span>'}</td></tr>`).join('')}</table></div>` : '<p class="muted">No hours yet.</p>'}</div>`;
+    <td class="r" ${t.over_budget ? 'style="color:var(--danger);font-weight:600"' : ''}>${h1(t.hours)}${t.pending_hours > 0 ? ` <span class="muted">+${h1(t.pending_hours)}</span>` : ''}</td><td style="min-width:110px">${t.budget_hours != null ? meter(t.hours, t.budget_hours, t.pending_hours) + `<small class="muted">${t.pct}%</small>` : ''}</td>${cy ? `<td class="r">${cyc(t.courtesy_hours, t.courtesy_pending)}</td>` : ''}</tr>`;
+  const grp = (title, rows) => `<div class="card"><h2>${title}</h2>${rows.length ? `<div class="scrollx"><table><tr><th>Name</th><th class="r">Approved (h)</th><th class="r">To approve (h)</th>${cy ? '<th class="r">Courtesy (h)</th>' : ''}</tr>${rows.map(r => `<tr><td>${esc(r.name)}</td><td class="r">${h1(r.hours)}</td><td class="r">${r.pending_hours > 0 ? h1(r.pending_hours) : '<span class="muted">—</span>'}</td>${cy ? `<td class="r">${cyc(r.courtesy_hours, r.courtesy_pending)}</td>` : ''}</tr>`).join('')}</table></div>` : '<p class="muted">No hours yet.</p>'}</div>`;
   const maxW = Math.max(1, ...d.weeks.map(w => w.hours + w.pending));
   const bars = d.weeks.map(w => `<div class="wk" title="${esc(nice(w.week_starting))}: ${h1(w.hours)} h${w.pending ? ' + ' + h1(w.pending) + ' h' : ''}"><div class="col"><i class="pd" style="height:${w.pending / maxW * 100}%"></i><i class="ok" style="height:${w.hours / maxW * 100}%"></i></div><small>${esc(nice(w.week_starting).replace(/,? \d{4}$/, ''))}</small><b>${h1(w.hours + w.pending)}</b></div>`).join('');
   return `<div class="pghead"><div><h1>Progress</h1><p class="sub">Read only. Approved hours count in full; the lighter part is still waiting for approval.</p></div>
@@ -640,9 +641,9 @@ async function progressView() {
       <button type="button" class="btn ghost sm" data-act="pr-export" data-f="pdf">PDF</button><button type="button" class="btn ghost sm" data-act="pr-export" data-f="xlsx">Excel</button></div></div>
     <div class="card"><h2>${esc(p.code)} · ${esc(p.name)} <small class="muted">${esc(p.customer || '')}</small></h2>
       ${d.budget_hours != null ? `${meter(d.hours, d.budget_hours, d.pending_hours)}<p style="margin:6px 0 12px"><b>${h1(d.hours)}</b> ${T('of')} ${h1(d.budget_hours)} h (${d.pct}%) · ${d.remaining_hours >= 0 ? h1(d.remaining_hours) + ' h ' + T('left') : `<span style="color:var(--danger)">${h1(-d.remaining_hours)} h ${T('over the budget')}</span>`}</p>` : `<p class="muted">${T('This project has no hours budget.')}</p>`}
-      <div class="kpis">${kpi(h1(d.this_week) + ' h', 'This week')}${kpi(h1(d.last_week) + ' h', 'Last week')}${kpi((trend > 0 ? '+' : '') + h1(trend) + ' h', 'Change')}${kpi(h1(d.pending_hours) + ' h', 'To approve')}${kpi(d.awaiting_you, 'Timesheets waiting for you')}</div></div>
+      <div class="kpis">${kpi(h1(d.this_week) + ' h', 'This week')}${kpi(h1(d.last_week) + ' h', 'Last week')}${kpi((trend > 0 ? '+' : '') + h1(trend) + ' h', 'Change')}${kpi(h1(d.pending_hours) + ' h', 'To approve')}${kpi(d.awaiting_you, 'Timesheets waiting for you')}${cy ? kpi(h1(d.courtesy_hours) + (d.courtesy_pending > 0 ? ' +' + h1(d.courtesy_pending) : '') + ' h', 'Courtesy work (not billed)') : ''}</div></div>
     <div class="card"><h2>Tasks</h2><p class="muted" style="margin:0 0 8px">${d.completed_this_week} ${T('completed')} · ${d.new_this_week} ${T('new')} ${T('in the last 7 days')}</p>
-      ${d.tasks.length ? `<div class="scrollx"><table><tr><th>Task</th><th>Status</th><th>Estimated end</th><th class="r">Budget (h)</th><th class="r">Approved (h)</th><th>Progress</th></tr>${d.tasks.map(taskRow).join('')}</table></div>` : '<p class="muted">This project has no tasks.</p>'}</div>
+      ${d.tasks.length ? `<div class="scrollx"><table><tr><th>Task</th><th>Status</th><th>Estimated end</th><th class="r">Budget (h)</th><th class="r">Approved (h)</th><th>Progress</th>${cy ? '<th class="r">Courtesy (h)</th>' : ''}</tr>${d.tasks.map(taskRow).join('')}</table></div>` : '<p class="muted">This project has no tasks.</p>'}</div>
     <div class="card"><h2>Last 8 weeks</h2><div class="wks">${bars}</div></div>
     ${grp('By service', d.by_service)}${grp('By person', d.by_person)}`;
 }
@@ -1600,6 +1601,7 @@ async function openProjectModal(id) {
       <div><label>Radius (m)</label><input name="geo_radius_m" type="number" min="50" max="5000" value="${esc(p?.geo_radius_m)}"></div></div>
       <p class="row" style="margin:0"><label class="chk"><input type="checkbox" name="billable" data-act-change="proj-billable" ${bill ? 'checked' : ''}> Billable</label>
       <label class="chk"><input type="checkbox" name="active" ${p ? (p.active ? 'checked' : '') : 'checked'}> Active</label></p>
+      <div><label class="chk"><input type="checkbox" name="show_courtesy" ${p?.show_courtesy ? 'checked' : ''}> Show unbilled work as courtesy</label><small class="help">The client's project manager sees, apart and only in hours, the work of this project that is not billed. Internal hours (vacation, sick, holidays, internal) are never shown.</small></div>
       <div><label>Fields (key=value, one per line)</label><textarea name="meta" rows="3">${esc(metaTxt)}</textarea></div>
       <div class="mdl-sec"><h3>Assigned people</h3>${msel({ name: 'user_ids', ef: 'user_ids', label: 'Assigned people', empty: 'There are no people yet.', selected: p?.user_ids, options: users.filter(u => u.active || p?.user_ids?.includes(u.id)).map(u => ({ id: u.id, label: u.name, sub: u.email })) })}</div>
       <div class="mdl-sec" data-svc-box>${p ? svcBox(p) : `<div class="mdl-sech"><h3>Services</h3></div><p class="muted" style="margin:0">A new project starts with one service called General. Save the project, then open it with Edit to rename that service or add more services (each one with its own rate, entry mode and approval).</p>`}</div>
@@ -1607,7 +1609,7 @@ async function openProjectModal(id) {
     async onSubmit(mm) {
       const o = formObj(mm.form); o.meta = parseMeta(o.meta); o.user_ids = o.user_ids || [];
       for (const k of ['customer_id', 'approver_id']) if (o[k] != null) o[k] = Number(o[k]);
-      o.billable = !!o.billable; o.active = !!o.active;
+      o.billable = !!o.billable; o.active = !!o.active; o.show_courtesy = !!o.show_courtesy;
       if (o.billable && !o.customer_id) throw needErr('customer_id', 'Pick a client: a billable project needs one.');
       if (p) await api('/projects/' + p.id, { method: 'PUT', body: o }); else await api('/projects', { method: 'POST', body: o });
       await mm.finish('Project saved.');

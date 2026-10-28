@@ -4,6 +4,8 @@ window.I18N_ES = {
   exact: {
     // --- v2: edit approvers/clients, brand, sign-in rule ---
     // --- project manager (Progress) ---
+    "Show unbilled work as courtesy": "Mostrar el trabajo no facturado como cortesía", "Courtesy (h)": "Cortesía (h)", "Courtesy work (not billed)": "Trabajo de cortesía (no facturado)",
+    "The client's project manager sees, apart and only in hours, the work of this project that is not billed. Internal hours (vacation, sick, holidays, internal) are never shown.": "El gerente de proyecto del cliente ve, aparte y solo en horas, el trabajo de este proyecto que no se factura. Las horas internas (vacaciones, enfermedad, feriados, internas) nunca se muestran.",
     "Progress": "Avance", "Project manager": "Gerente de proyecto", "Read only. Approved hours count in full; the lighter part is still waiting for approval.": "Solo lectura. Las horas aprobadas cuentan completas; la parte más clara todavía espera aprobación.",
     "Also sees the Progress screen (read only) for the projects of their clients. It never shows rates, pay, commissions or savings goals. Needs sign-in.": "También ve la pantalla Avance (solo lectura) de los proyectos de sus clientes. Nunca muestra tarifas, pagos, comisiones ni metas de ahorro. Necesita poder entrar.",
     "There are no projects for your clients yet.": "Todavía no hay proyectos para tus clientes.", "This project has no hours budget.": "Este proyecto no tiene presupuesto de horas.", "This project has no tasks.": "Este proyecto no tiene tareas.",

@@ -61,6 +61,7 @@ class ProjectController extends Controller
             'approver_id' => ['nullable', 'integer', Rule::exists('approvers', 'id')->where('company_id', $companyId)],
             'billable' => 'boolean',
             'active' => 'boolean',
+            'show_courtesy' => 'boolean',
             'bill_rate' => 'nullable|numeric|min:0',
             'budget_hours' => 'nullable|numeric|min:0',
             'meta' => 'nullable|array',
@@ -116,7 +117,7 @@ class ProjectController extends Controller
     private function payload(Project $p, bool $owner, ?User $for = null): array
     {
         $out = $p->only(['id', 'code', 'name', 'customer_id', 'billable', 'active', 'meta',
-            'geo_lat', 'geo_lng', 'geo_radius_m', 'budget_hours']);
+            'geo_lat', 'geo_lng', 'geo_radius_m', 'budget_hours', 'show_courtesy']);
         $out['customer'] = $p->customer?->only(['id', 'name']);
         // Servicios del proyecto: el dueño ve todos (también los desactivados); los demás solo los activos.
         $out['services'] = $p->services->when(! $owner, fn ($c) => $c->where('active', true))->values()
