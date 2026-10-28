@@ -12,8 +12,9 @@
 :root{--primary:{{ $brand['color_primary'] }};--accent:{{ $brand['color_accent'] }};}
 *{box-sizing:border-box}
 body{margin:0;background:#f4f5f7;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#222;line-height:1.5}
-header{background:var(--primary);color:#fff;padding:14px 20px;font-weight:700;font-size:18px}
-header img{max-height:40px;max-width:220px;display:block}
+header{position:relative;background:#fff;color:#222;padding:14px 20px 19px;font-weight:700;font-size:18px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #e3e5e8}
+header::after{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;background:linear-gradient(90deg,var(--primary) 0 58%,#5d5d5d 58% 80%,var(--accent) 80% 100%)}
+header img{max-height:44px;max-width:220px;display:block}
 main{max-width:760px;margin:20px auto;padding:0 14px 40px}
 .card{background:#fff;border-radius:10px;padding:18px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 h1{font-size:22px;margin:0 0 6px}h2{font-size:17px;margin:0 0 8px}
@@ -29,7 +30,7 @@ footer{text-align:center;color:#888;font-size:12px;padding:16px}
 </style>
 </head>
 <body>
-<header>@if($brand['logo_url'])<img src="{{ $brand['logo_url'] }}" alt="{{ $brand['name'] }}">@else{{ $brand['name'] }}@endif</header>
+<header>@if($brand['logo_url'])<img src="{{ $brand['logo_url'] }}" alt="{{ $brand['name'] }}">@endif @if(! $brand['logo_url'] || ($brand['show_name'] ?? true))<span>{{ $brand['name'] }}</span>@endif</header>
 <main>
 @if(session('status'))<div class="msg ok">{{ session('status') }}</div>@endif
 @if($errors->any())<div class="msg err">@foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach</div>@endif

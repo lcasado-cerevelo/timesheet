@@ -112,9 +112,10 @@ input::-ms-reveal,input::-ms-clear{display:none}
 .strength[data-level="1"] .bar i{width:25%;background:var(--danger)}.strength[data-level="2"] .bar i{width:50%;background:#C98A00}
 .strength[data-level="3"] .bar i{width:75%;background:#3D8B5F}.strength[data-level="4"] .bar i{width:100%;background:var(--accent)}
 /* Sign-in band with the company brand */
-.loginband{background:var(--primary);color:#fff;padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.loginband b{font-size:20px;font-weight:600}.loginband small{opacity:.85;font-size:13px;margin-left:auto}
-.loginband .logo{background:#fff;border-radius:8px;padding:6px 12px;display:inline-flex}.loginband .logo img{max-height:40px;max-width:200px;display:block}
+.loginband{position:relative;background:#fff;color:var(--text);padding:14px 24px 19px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;border-bottom:1px solid var(--edge)}
+.loginband::after{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;background:linear-gradient(90deg,var(--primary) 0 58%,#5d5d5d 58% 80%,var(--accent) 80% 100%)}
+.loginband b{font-size:20px;font-weight:600}.loginband small{color:var(--muted);font-size:13px;margin-left:auto}
+.loginband .logo{display:inline-flex}.loginband .logo img{max-height:44px;max-width:200px;display:block}
 .login input[readonly]{background:#EEEFF0;color:var(--muted)}
 .login .row .btn{width:auto}
 
