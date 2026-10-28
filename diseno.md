@@ -528,3 +528,24 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - **Firma** (`SignatureService`, tabla `signatures`): se verifica la contraseña (`signature`) y se guarda quién, qué (`task.complete`, `task.reopen`), cuándo, la IP y una huella sha256 del contenido; 5 contraseñas malas bloquean 15 minutos. En pantalla el campo de firma **cambia de nombre cada vez** y lleva `autocomplete="new-password"`. La tarea muestra "completada por …". La tabla `signatures` es la base de la fase 4.
 - **Web:** el formulario de la tarea lleva presupuesto, fecha estimada, meta de ahorro y "aplica comisión"; completar y reabrir abren una ventana con la contraseña; hay una pestaña **Tareas** (dueño y aprobadores internos) con las tareas abiertas/completadas, horas usadas y sin aprobar.
 - **Pruebas:** `tests/Feature/TaskTest.php` (servidor) y una prueba real en navegador (crear tarea con los campos nuevos, firma con contraseña mala y buena, completar, reabrir, pantalla Tareas y hoja semanal con tarea obligatoria).
+
+## Gerente de proyecto: aprobador con vista de Avance (diseño acordado; se construye en una fase posterior)
+**Para qué:** el aprobador externo con cuenta suele ser el project manager del cliente, y el dueño se reúne con él cada semana para el estado del proyecto (cuánto vamos, por dónde vamos, qué falta, peticiones). Hoy el aprobador solo ve las hojas con horas suyas que ya salieron de la etapa interna; no ve cómo va el proyecto.
+
+**Cómo se marca:** una marca en el perfil del **aprobador** ("**Gerente de proyecto** / Project manager"), que solo pone el dueño. Un aprobador puede ser gerente de proyecto (no se crea otro tipo de usuario). Requiere que el aprobador tenga cuenta. Ve el **proyecto completo** (todos los servicios) de los clientes a los que está ligado; más adelante se puede afinar por proyecto. Los aprobadores sin la marca, y los que aprueban solo por el enlace del correo, siguen igual.
+
+**Pantalla Avance (solo lectura), por proyecto:**
+- Encabezado: horas aprobadas contra el presupuesto del proyecto (porcentaje y barra), horas que quedan, horas de esta semana contra la anterior y hojas que esperan **su** aprobación.
+- **Tareas:** nombre, estado (abierta, completada con su fecha, **atrasada** si pasó la fecha estimada), fecha estimada, **presupuesto de horas (el cliente SÍ lo ve)**, horas usadas y avance; en rojo lo atrasado y lo que pasó del presupuesto.
+- **Esta semana:** horas por semana de las últimas 8, tareas completadas y tareas nuevas desde la última reunión.
+- **Por servicio** y **por persona** (el desglose por persona SÍ se muestra: el cliente ya ve nombres en las hojas que aprueba).
+- **Exportar** a PDF o Excel con la marca de la compañía, para llevarlo a la reunión.
+- Horas **aprobadas** en firme y, aparte y en un tono más claro, las **pendientes de su aprobación**. Nunca borradores ni hojas aún en la etapa interna.
+
+**Lo que NUNCA ve:** tarifas, lo que se le paga a las personas, comisiones, la **meta de ahorro** y la casilla "aplica comisión" de la tarea (revelan el margen), ni tipos de hora internos (vacaciones, enfermedad, feriados).
+
+**Horas facturables y no facturables (recomendación, por confirmar):** por defecto solo las **facturables** (las que el cliente paga). Opción por proyecto "mostrar el trabajo no facturado como cortesía": si el dueño la activa, esas horas salen **aparte** (columna "No facturadas / cortesía"), nunca sumadas al total facturable, para enseñar el trabajo extra que se hace. Las horas no facturables internas (reuniones internas, administración) nunca se muestran. Advertencia: el cálculo de comisiones usa **todas** las horas de la tarea y la vista del cliente solo lo que se le permite ver; los números pueden diferir por diseño.
+
+**Fuera de esta fase:** las **peticiones y gestiones** de la reunión (una lista o notas compartidas por proyecto entre el dueño y el gerente de proyecto) serían otra función posterior.
+
+**Al retomar las fases, preguntar al usuario** si arrancamos con esta (y confirmar la decisión sobre horas no facturables).
