@@ -593,3 +593,8 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - Con ella encendida, la pantalla Avance muestra aparte, **solo en horas** (nunca en dinero), el trabajo no facturado del proyecto: horas con `billable = false` y tipo reg/ot (servicios que no se cobran). Las horas de vacaciones, enfermedad, feriados y las internas ("nb") nunca salen.
 - Se separa de lo facturable: no suma al total ni al presupuesto, y en una tarea las **horas usadas** son solo las facturables; la cortesía de la tarea es otra columna. Igual que lo facturable, cuenta aprobada y, aparte, pendiente; nunca borradores ni etapa interna.
 - Sale en el resumen, en tareas, por servicio, por persona y en el PDF/Excel. Facturas, comisiones y el timesheet del cliente no cambian.
+
+## Comisión individual: sobre qué horas se paga (construido)
+- Campo `commissions.commission_basis` (migración 2026_11_12), por comisión, con dos opciones: **worked** (por defecto) paga `horas trabajadas × extra por hora`; **assigned** paga `(percent_required % del total de la tarea) × extra por hora`, o sea las horas que le correspondían aunque haya trabajado más. Ejemplo: tarea de 10 h, mínimo 80%, extra $5: trabajó 9 h → worked paga $45, assigned paga 8 h × $5 = $40.
+- Las condiciones no cambian (meta del equipo, fecha, al menos 1 h y haber hecho su mínimo); solo cambia la base de las horas. Los resultados guardan `commission_basis` y `commission_hours` (las horas pagadas) además de las horas trabajadas. Las comisiones ya calculadas quedan como estaban (`commission_hours = user_hours`).
+- Es independiente de las tres formas de repartir el bono del equipo.

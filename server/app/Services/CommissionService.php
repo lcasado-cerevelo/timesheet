@@ -77,13 +77,15 @@ class CommissionService
             $team = $metGoal && $metDate && $workedMin;
             $sharePct = round($c->savingsShare($userPct), 2);
             $savings = $team ? round($bonusHours * $sharePct / 100 * (float) $c->savings_per_hour, 2) : 0.0;
-            $commission = $team && $metShare ? round($userHours * (float) $c->extra_per_hour, 2) : 0.0;
+            // La comisión individual se paga por las horas trabajadas o por el % que le correspondía terminar (percent_required) del total.
+            $commissionHours = $c->commission_basis === 'assigned' ? round($total * (float) $c->percent_required / 100, 2) : $userHours;
+            $commission = $team && $metShare ? round($commissionHours * (float) $c->extra_per_hour, 2) : 0.0;
             $rows[] = [
                 'commission_id' => $c->id, 'user_id' => $c->user_id, 'user_name' => $c->user->name, 'worker_type' => $c->user->worker_type,
                 'project_id' => $task->project_id, 'task_id' => $task->id,
                 'completed_on' => $completedOn, 'deadline' => $deadline,
                 'budget_hours' => $budget, 'goal_hours' => $goal, 'tolerance_hours' => (float) $c->tolerance_hours,
-                'total_hours' => $total, 'user_hours' => $userHours, 'user_pct' => round($userPct, 2), 'saved_hours' => $saved, 'bonus_hours' => $bonusHours,
+                'total_hours' => $total, 'user_hours' => $userHours, 'commission_basis' => $c->commission_basis, 'commission_hours' => $commissionHours, 'user_pct' => round($userPct, 2), 'saved_hours' => $saved, 'bonus_hours' => $bonusHours,
                 'percent_required' => (float) $c->percent_required, 'extra_per_hour' => (float) $c->extra_per_hour,
                 'savings_mode' => $c->savings_mode, 'savings_pct' => $sharePct, 'savings_per_hour' => (float) $c->savings_per_hour,
                 'met_goal' => $metGoal, 'met_date' => $metDate, 'worked_min' => $workedMin, 'met_share' => $metShare,
@@ -132,7 +134,7 @@ class CommissionService
             'user' => ['id' => $r['user_id'], 'name' => $r['user_name'] ?? null],
             'completed_on' => $r['completed_on'] ?? null, 'deadline' => $r['deadline'] ?? null,
             'budget_hours' => (float) $r['budget_hours'], 'goal_hours' => (float) $r['goal_hours'], 'tolerance_hours' => (float) $r['tolerance_hours'],
-            'total_hours' => (float) $r['total_hours'], 'user_hours' => (float) $r['user_hours'], 'user_pct' => (float) $r['user_pct'],
+            'total_hours' => (float) $r['total_hours'], 'user_hours' => (float) $r['user_hours'], 'commission_basis' => $r['commission_basis'] ?? 'worked', 'commission_hours' => (float) ($r['commission_hours'] ?? $r['user_hours']), 'user_pct' => (float) $r['user_pct'],
             'saved_hours' => (float) $r['saved_hours'], 'bonus_hours' => (float) ($r['bonus_hours'] ?? $r['saved_hours']), 'percent_required' => (float) $r['percent_required'],
             'extra_per_hour' => (float) $r['extra_per_hour'], 'savings_pct' => (float) $r['savings_pct'], 'savings_per_hour' => (float) $r['savings_per_hour'],
             'met_goal' => (bool) $r['met_goal'], 'met_date' => (bool) $r['met_date'], 'worked_min' => (bool) $r['worked_min'], 'met_share' => (bool) $r['met_share'],
@@ -162,7 +164,7 @@ class CommissionService
             usort($tasks, fn ($a, $b) => [$b['status'] === 'open', $a['task']['name']] <=> [$a['status'] === 'open', $b['task']['name']]);
             $out[] = [
                 'id' => $c->id, 'project' => ['id' => $c->project->id, 'code' => $c->project->code, 'name' => $c->project->name],
-                'terms' => ['percent_required' => (float) $c->percent_required, 'extra_per_hour' => (float) $c->extra_per_hour, 'savings_mode' => $c->savings_mode,
+                'terms' => ['percent_required' => (float) $c->percent_required, 'extra_per_hour' => (float) $c->extra_per_hour, 'commission_basis' => $c->commission_basis, 'savings_mode' => $c->savings_mode,
                     'savings_pct' => $c->savings_mode === 'actual' ? null : $c->savingsShare(), 'savings_per_hour' => (float) $c->savings_per_hour, 'tolerance_hours' => (float) $c->tolerance_hours,
                     'withhold' => (bool) $c->withhold],
                 'tasks' => $tasks,
@@ -188,7 +190,7 @@ class CommissionService
         return [
             'status' => 'open', 'task' => $this->taskBrief($task, $today),
             'team' => ['total_hours' => $r['total_hours'], 'goal_hours' => $r['goal_hours'], 'pending_hours' => $eval['pending_hours']],
-            'mine' => ['hours' => $r['user_hours'], 'pct' => $r['user_pct'], 'percent_required' => $r['percent_required'], 'pending_hours' => round($mine, 2)],
+            'mine' => ['hours' => $r['user_hours'], 'commission_hours' => $r['commission_hours'], 'pct' => $r['user_pct'], 'percent_required' => $r['percent_required'], 'pending_hours' => round($mine, 2)],
             'conditions' => ['goal' => $r['met_goal'], 'date' => $r['met_date'], 'share' => $r['met_share'], 'min_hours' => $r['worked_min']],
             'would_earn' => ['commission' => $r['commission_amount'], 'savings' => $r['savings_amount'], 'total' => $r['total']],
         ];
@@ -205,7 +207,7 @@ class CommissionService
         return [
             'status' => $r->status === 'pending' ? 'in_review' : $r->status, 'task' => $this->taskBrief($task, $r->completed_on->toDateString()),
             'team' => ['total_hours' => (float) $r->total_hours, 'goal_hours' => (float) $r->goal_hours],
-            'mine' => ['hours' => (float) $r->user_hours, 'pct' => (float) $r->user_pct, 'percent_required' => (float) $r->percent_required],
+            'mine' => ['hours' => (float) $r->user_hours, 'commission_hours' => (float) $r->commission_hours, 'pct' => (float) $r->user_pct, 'percent_required' => (float) $r->percent_required],
             'conditions' => ['goal' => (bool) $r->met_goal, 'date' => (bool) $r->met_date, 'share' => (bool) $r->met_share, 'min_hours' => (bool) $r->worked_min],
             'earned' => $shown ? ['commission' => (float) $r->commission_amount, 'savings' => (float) $r->savings_amount, 'adjustment' => (float) $r->adjustment,
                 'total' => (float) $r->total] : null,

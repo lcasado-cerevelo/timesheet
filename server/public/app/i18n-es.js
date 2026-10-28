@@ -3,6 +3,11 @@
 window.I18N_ES = {
   exact: {
     // --- v2: edit approvers/clients, brand, sign-in rule ---
+    // --- commission basis ---
+    "Per hour worked by the person": "Por hora trabajada por la persona", "For the % that corresponded to the person (the minimum share) of the task hours": "Por el % que le correspondía a la persona (el mínimo) de las horas de la tarea",
+    "Commission: paid on": "Comisión: se paga sobre", "On top of the normal rate. It is paid for the hours chosen below.": "Además de su tarifa normal. Se paga por las horas que escojas abajo.",
+    "Per hour worked: 8 h × the extra. By the assigned %: the minimum share of the task (80% of 10 h = 8 h) × the extra, even if the person worked more.": "Por hora trabajada: 8 h × el extra. Por el % asignado: el mínimo de la tarea (80% de 10 h = 8 h) × el extra, aunque la persona haya trabajado más.",
+    "on the assigned %": "sobre el % asignado",
     // --- project manager (Progress) ---
     "Show unbilled work as courtesy": "Mostrar el trabajo no facturado como cortesía", "Courtesy (h)": "Cortesía (h)", "Courtesy work (not billed)": "Trabajo de cortesía (no facturado)",
     "The client's project manager sees, apart and only in hours, the work of this project that is not billed. Internal hours (vacation, sick, holidays, internal) are never shown.": "El gerente de proyecto del cliente ve, aparte y solo en horas, el trabajo de este proyecto que no se factura. Las horas internas (vacaciones, enfermedad, feriados, internas) nunca se muestran.",
