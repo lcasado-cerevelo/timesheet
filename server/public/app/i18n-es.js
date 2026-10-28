@@ -4,7 +4,7 @@ window.I18N_ES = {
   exact: {
     // --- v2: edit approvers/clients, brand, sign-in rule ---
     // --- commissions ---
-    "A fixed % of the team bonus": "Un % fijo del bono del equipo", "team bonus": "bono de equipo", "Team bonus": "Bono de equipo", "of the goal": "de la meta",
+    "A fixed % of the team bonus": "Un % fijo del bono del equipo", "The % the person actually worked": "El % que la persona realmente trabajó", "by worked %": "según el % trabajado", "team bonus": "bono de equipo", "Team bonus": "Bono de equipo", "of the goal": "de la meta",
     "Team bonus: how it is shared": "Bono del equipo: cómo se reparte", "Share of the team bonus (%)": "Parte del bono del equipo (%)", "Team bonus per hour saved": "Bono del equipo por hora ahorrada", "under the goal": "por debajo de la meta",
     "Paid for each hour the team saves against the goal (goal 16 h, done in 10 h = 6 h), times the share above.": "Se paga por cada hora que el equipo ahorra respecto a la meta (meta de 16 h, hecha en 10 h = 6 h), multiplicado por la parte de arriba.",
     "Includes a commission line": "Incluye una línea de comisión",

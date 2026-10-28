@@ -10,7 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /** La comisión por productividad de una persona en un proyecto (una por proyecto). La configura el dueño. */
 class Commission extends Model
 {
-    public const SAVINGS_MODES = ['fixed', 'assigned'];
+    /** Cómo se reparte el bono del equipo: fixed = un % fijo; assigned = el % que le correspondía hacer (percent_required); actual = el % que realmente trabajó. */
+    public const SAVINGS_MODES = ['fixed', 'assigned', 'actual'];
 
     protected $guarded = [];
 
@@ -49,9 +50,16 @@ class Commission extends Model
         return $this->hasMany(CommissionResult::class);
     }
 
-    /** El % del ahorro que se reconoce: el fijo, o el que le correspondía hacer. */
-    public function savingsShare(): float
+    /**
+     * La parte del bono del equipo que se reconoce a esta persona: el % fijo, el que le correspondía hacer, o (en el modo "actual") el % que
+     * realmente trabajó del total de la tarea, que se conoce al calcular ($actualPct).
+     */
+    public function savingsShare(?float $actualPct = null): float
     {
-        return $this->savings_mode === 'assigned' ? (float) $this->percent_required : (float) $this->savings_pct;
+        return match ($this->savings_mode) {
+            'assigned' => (float) $this->percent_required,
+            'actual' => (float) ($actualPct ?? 0),
+            default => (float) $this->savings_pct,
+        };
     }
 }

@@ -117,6 +117,27 @@ class CommissionTest extends TestCase
         $this->assertEquals(24, $j->savings_amount);   // 6 h ahorradas × 80% × 5
     }
 
+    public function test_the_savings_share_can_be_the_percentage_the_person_actually_worked(): void
+    {
+        $this->setUpTask();
+        $this->commission($this->jarvis, ['savings_mode' => 'actual']);
+        $this->commission($this->ana, ['savings_mode' => 'actual', 'percent_required' => 20]);
+        $this->teamHours();   // 10 h en total: Jarvis 8 (80%), Ana 2 (20%); 6 h ahorradas respecto a la meta
+        $this->complete(['release' => true])->assertOk();
+        $j = CommissionResult::where('user_id', $this->jarvis->id)->firstOrFail();
+        $a = CommissionResult::where('user_id', $this->ana->id)->firstOrFail();
+        $this->assertEquals(80, $j->savings_pct);
+        $this->assertEquals(24, $j->savings_amount);    // 6 h × 80% × 5
+        $this->assertEquals(20, $a->savings_pct);
+        $this->assertEquals(6, $a->savings_amount);     // 6 h × 20% × 5: el bono se reparte según lo trabajado, sin pasarse del total
+        $this->assertEquals(24 + 6, (float) $j->savings_amount + (float) $a->savings_amount);
+
+        // La persona ve cómo se calcula su parte sin que se le muestre un porcentaje fijo.
+        $t = $this->getJsonAs($this->jarvis, '/api/me/commissions')[0];
+        $this->assertSame('actual', $t['terms']['savings_mode']);
+        $this->assertNull($t['terms']['savings_pct']);
+    }
+
     public function test_the_tolerance_forgives_going_over_the_goal_by_a_little(): void
     {
         $this->setUpTask();
@@ -357,6 +378,8 @@ class CommissionTest extends TestCase
         $other = Project::create(['company_id' => $this->company->id, 'code' => 'P-2', 'name' => 'Otra']);
         $this->putJson('/api/commissions/'.$c['id'], ['service_ids' => [$other->services()->first()->id]])->assertStatus(422)->assertJsonValidationErrors('service_ids');
         $this->putJson('/api/commissions/'.$c['id'], ['percent_required' => 120])->assertStatus(422)->assertJsonValidationErrors('percent_required');
+        $this->putJson('/api/commissions/'.$c['id'], ['savings_mode' => 'otra'])->assertStatus(422)->assertJsonValidationErrors('savings_mode');
+        $this->putJson('/api/commissions/'.$c['id'], ['savings_mode' => 'actual'])->assertOk()->assertJsonPath('savings_mode', 'actual');
         $this->putJson('/api/commissions/'.$c['id'], ['percent_required' => 75, 'savings_mode' => 'assigned'])->assertOk()
             ->assertJsonPath('percent_required', 75)->assertJsonPath('savings_mode', 'assigned');
         $this->putJson('/api/commissions/'.$c['id'], ['user_id' => $this->ana->id])->assertStatus(422);   // no se cambia de persona

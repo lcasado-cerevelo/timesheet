@@ -75,7 +75,7 @@ class CommissionService
             $workedMin = $userHours + self::EPS >= self::MIN_HOURS;
             $metShare = $userPct + self::EPS >= (float) $c->percent_required;
             $team = $metGoal && $metDate && $workedMin;
-            $sharePct = $c->savingsShare();
+            $sharePct = round($c->savingsShare($userPct), 2);
             $savings = $team ? round($bonusHours * $sharePct / 100 * (float) $c->savings_per_hour, 2) : 0.0;
             $commission = $team && $metShare ? round($userHours * (float) $c->extra_per_hour, 2) : 0.0;
             $rows[] = [
@@ -163,7 +163,7 @@ class CommissionService
             $out[] = [
                 'id' => $c->id, 'project' => ['id' => $c->project->id, 'code' => $c->project->code, 'name' => $c->project->name],
                 'terms' => ['percent_required' => (float) $c->percent_required, 'extra_per_hour' => (float) $c->extra_per_hour, 'savings_mode' => $c->savings_mode,
-                    'savings_pct' => $c->savingsShare(), 'savings_per_hour' => (float) $c->savings_per_hour, 'tolerance_hours' => (float) $c->tolerance_hours,
+                    'savings_pct' => $c->savings_mode === 'actual' ? null : $c->savingsShare(), 'savings_per_hour' => (float) $c->savings_per_hour, 'tolerance_hours' => (float) $c->tolerance_hours,
                     'withhold' => (bool) $c->withhold],
                 'tasks' => $tasks,
             ];

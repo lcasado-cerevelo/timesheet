@@ -615,8 +615,8 @@ const pct = n => String(Math.round(Number(n || 0) * 100) / 100) + '%';
 const ck = ok => `<span class="ck ${ok ? 'ok' : 'no'}" aria-label="${ok ? 'Yes' : 'No'}">${ok ? '✔' : '✘'}</span>`;
 const COMM_STATUS = { pending: ['To release', 'amber'], released: ['Released', 'green'], invoiced: ['Invoiced', 'blue'], paid: ['Paid', 'gray'], none: ['No commission', 'gray'], in_review: ['In review', 'amber'], open: ['Open', 'green'] };
 const commPill = k => { const a = COMM_STATUS[k] || [k, 'gray']; return pill(a[0], a[1]); };
-const SAVINGS_MODES = { fixed: 'A fixed % of the team bonus', assigned: 'The % that corresponded to the person (the minimum share)' };
-const commTerms = c => `${pct(c.percent_required)} ${T('of the task')} · +${money(c.extra_per_hour)}/h · ${T('team bonus')} ${c.savings_mode === 'assigned' ? T('by assigned %') : pct(c.savings_pct)} × ${money(c.savings_per_hour)}/h${Number(c.tolerance_hours) ? ' · ' + T('tolerance') + ' ' + h1(c.tolerance_hours) + ' h' : ''}`;
+const SAVINGS_MODES = { fixed: 'A fixed % of the team bonus', assigned: 'The % that corresponded to the person (the minimum share)', actual: 'The % the person actually worked' };
+const commTerms = c => `${pct(c.percent_required)} ${T('of the task')} · +${money(c.extra_per_hour)}/h · ${T('team bonus')} ${c.savings_mode === 'assigned' ? T('by assigned %') : c.savings_mode === 'actual' ? T('by worked %') : pct(c.savings_pct)} × ${money(c.savings_per_hour)}/h${Number(c.tolerance_hours) ? ' · ' + T('tolerance') + ' ' + h1(c.tolerance_hours) + ' h' : ''}`;
 
 /* in the person's window: their commissions (one per project) */
 function commBox(u, list, projects) {
@@ -659,7 +659,7 @@ async function openCommissionModal(uid, cid) {
       <label class="chk"><input type="checkbox" name="ivu" ${c?.ivu ? 'checked' : ''}> IVU withholding applies to this commission</label>
       ${c ? `<label class="chk"><input type="checkbox" name="active" ${c.active ? 'checked' : ''}> Active</label>` : ''}`,
     init(mm) {
-      const f = mm.form; const modeSync = () => { f.querySelector('[data-comm-fixed]').hidden = f.elements.savings_mode.value === 'assigned'; };
+      const f = mm.form; const modeSync = () => { f.querySelector('[data-comm-fixed]').hidden = f.elements.savings_mode.value !== 'fixed'; };
       f.elements.savings_mode.addEventListener('change', modeSync); modeSync();
       f.querySelector('[data-comm-project]')?.addEventListener('change', e => {
         const slot = f.querySelector('[data-comm-scope]'); slot.innerHTML = localizeHtml(scope(proj(e.target.value), [], [])); slot.querySelectorAll('[data-msel]').forEach(mselSync);
