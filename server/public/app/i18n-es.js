@@ -3,6 +3,12 @@
 window.I18N_ES = {
   exact: {
     // --- v2: edit approvers/clients, brand, sign-in rule ---
+    // --- digital signature (phase 4) ---
+    "Type your password to sign.": "Escribe tu contraseña para firmar.",
+    "Submit for approval": "Enviar para aprobación", "Sign and submit": "Firmar y enviar", "Send for approval": "Enviar para aprobación", "Sign and send": "Firmar y enviar",
+    "Submitting is signed digitally with your password.": "Enviar se firma digitalmente con tu contraseña.", "Sending is signed digitally with your password.": "Enviar se firma digitalmente con tu contraseña.",
+    "Submitted and signed digitally by": "Enviada y firmada digitalmente por", "Approved digitally by": "Aprobada digitalmente por", "Returned digitally by": "Devuelta digitalmente por",
+    "email code": "código por correo", "Fingerprint of what was signed": "Huella de lo que se firmó",
     // --- commissions ---
     "A fixed % of the team bonus": "Un % fijo del bono del equipo", "The % the person actually worked": "El % que la persona realmente trabajó", "by worked %": "según el % trabajado", "team bonus": "bono de equipo", "Team bonus": "Bono de equipo", "of the goal": "de la meta",
     "Team bonus: how it is shared": "Bono del equipo: cómo se reparte", "Share of the team bonus (%)": "Parte del bono del equipo (%)", "Team bonus per hour saved": "Bono del equipo por hora ahorrada", "under the goal": "por debajo de la meta",

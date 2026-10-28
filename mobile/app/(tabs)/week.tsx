@@ -7,7 +7,7 @@ import { useAuth } from '../../src/store/auth';
 import { useT } from '../../src/i18n';
 import { useEntries } from '../../src/store/entries';
 import { useSettings } from '../../src/store/settings';
-import { Badge, Btn, C, Card, Msg, STATUS, useBottomPad, useTheme } from '../../src/ui';
+import { Badge, Btn, C, Card, Field, Msg, Sheet as Modal, STATUS, useBottomPad, useTheme } from '../../src/ui';
 
 export default function Week() {
   const router = useRouter();
@@ -19,6 +19,9 @@ export default function Week() {
   const { entries, projects, selectedDate, setDate, sheets, fetchSheet, submitWeek } = useEntries();
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [password, setPassword] = useState('');
+  const [sigErr, setSigErr] = useState<string | null>(null);
   const end = weekEnding(selectedDate);
   const days = weekDays(selectedDate);
   const sheet = sheets[end];
@@ -30,18 +33,22 @@ export default function Week() {
     void fetchSheet(selectedDate);
   }, [end, fetchSheet, selectedDate]);
 
+  // Enviar la hoja se firma con la contraseña; el error de la contraseña se muestra dentro de la ventana.
   const submit = useCallback(async () => {
     setBusy(true);
-    setMsg(null);
+    setSigErr(null);
     try {
-      await submitWeek(selectedDate);
+      await submitWeek(selectedDate, password);
+      setSigning(false);
+      setPassword('');
       setMsg({ kind: 'ok', text: t('week.sent') });
     } catch (e: any) {
-      setMsg({ kind: 'err', text: e.message });
+      if (e?.status === 422 || e?.status === 429 || e?.status === 403) setSigErr(e.message);
+      else { setSigning(false); setMsg({ kind: 'err', text: e.message }); }
     } finally {
       setBusy(false);
     }
-  }, [selectedDate, submitWeek]);
+  }, [selectedDate, submitWeek, password, t]);
 
   // Semana enviada por partes: cada día trae su estado, y las partes devueltas traen su comentario.
   const dayState = new Map((sheet?.days ?? []).map((d) => [d.date, d]));
@@ -105,8 +112,14 @@ export default function Week() {
       </Card>
 
       {msg ? <Msg kind={msg.kind} text={msg.text} /> : null}
-      {canSubmit ? <Btn testID="submit-week" kind="pri" title={sheet!.status === 'returned' ? t('week.resubmit') : t('week.submit')} disabled={busy || weekTotal <= 0} onPress={submit} /> : null}
+      {canSubmit ? <Btn testID="submit-week" kind="pri" title={sheet!.status === 'returned' ? t('week.resubmit') : t('week.submit')} disabled={busy || weekTotal <= 0} onPress={() => { setPassword(''); setSigErr(null); setSigning(true); }} /> : null}
       {!sheet ? <Text style={{ color: C.muted, marginTop: 8 }}>{t('week.need_connection')}</Text> : null}
+      <Modal visible={signing} title={t('week.sign_title')} onClose={() => { setSigning(false); setPassword(''); }}>
+        <Text style={{ color: C.muted, marginBottom: 8 }}>{t('week.sign_intro')}</Text>
+        <Field testID="sign-password" label={t('week.sign_password')} value={password} onChangeText={setPassword} secure autoCapitalize="none" />
+        {sigErr ? <Msg kind="err" text={sigErr} /> : null}
+        <Btn testID="sign-confirm" kind="pri" title={t('week.sign_confirm')} disabled={busy || !password} onPress={submit} />
+      </Modal>
     </ScrollView>
   );
 }

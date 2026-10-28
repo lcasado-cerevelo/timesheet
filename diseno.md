@@ -571,3 +571,12 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - El bono del equipo = **(meta − total trabajado) × parte del bono × monto por hora**, con meta = presupuesto × (1 − meta de ahorro%), p. ej. 16 h. Terminar la tarea en 10 h con meta de 16 h paga 6 horas; en 16 h, ninguna. No es respecto al presupuesto (20 − 10) ni sobre las 16 h de la meta. Las condiciones (meta de horas con tolerancia, fecha, al menos 1 h trabajada) y la comisión por hora individual no cambian. La tolerancia no se cuenta como ahorro: pasarse un poco de la meta sin pasar de la tolerancia no quita la comisión, pero tampoco da bono.
 - El resultado guarda con cuántas horas se calculó (`commission_results.bonus_hours` = horas ahorradas respecto a la meta; migración `2026_11_08_000000`); las horas ahorradas respecto al presupuesto se siguen guardando como dato (`saved_hours`). Los resultados anteriores conservan sus montos y su detalle (se les dejó `bonus_hours` = `saved_hours`).
 - En pantalla y en los informes pasó a llamarse **"Bono del equipo"** (antes "Ahorro"); el campo del monto es **"Bono del equipo por hora ahorrada"**. La **meta de ahorro (%)** de la tarea sigue llamándose así, porque define cuántas horas tiene la meta.
+
+## Fase 4 construida: firma digital con contraseña
+
+- Se firma con la contraseña de quien actúa: enviar la hoja (web y móvil), aprobar o devolver (dueño, aprobadores internos y cuentas de aprobador) y crear la factura del contratista. Campo `signature`; 5 contraseñas malas bloquean 15 min (HTTP 429).
+- El aprobador externo que entra por el enlace del correo siempre debe verificar el código de 6 dígitos: ese código es su firma.
+- Tabla `signatures` ampliada (user_id nulo, approver_id, método password|email_code, nombre del firmante, huella sha256, IP).
+- Reportes y PDF dicen "firmado/aprobado digitalmente por …"; la factura imprime la firma y la huella.
+- En móvil, enviar la semana pide conexión y la contraseña en una ventana; el error de contraseña sale dentro de la ventana.
+- Pruebas: `TestCase::$autoSign` inyecta la firma; las pruebas de firma lo desactivan.

@@ -36,7 +36,7 @@ interface EntriesState extends Persisted {
   retry: (uuid: string) => void;
   sync: () => Promise<void>;
   fetchSheet: (date: string) => Promise<Sheet | null>;
-  submitWeek: (date: string) => Promise<Sheet>;
+  submitWeek: (date: string, signature: string) => Promise<Sheet>;
   pending: () => number;
   reset: () => Promise<void>;
 }
@@ -187,7 +187,7 @@ export const useEntries = create<EntriesState>((set, get) => {
       }
     },
 
-    async submitWeek(date) {
+    async submitWeek(date, signature) {
       await get().sync();
       const end = weekEnding(date);
       const start = weekStarting(date);
@@ -195,7 +195,7 @@ export const useEntries = create<EntriesState>((set, get) => {
       if (bad.length) throw new ApiError(bad.some((e) => e.sync === 'rejected') ? t('entries.has_rejected') : t('entries.has_unsynced'), 422);
       const sheet = await get().fetchSheet(date);
       if (!sheet) throw new NetworkError();
-      const s = await api<Sheet>(`/sheets/${sheet.id}/submit`, { method: 'POST' });
+      const s = await api<Sheet>(`/sheets/${sheet.id}/submit`, { method: 'POST', body: { signature } });
       update({ sheets: { ...get().sheets, [s.week_ending]: s } });
       return s;
     },

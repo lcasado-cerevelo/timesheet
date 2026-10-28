@@ -374,11 +374,12 @@ async function approverView() {
       ${needs ? `<div class="msg warn" style="margin-top:12px">This decision needs a 6-digit code. We send it to your email.</div>
         <div class="row" style="align-items:end"><button class="btn ghost" type="button" data-act="apr-code" data-id="${sel.id}">Send me a code</button>
         <div style="max-width:200px"><label for="ap-code">6-digit code</label><input id="ap-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="${esc(dr.code)}" style="letter-spacing:.2em"></div></div>` : ''}
+      ${sigField()}
       <p class="row" style="margin-bottom:0"><button class="btn" data-act="apr-approve" data-id="${sel.id}" data-v="${sel.version}">Approve</button>
       <button class="btn danger" data-act="apr-return" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></p>`
       : `<p class="muted" style="margin:10px 0 0">${sel.decided_at ? `Decided on ${esc(String(sel.decided_at).slice(0, 10))}.` : ''}</p>`;
     detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}${sel.is_part ? ` · ${T('Part')} ${sel.part} (${nice(sel.period_starting)}${sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)})` : ''}</span></div><span class="spacer"></span>${pill(label, color)}${sel.late ? ' ' + pill('Late', 'red') : ''}</div>
-      ${wkParts(d.internal || d.external ? d : sel, 'in')}${(sel.warnings || []).map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${ret}
+      ${wkParts(d.internal || d.external ? d : sel, 'in')}${(sel.warnings || []).map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${ret}${sigLines(d?.signatures)}
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
       ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}${r.t ? ' · ' + esc(r.t.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
       <p class="row" style="margin:10px 0"><b>Total hours</b><span class="spacer"></span><b>${h1(sel.total_hours)}</b></p>
@@ -463,12 +464,13 @@ async function approvalsView() {
     const multi = id => (S.cache.allProjects?.find(p => p.id === id)?.services || []).length > 1;
     for (const e of d.entries) { const k = e.project_id + '|' + (multi(e.project_id) ? e.service_id : '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: multi(e.project_id) ? e.service : null, t: e.task, by: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; }
     detail = `<div class="card"><div class="row"><div><h2 style="margin:0">${esc(sel.user?.name)}</h2><span class="muted">week ending ${nice(sel.week_ending)}${sel.is_part ? ` · ${T('Part')} ${sel.part} (${nice(sel.period_starting)}${sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)})` : ''}</span></div><span class="spacer"></span><span class="badge submitted">Pending</span>${sel.late ? ' <span class="badge returned">Late</span>' : ''}</div>
-      ${sel.warnings.map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}
+      ${sel.warnings.map(w => `<div class="msg warn" style="margin-top:10px">${esc(w.message)}</div>`).join('')}${sigLines(d?.signatures)}
       <div class="scroll"><table class="daygrid" style="margin-top:10px"><tr><th>Project</th>${days.map(x => `<th>${dow(parse(x).getDay())}</th>`).join('')}</tr>
       ${[...lines.values()].map(r => `<tr><td>${esc(r.p?.code)} · ${esc(r.p?.name)}${r.s ? ' · ' + esc(r.s.name) : ''}${r.t ? ' · ' + esc(r.t.name) : ''}</td>${days.map(x => r.by[x] ? `<td>${h1(r.by[x])}</td>` : '<td class="zero">·</td>').join('')}</tr>`).join('')}</table></div>
       <p class="row" style="margin:10px 0"><b>Total hours</b><span class="spacer"></span><b>${h1(sel.total_hours)}</b></p>
       ${aprNotes(d?.entries, sel)}
       <label>Comment (required when returning)</label><textarea id="ap-comment" rows="3" placeholder="Example: Thursday should be OT, please fix and resubmit."></textarea>
+      ${sigField()}
       <p class="row" style="margin-bottom:0"><button class="btn" data-act="approve" data-id="${sel.id}" data-v="${sel.version}">Approve</button>
       <button class="btn danger" data-act="return" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></p></div>`;
   }
@@ -505,6 +507,7 @@ async function invoicesView() {
     ${canInvoice ? `<div class="card"><h2>Create an invoice</h2><form data-form="cinv" class="fbar" style="margin:0"><div><label>From</label><input type="date" name="from" value="${addDays(today(), -30)}"></div>
     <div><label>To</label><input type="date" name="to" value="${today()}"></div>
     ${owner ? `<div><label>Consultant</label><select name="user_id"><option value="">Me</option>${people.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>` : ''}
+    ${sigField()}
     <button class="btn pri" type="submit">Create invoice from approved weeks</button></form>${pendCommHtml(pend)}</div>` : '<div class="card"><p class="muted" style="margin:0">Employees do not create invoices.</p></div>'}
     <div class="card"><h2>Invoice history</h2>${exportBar('invoices', activeF('invoices'))}${filterBar('invoices', [{ k: 'q', label: 'Search', ph: 'Number or consultant' }, { k: 'status', label: 'Status', type: 'select', opts: [['', 'All'], ['issued', 'Issued'], ['sent', 'Sent'], ['paid', 'Paid']] }, ...(owner ? [{ k: 'user_id', label: 'Consultant', type: 'select', opts: [['', 'All'], ...people.map(p => [p.id, p.name])] }] : []), { k: 'from', label: 'Issued from', type: 'date' }, { k: 'to', label: 'To', type: 'date' }])}
     <table><tr><th>Number</th><th>Consultant</th><th>Period</th><th class="r">Gross</th><th class="r">Net</th><th>Status</th><th>Accountisi</th><th></th></tr>
@@ -986,13 +989,13 @@ const actions = {
     document.getElementById('eform-title').textContent = 'Edit entry'; f.scrollIntoView({ behavior: 'smooth' });
   },
   async del(el) { if (!confirm(T('Delete this entry?'))) return; await api('/entries/' + el.dataset.id, { method: 'DELETE' }); flash('Entry deleted.'); render(); },
-  async submit(el) { await api(`/sheets/${el.dataset.id}/submit`, { method: 'POST' }); flash('Timesheet submitted for approval.'); render(); },
+  async submit(el) { if (await signedAction('Submit for approval', 'Sign and submit', 'Submitting is signed digitally with your password.', signature => api(`/sheets/${el.dataset.id}/submit`, { method: 'POST', body: { signature } }))) { flash('Timesheet submitted for approval.'); render(); } },
   async 'clock-stop'() { await api('/clock/stop', { method: 'POST', body: {} }); flash('Clock stopped.'); render(); },
-  async approve(el) { await api(`/sheets/${el.dataset.id}/approve`, { method: 'POST', body: { version: Number(el.dataset.v) } }); flash('Timesheet approved.'); render(); },
+  async approve(el) { await api(`/sheets/${el.dataset.id}/approve`, { method: 'POST', body: { version: Number(el.dataset.v), signature: sigPage() } }); flash('Timesheet approved.'); render(); },
   async return(el) {
     const c = (document.getElementById('ap-comment')?.value || '').trim();
     if (!c) throw new Error('Write a comment saying what needs to be corrected.');
-    await api(`/sheets/${el.dataset.id}/return`, { method: 'POST', body: { comment: c, version: Number(el.dataset.v) } }); flash('Timesheet returned for correction.'); render();
+    await api(`/sheets/${el.dataset.id}/return`, { method: 'POST', body: { comment: c, version: Number(el.dataset.v), signature: sigPage() } }); flash('Timesheet returned for correction.'); render();
   },
   pdf: el => download(`/contractor-invoices/${el.dataset.id}/pdf`, {}, 'invoice.pdf'),
   async 'push-bill'(el) { const r = await api(`/contractor-invoices/${el.dataset.id}/push-accountisi`, { method: 'POST' }); flash(r.accountisi_status === 'draft' ? 'Created in Accountisi as a draft.' : 'Status in Accountisi: ' + r.accountisi_status, r.accountisi_status === 'draft' ? 'ok' : 'warn'); render(); },
@@ -1024,7 +1027,7 @@ async function aprDecide(el, kind, base = '/approver/sheets/') {
   const id = Number(el.dataset.id); saveDraft(id);
   const { comment, code } = S.cache.apDraft;
   if (kind === 'return' && !comment.trim()) throw new Error('Write a comment saying what needs to be corrected.');
-  const body = { version: Number(el.dataset.v), ...(comment.trim() ? { comment: comment.trim() } : {}), ...(code.trim() ? { code: code.trim() } : {}) };
+  const body = { version: Number(el.dataset.v), signature: sigPage(), ...(comment.trim() ? { comment: comment.trim() } : {}), ...(code.trim() ? { code: code.trim() } : {}) };
   try { await api(`${base}${id}/${kind}`, { method: 'POST', body }); }
   catch (e) { if (e.needs_code || e.errors?.code) { (S.cache.apCode ??= {})[id] = true; } throw e; }
   S.cache.apDraft = null; flash(kind === 'approve' ? 'Timesheet approved.' : 'Timesheet returned for correction.'); render();
@@ -1072,7 +1075,7 @@ const forms = {
   },
   async clock(f) { const o = formObj(f); if (!o.service_id) delete o.service_id; await api('/clock/start', { method: 'POST', body: o }); flash('Clock started.'); render(); },
   report(f) { S.cache.rep = formObj(f); render(); },
-  async cinv(f) { const o = formObj(f); if (!o.user_id) delete o.user_id; const r = await api('/contractor-invoices', { method: 'POST', body: o }); flash('Invoice ' + r.number + ' created and emailed.'); render(); },
+  async cinv(f) { const o = formObj(f); if (!o.user_id) delete o.user_id; const signature = sigTake(f, o); if (!signature) throw new Error('Type your password to sign.'); const r = await api('/contractor-invoices', { method: 'POST', body: { ...o, signature } }); flash('Invoice ' + r.number + ' created and emailed.'); render(); },
   async export(f) {
     const o = formObj(f); const tpl = S.cache.tpls.find(t => t.id === Number(o.template_id)); if (!o.user_id) delete o.user_id; if (!o.customer_id) delete o.customer_id;
     if (f.querySelector('input[name="project_ids"]') && !(o.project_ids || []).length) throw new Error('Pick at least one patient.');
@@ -1194,11 +1197,12 @@ async function reviewScreen() {
     const acts = open ? `<div style="display:flex;flex-direction:column;gap:10px"><label class="lbl">Comment (required when returning)<textarea id="ap-comment" placeholder="Example: Thursday should be OT, please fix and resubmit.">${esc(dr.comment)}</textarea></label>
       ${needs ? `<div class="msg warn">This decision needs a 6-digit code. We send it to your email.</div><div class="row" style="align-items:end"><button class="btn ghost" type="button" data-act="apr-code" data-id="${sel.id}">Send me a code</button>
         <label class="lbl" style="max-width:200px">6-digit code<input id="ap-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="${esc(dr.code)}" style="letter-spacing:.2em"></label></div>` : ''}
+      ${sigField()}
       <div class="decided"><button class="btn" data-act="${A[0]}" data-id="${sel.id}" data-v="${sel.version}">Approve</button><button class="btn danger" data-act="${A[1]}" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></div></div>`
       : (sel.decided_at ? `<p class="muted" style="margin:0">Decided on ${esc(String(sel.decided_at).slice(0, 10))}.</p>` : '');
     const cell = (v, extra = '') => `<div class="mono" style="text-align:center;${extra}">${v ? h1(v) : ''}</div>`;
     detail = `<div class="card r"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><div><h2 style="font-size:19px">${esc(nameOf(sel))}</h2><p style="margin:0">${typeName(sel)} · week ending ${nice(sel.week_ending)}${sel.is_part ? ' · ' + T('Part') + ' ' + sel.part + ' (' + nice(sel.period_starting) + (sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)) + ')' : ''}</p></div>${pill(stOf(sel), stColor[sel.status] || 'gray')}</div>${wkParts(d && (d.internal || d.external) ? d : sel, 'in') || waitTxt(sel)}
-      ${(d?.warnings || sel.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('')}${ret}
+      ${(d?.warnings || sel.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('')}${ret}${sigLines(d?.signatures)}
       <div class="scrollx"><div style="min-width:440px"><div class="hd cols-det"><div class="th">Line</div>${days.map(x => `<div class="th c">${dow(parse(x).getDay())}</div>`).join('')}<div class="th r">Total</div></div>
       ${[...lines.values()].map(r => `<div class="rw cols-det"><div style="font-size:14px">${esc([r.p?.code, r.p?.name, r.s?.name, r.t?.name].filter(Boolean).join(' · '))}</div>${days.map(x => cell(r.by[x])).join('')}<div class="mono" style="text-align:right;font-weight:500">${h1(Object.values(r.by).reduce((a, v) => a + v, 0))}</div></div>`).join('')}
       <div class="tot"><span>Total hours</span><span class="mono">${h1(sel.total_hours)}</span></div></div></div>
@@ -1298,6 +1302,24 @@ const needErr = (field, msg) => Object.assign(new Error(msg), { errors: { [field
    the code finds it by data-sig and sends the value as `signature`. */
 const sigField = () => `<div><label>Password to sign *</label><input type="password" data-sig data-ef="signature" name="sig${Math.random().toString(36).slice(2, 10)}" autocomplete="new-password" required><small class="help">Type your password again: this signs the action digitally.</small></div>`;
 const sigTake = (form, o) => { const i = form.querySelector('[data-sig]'); if (o && i) delete o[i.name]; return i ? i.value : ''; };
+/* The password typed in the signature box of the page (no window): empty = the person did not sign. */
+const sigPage = () => { const i = document.querySelector('[data-sig]'); const v = i ? i.value : ''; if (!v) throw new Error('Type your password to sign.'); return v; };
+/* A window that asks for the password and runs the signed action with it. A wrong password (or any other error) shows INSIDE the window, which stays open
+   to try again; nothing is lost. Resolves true when the action was done, false if the window was closed without signing. */
+function signedAction(title, save, intro, run) {
+  return new Promise(resolve => {
+    modalOpen({ title, size: 'sm', save, onClose: () => resolve(false),
+      body: `${intro ? `<p class="muted" style="margin:0">${T(intro)}</p>` : ''}${sigField()}`,
+      async onSubmit(mm) {
+        const o = formObj(mm.form); const signature = sigTake(mm.form, o); if (!signature) throw needErr('signature', 'Type your password to sign.');
+        await run(signature); resolve(true); await mm.finish(null, async () => {});
+      } });
+  });
+}
+/* "Submitted and signed digitally by Ana on Oct 21 · Approved digitally by Jorge (email code) on Oct 22" */
+const SIG_ACTIONS = { 'sheet.submit': 'Submitted and signed digitally by', 'sheet.approve': 'Approved digitally by', 'sheet.return': 'Returned digitally by' };
+const sigLines = list => (list || []).length
+  ? `<div class="sigs">${list.map(x => `<div>${T(SIG_ACTIONS[x.action] || x.action)} <b>${esc(x.by)}</b> · ${esc(nice(String(x.at).slice(0, 10)))}${x.method === 'email_code' ? ' · ' + T('email code') : ''} <span class="muted mono" title="${esc(T('Fingerprint of what was signed'))}">${esc(x.fingerprint)}</span></div>`).join('')}</div>` : '';
 
 /* --- Searchable multi-select: the one component for every long list (people, projects, approvers, clients) ---
    Chips on top (with ✕), a search box that filters while typing (no accents, no case; name and email), a scrolling list
@@ -1862,7 +1884,7 @@ async function weekView() {
       ${sheet.status === 'submitted' ? '<p class="muted" style="margin:0">Waiting for a decision. If you change it, the approver gets a notice that it changed.</p>' : ''}</div>`;
   const warn = (sheet.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('');
   const ret = sheet.status === 'returned' && sheet.return_comment ? `<div class="msg err" role="alert"><b>Returned for correction:</b> ${esc(sheet.return_comment)}${sheet.return_by ? ` <span class="muted">${T('Returned by')} ${esc(sheet.return_by.name || sheet.return_by)}</span>` : ''}</div>` : '';
-  return `<div class="wk">${head}${ret}${warn}${nav}${alert}${facts}${wkPeriods(sheet)}${wkParts(sheet)}${grid}<div class="wkbottom">${left}${right}</div></div>`;
+  return `<div class="wk">${head}${ret}${warn}${nav}${alert}${facts}${sigLines(sheet.signatures)}${wkPeriods(sheet)}${wkParts(sheet)}${grid}<div class="wkbottom">${left}${right}</div></div>`;
 }
 
 /* live totals while typing */
@@ -2039,13 +2061,13 @@ Object.assign(actions, {
   async 'wk-submit'() {
     if (!WK().cert) return; const id = S.cache.wkSheet.id; const note = WK().snote ?? S.cache.wkSheet.submission_note ?? '';
     const bad = wkBadCells(); if (bad.length) { toast(wkBadMsg(bad), 'err'); document.querySelector('.wk .wkc.bad')?.focus(); return; }
-    await wkSave(); await api(`/sheets/${id}/submit`, { method: 'POST', body: { note: note || null } }); flash('Timesheet submitted for approval.'); render();
+    if (await signedAction('Submit for approval', 'Sign and submit', 'Submitting is signed digitally with your password.', async signature => { await wkSave(); await api(`/sheets/${id}/submit`, { method: 'POST', body: { note: note || null, signature } }); })) { flash('Timesheet submitted for approval.'); render(); }
   },
   /* "send through here": the marked day and every open day before it, in order (each block of open days becomes one sheet) */
   async 'wk-send-days'() {
     const st = WK(); if (!st.cert || !st.through) return; const through = st.through; const note = st.snote ?? S.cache.wkSheet.submission_note ?? '';
     const bad = wkBadCells(); if (bad.length) { toast(wkBadMsg(bad), 'err'); document.querySelector('.wk .wkc.bad')?.focus(); return; }
-    await wkSave(); await api('/sheets/submit-days', { method: 'POST', body: { through, note: note || null } }); flash('Days sent for approval.'); render();
+    if (await signedAction('Send for approval', 'Sign and send', 'Sending is signed digitally with your password.', async signature => { await wkSave(); await api('/sheets/submit-days', { method: 'POST', body: { through, note: note || null, signature } }); })) { flash('Days sent for approval.'); render(); }
   },
   'wk-through'(el) { const st = WK(); st.through = st.through === el.dataset.d ? null : el.dataset.d; render(); },
   /* a note for one line and day: kept with the rest of the pending changes until Save draft */
