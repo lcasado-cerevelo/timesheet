@@ -7,6 +7,7 @@ use App\Models\Timesheet;
 use App\Services\InternalApprovalService;
 use App\Services\ReviewService;
 use App\Services\SheetService;
+use App\Services\SignatureService;
 use Illuminate\Http\Request;
 
 /** Hojas del aprobador interno (supervisor): solo ve y decide sobre las líneas de los servicios que supervisa. */
@@ -36,7 +37,10 @@ class InternalSheetController extends Controller
         $user = $request->user();
         $this->authorizeSheet($sheet, $user);
         $v = $request->validate(['version' => 'required|integer']);
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $user);
         $sheet = $this->sheets->internalApprove($sheet, $user, $v['version']);
+        $sig->record($request, $user, 'sheet.approve', $sheet, ['version' => (int) $v['version'], 'stage' => 'internal']);
         return response()->json($this->present($sheet, $user, false));
     }
 
@@ -45,7 +49,10 @@ class InternalSheetController extends Controller
         $user = $request->user();
         $this->authorizeSheet($sheet, $user);
         $v = $request->validate(['version' => 'required|integer', 'comment' => 'required|string|max:1000']);
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $user);
         $sheet = $this->sheets->internalReturn($sheet, $user, $v['comment'], $v['version']);
+        $sig->record($request, $user, 'sheet.return', $sheet, ['version' => (int) $v['version'], 'comment' => $v['comment'], 'stage' => 'internal']);
         return response()->json($this->present($sheet, $user, false));
     }
 
@@ -71,6 +78,7 @@ class InternalSheetController extends Controller
         if ($withEntries) {
             $out['entries'] = $sheet->entries->map(fn ($e) => EntryController::payload($e));
             $out['worker'] = ['id' => $sheet->user->id, 'name' => $sheet->user->name, 'worker_type' => $sheet->user->worker_type, 'employee_number' => $sheet->user->employee_number];
+            $out['signatures'] = app(SignatureService::class)->forSheet($sheet);
         }
         $out['total_hours'] = round((float) $sheet->entries->sum('hours'), 2);
         $out['needs_my_approval'] = $sheet->status === Timesheet::SUBMITTED && $sheet->stage === Timesheet::STAGE_INTERNAL

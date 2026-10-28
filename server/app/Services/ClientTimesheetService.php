@@ -74,6 +74,9 @@ class ClientTimesheetService
         }
 
         $approvers = $entries->map(fn ($e) => $e->timesheet->approver?->name)->filter()->unique()->values()->all();
+        // Aprobaciones con firma digital (contraseña o código del correo) de las hojas incluidas, sin repetir.
+        $signatures = $entries->pluck('timesheet')->unique('id')->flatMap(fn ($t) => $t->status === Timesheet::APPROVED ? app(SignatureService::class)->forSheet($t) : [])
+            ->where('action', 'sheet.approve')->map(fn ($s) => ['by' => $s['by'], 'at' => substr($s['at'], 0, 10)])->unique(fn ($s) => $s['by'].'|'.$s['at'])->values()->all();
         return [
             'company' => $company->displayName(),
             'customer' => $customer->name,
@@ -87,6 +90,7 @@ class ClientTimesheetService
             'show_amounts' => $showAmounts,
             'has_pending' => $entries->contains(fn ($e) => $e->timesheet->status !== Timesheet::APPROVED),
             'approved_by' => $approvers,
+            'signatures' => $signatures,
             'entry_count' => $entries->count(),
         ];
     }

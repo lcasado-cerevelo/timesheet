@@ -148,10 +148,11 @@ class SheetFlowTest extends TestCase
         app(SheetService::class)->approve($sheet->fresh(), $this->approver, null, 'link', 1);
     }
 
-    public function test_second_code_is_required_above_the_hours_limit(): void
+    /** El enlace del correo siempre pide el código de 6 dígitos: es la firma digital del aprobador externo (sin importar el límite de horas). */
+    public function test_the_link_always_needs_the_emailed_code_to_approve_and_it_is_recorded_as_the_signature(): void
     {
         [$sheet] = $this->submitted();
-        $this->company->update(['rules' => ['week_starts_on' => 1, 'second_approval_hours' => 4]]);
+        $this->autoSign = false;   // desde aquí, el aprobador del enlace tiene que verificar su código él mismo
         $plain = $this->tokenFromMail($this->lastMailHtml('mail.approval-request'));
 
         $this->get('/a/'.$plain)->assertOk()->assertSee('Verifica que eres tú');
@@ -161,6 +162,11 @@ class SheetFlowTest extends TestCase
         $this->post('/a/'.$plain.'/verify', ['code' => '000000'])->assertSessionHasErrors('code');
         $this->post('/a/'.$plain.'/verify', ['code' => $m[1]])->assertRedirect();
         $this->post('/a/'.$plain.'/approve')->assertOk()->assertSee('Hoja aprobada');
+        $sig = \App\Models\Signature::where('action', 'sheet.approve')->firstOrFail();
+        $this->assertSame('email_code', $sig->method);
+        $this->assertNull($sig->user_id);
+        $this->assertSame($this->approver->id, (int) $sig->approver_id);
+        $this->assertSame('Jorge Ramos', $sig->signer_name);
     }
 
     public function test_owner_without_another_approver_self_approves_and_it_is_recorded(): void

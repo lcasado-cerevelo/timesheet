@@ -408,5 +408,11 @@
     "Escribe el motivo del ajuste.": "Write the reason for the adjustment.",
     "El ajuste no puede dejar la comisión en negativo.": "The adjustment cannot leave the commission negative.",
     "Solo se marca como pagada una comisión liberada.": "Only a released commission is marked as paid.",
-    "Los consultores cobran la comisión en su factura; solo se marca como pagada la de un empleado.": "Contractors collect the commission on their invoice; only an employee's is marked as paid."
+    "Los consultores cobran la comisión en su factura; solo se marca como pagada la de un empleado.": "Contractors collect the commission on their invoice; only an employee's is marked as paid.",
+    "Firmas digitales": "Digital signatures",
+    "código por correo": "email code",
+    "Firmada digitalmente por :name el :date": "Digitally signed by :name on :date",
+    "huella :hash": "fingerprint :hash",
+    "Aprobada digitalmente por :names.": "Digitally approved by :names.",
+    "Enviada y firmada digitalmente por :name el :date.": "Submitted and digitally signed by :name on :date."
 }

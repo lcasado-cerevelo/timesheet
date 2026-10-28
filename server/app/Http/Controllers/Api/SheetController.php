@@ -8,6 +8,8 @@ use App\Models\Timesheet;
 use App\Services\InternalApprovalService;
 use App\Services\ReviewService;
 use App\Services\SheetService;
+use App\Services\SignatureService;
+use App\Models\User;
 use App\Support\Week;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -74,13 +76,18 @@ class SheetController extends Controller
         $this->authorizeOwn($request, $sheet);
         $note = $request->validate(['note' => 'nullable|string|max:1000'])['note'] ?? null;
         $user = $request->user();
+        // Someter la hoja se firma con la contraseña: se verifica antes de hacer nada y la firma queda cuando la hoja salió bien.
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $user);
         // Una hoja en borrador de una semana que ya tiene partes envía los días abiertos hasta hoy (o hasta el domingo), en bloques.
         if ($sheet->status === Timesheet::DRAFT && $this->sheets->weekSheets($user, $sheet->week_ending->toDateString())->count() > 1) {
             $today = CarbonImmutable::now($user->company->timezone)->toDateString();
-            $this->sheets->submitDays($user, min($today, $sheet->week_ending->toDateString()), $note, 'app', false);
+            $sent = $this->sheets->submitDays($user, min($today, $sheet->week_ending->toDateString()), $note, 'app', false);
+            $this->signSubmitted($sig, $request, $user, $sent);
             return response()->json($this->weekPayload($user, $this->sheets->forWeek($user, $sheet->week_ending->toDateString())));
         }
         $sheet = $this->sheets->submit($sheet, $user, 'app', $note);
+        $this->signSubmitted($sig, $request, $user, collect([$sheet]));
         return response()->json($this->payload($sheet, true));
     }
 
@@ -89,7 +96,10 @@ class SheetController extends Controller
     {
         $v = $request->validate(['through' => 'required|date_format:Y-m-d', 'note' => 'nullable|string|max:1000']);
         $user = $request->user();
-        $this->sheets->submitDays($user, $v['through'], $v['note'] ?? null);
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $user);
+        $sent = $this->sheets->submitDays($user, $v['through'], $v['note'] ?? null);
+        $this->signSubmitted($sig, $request, $user, $sent);
         return response()->json($this->weekPayload($user, $this->sheets->forWeek($user, $v['through'])));
     }
 
@@ -117,7 +127,10 @@ class SheetController extends Controller
     {
         abort_unless($sheet->company_id === $request->user()->company_id, 404);
         $v = $request->validate(['version' => 'nullable|integer']);
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $request->user());
         $sheet = $this->sheets->approve($sheet, null, $request->user(), 'app', $v['version'] ?? null);
+        $sig->record($request, $request->user(), 'sheet.approve', $sheet, ['version' => (int) $sheet->version, 'hours' => (float) $sheet->total_hours]);
         return response()->json($this->payload($sheet));
     }
 
@@ -125,8 +138,19 @@ class SheetController extends Controller
     {
         abort_unless($sheet->company_id === $request->user()->company_id, 404);
         $v = $request->validate(['comment' => 'required|string|max:1000', 'version' => 'nullable|integer']);
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $request->user());
         $sheet = $this->sheets->return($sheet, null, $request->user(), 'app', $v['comment'], $v['version'] ?? null);
+        $sig->record($request, $request->user(), 'sheet.return', $sheet, ['version' => (int) $sheet->version, 'comment' => $v['comment']]);
         return response()->json($this->payload($sheet));
+    }
+
+    /** Deja la firma de quien envió, en cada hoja que salió. */
+    private function signSubmitted(SignatureService $sig, Request $request, User $user, \Illuminate\Support\Collection $sheets): void
+    {
+        foreach ($sheets as $s) {
+            $sig->record($request, $user, 'sheet.submit', $s, ['version' => (int) $s->version, 'hours' => (float) $s->total_hours, 'week_ending' => $s->week_ending->toDateString()]);
+        }
     }
 
     private function authorizeOwn(Request $request, Timesheet $sheet): void
@@ -171,6 +195,8 @@ class SheetController extends Controller
             $out['entries'] = $entries->map(fn ($e) => EntryController::payload($e));
             $out['worker'] = ['id' => $s->user->id, 'name' => $s->user->name, 'worker_type' => $s->user->worker_type, 'employee_number' => $s->user->employee_number];
             $out['approver'] = $s->approver ? ['id' => $s->approver->id, 'name' => $s->approver->name] : null;
+            // Quién envió y quién aprobó o devolvió, con firma digital, en el ciclo actual de la hoja.
+            $out['signatures'] = app(SignatureService::class)->forSheet($s);
         }
         return $out;
     }

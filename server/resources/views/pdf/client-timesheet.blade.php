@@ -63,6 +63,7 @@ td{padding:5px 6px;border-bottom:1px solid #ddd;vertical-align:top;word-wrap:bre
 
 <p class="foot">
 @if($d['has_pending'])<span class="warn">{{ __('Incluye horas aún sin aprobar, marcadas como tales.') }}</span><br>@else {{ __('Todas las horas listadas están aprobadas.') }}@if(count($d['approved_by'])) {{ __('Aprobadas por: :names.', ['names' => implode(', ', $d['approved_by'])]) }}@endif<br>@endif
+@if(! empty($d['signatures']))<br>{{ __('Aprobada digitalmente por :names.', ['names' => implode(', ', array_map(fn ($x) => $x['by'].' ('.$x['at'].')', $d['signatures']))]) }}@endif
 {{ $brand['email_footer'] }}
 </p>
 </body>

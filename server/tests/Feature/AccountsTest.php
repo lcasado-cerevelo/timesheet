@@ -24,6 +24,12 @@ class AccountsTest extends TestCase
 
     private const NEW_PASSWORD = 'una-clave-larga-1';
 
+    /** Las cuentas de aprobador de estas pruebas tienen otra contraseña: con esa firman. */
+    protected function signatureFor(?\App\Models\User $user): string
+    {
+        return $user?->isApprover() ? self::NEW_PASSWORD : 'secret-password';
+    }
+
     private function mailTo(string $view, string $email): ?BrandedMail
     {
         return Mail::sent(BrandedMail::class, fn ($m) => $m->viewName === $view && $m->hasTo($email))->last();

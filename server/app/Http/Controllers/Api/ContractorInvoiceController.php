@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ContractorInvoice;
 use App\Models\User;
 use App\Services\ContractorInvoiceService;
+use App\Services\SignatureService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -51,7 +52,9 @@ class ContractorInvoiceController extends Controller
             abort_unless($u->isOwner(), 403);
             $worker = User::where('company_id', $u->company_id)->findOrFail($v['user_id']);
         }
-        return response()->json($this->service->create($worker, $v['from'], $v['to']), 201);
+        // Someter la factura se firma con la contraseña de quien la genera.
+        app(SignatureService::class)->verifyPassword($request, $u);
+        return response()->json($this->service->create($worker, $v['from'], $v['to'], $u, $request), 201);
     }
 
     public function pdf(Request $request, ContractorInvoice $invoice)

@@ -54,6 +54,9 @@ td{padding:6px;border-bottom:1px solid #ddd}
 @endforeach
 @endif
 @if((float) $inv->ivu > 0)<p class="foot">{{ __('Como agente de retención del IVU, el pagador remite el IVU retenido mediante SURI.') }}</p>@endif
+@if(! empty($signature))
+<p class="foot">{{ __('Firmada digitalmente por :name el :date', ['name' => $signature->signer_name, 'date' => $signature->signed_at->setTimezone($company->timezone)->format('Y-m-d H:i')]) }} · {{ __('huella :hash', ['hash' => strtoupper(substr($signature->fingerprint, 0, 12))]) }}</p>
+@endif
 <p class="foot">{{ $brand['email_footer'] }}</p>
 </body>
 </html>

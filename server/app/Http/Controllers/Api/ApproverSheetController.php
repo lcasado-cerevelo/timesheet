@@ -11,6 +11,7 @@ use App\Services\ExternalApprovalService;
 use App\Services\InternalApprovalService;
 use App\Services\ReviewService;
 use App\Services\SheetService;
+use App\Services\SignatureService;
 use App\Support\Week;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -74,8 +75,11 @@ class ApproverSheetController extends Controller
         $approver = $this->approver($request);
         $this->own($sheet, $approver);
         $v = $request->validate(['version' => 'required|integer', 'code' => 'nullable|string|max:12']);
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $request->user());
         $this->checkCode($sheet, $approver, $v['code'] ?? null);
         $sheet = $this->sheets->approve($sheet, $approver, null, 'app', $v['version']);
+        $sig->record($request, $request->user(), 'sheet.approve', $sheet, ['version' => (int) $v['version'], 'stage' => 'external']);
         return response()->json($this->present($sheet, $approver, false));
     }
 
@@ -84,8 +88,11 @@ class ApproverSheetController extends Controller
         $approver = $this->approver($request);
         $this->own($sheet, $approver);
         $v = $request->validate(['version' => 'required|integer', 'comment' => 'required|string|max:1000', 'code' => 'nullable|string|max:12']);
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $request->user());
         $this->checkCode($sheet, $approver, $v['code'] ?? null);
         $sheet = $this->sheets->return($sheet, $approver, null, 'app', $v['comment'], $v['version']);
+        $sig->record($request, $request->user(), 'sheet.return', $sheet, ['version' => (int) $v['version'], 'comment' => $v['comment'], 'stage' => 'external']);
         return response()->json($this->present($sheet, $approver, false));
     }
 
@@ -146,6 +153,7 @@ class ApproverSheetController extends Controller
         if ($withEntries) {
             $out['entries'] = $sheet->entries->map(fn ($e) => EntryController::payload($e));
             $out['worker'] = ['id' => $sheet->user->id, 'name' => $sheet->user->name, 'worker_type' => $sheet->user->worker_type, 'employee_number' => $sheet->user->employee_number];
+            $out['signatures'] = app(SignatureService::class)->forSheet($sheet);
         }
         $out['total_hours'] = round((float) $sheet->entries->sum('hours'), 2);
         return $out + ['needs_code' => $this->needsCode($sheet, $approver)];

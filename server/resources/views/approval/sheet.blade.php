@@ -6,6 +6,8 @@
 <p>{!! __('Semana que termina el <strong>:week</strong> · Total <strong>:hours h</strong>', ['week' => e($summary['week_ending']), 'hours' => number_format($summary['total_hours'], 2)]) !!}</p>
 @if($summary['late'])<div class="msg warn">{{ __('Esta hoja se envió después de la fecha límite.') }}</div>@endif
 @foreach($summary['warnings'] as $w)<div class="msg warn">{{ $w['message'] }}</div>@endforeach
+@php($sent = collect($signatures ?? [])->firstWhere('action', 'sheet.submit'))
+@if($sent)<p class="muted">{{ __('Enviada y firmada digitalmente por :name el :date.', ['name' => $sent['by'], 'date' => substr($sent['at'], 0, 10)]) }}</p>@endif
 @if(!empty($summary['submission_note']))<p><strong>{{ __('Nota del envío') }}:</strong> {{ $summary['submission_note'] }}</p>@endif
 <h2>{{ __('Por proyecto') }}</h2>
 <table>@foreach($summary['projects'] as $p)<tr><td>{{ $p['project'] }}</td><td class="r">{{ number_format($p['hours'], 2) }} h</td></tr>@endforeach</table>

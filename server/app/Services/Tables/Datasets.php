@@ -189,6 +189,7 @@ class Datasets
             } else {
                 $entries = $s->entries()->with('project:id,code,name', 'service:id,name', 'task:id,name')->get();
             }
+            $signed = $this->signatureLine($s);
             foreach ($entries->sortBy(fn ($e) => $e->work_date->toDateString().'|'.$e->start_time) as $e) {
                 $day = $e->work_date->toDateString();
                 if ($day < $f['from'] || $day > $f['to'] || (! empty($f['project_id']) && (int) $e->project_id !== (int) $f['project_id'])) {
@@ -196,7 +197,7 @@ class Datasets
                 }
                 $row = [$s->user->name, $s->week_ending->toDateString(), $s->part ? (string) $s->part : '', $status[$s->status] ?? $s->status,
                     $e->project->code.' · '.$e->project->name, (string) ($e->service?->name ?? ''), $day,
-                    $e->start_time ? substr($e->start_time, 0, 5) : '', $e->end_time ? substr($e->end_time, 0, 5) : '', (float) $e->hours, (string) $e->note];
+                    $e->start_time ? substr($e->start_time, 0, 5) : '', $e->end_time ? substr($e->end_time, 0, 5) : '', (float) $e->hours, (string) $e->note, $signed];
                 if ($this->matches($f['q'] ?? null, [$row[0], $row[4], $row[5], $row[10]])) {
                     $rows[] = $row;
                 }
@@ -210,10 +211,18 @@ class Datasets
                 ! empty($f['project_id']) ? __('proyecto :name', ['name' => Project::find($f['project_id'])?->code ?? '#'.$f['project_id']]) : null]),
             'columns' => [['h' => __('Persona'), 't' => 'text'], ['h' => __('Semana que termina'), 't' => 'date'], ['h' => __('Parte'), 't' => 'text'], ['h' => __('Estado'), 't' => 'text'],
                 ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Servicio'), 't' => 'text'], ['h' => __('Fecha'), 't' => 'date'], ['h' => __('Desde'), 't' => 'text'],
-                ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Nota'), 't' => 'text']],
+                ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Nota'), 't' => 'text'], ['h' => __('Firmas digitales'), 't' => 'text']],
             'rows' => $rows,
-            'total' => [__('Total'), '', '', '', '', '', '', '', '', round(array_sum(array_column($rows, 9)), 2), ''],
+            'total' => [__('Total'), '', '', '', '', '', '', '', '', round(array_sum(array_column($rows, 9)), 2), '', ''],
         ];
+    }
+
+    /** "Enviada: Ana (2026-10-21) · Aprobada: Jorge (2026-10-22, código)": las firmas digitales de la hoja en su ciclo actual. */
+    private function signatureLine(Timesheet $s): string
+    {
+        $labels = ['sheet.submit' => __('Enviada'), 'sheet.approve' => __('Aprobada'), 'sheet.return' => __('Devuelta')];
+        return collect(app(\App\Services\SignatureService::class)->forSheet($s))->map(fn ($x) => ($labels[$x['action']] ?? $x['action']).': '.$x['by']
+            .' ('.substr($x['at'], 0, 10).($x['method'] === 'email_code' ? ', '.__('código por correo') : '').')')->implode(' · ');
     }
 
     private function invoices(User $u, array $p = []): array

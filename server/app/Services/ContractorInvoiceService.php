@@ -7,6 +7,7 @@ use App\Mail\BrandedMail;
 use App\Models\CommissionResult;
 use App\Models\ContractorInvoice;
 use App\Models\Integration;
+use App\Models\Signature;
 use App\Models\Timesheet;
 use App\Models\User;
 use App\Services\Accountisi\AccountisiClient;
@@ -27,7 +28,11 @@ use Illuminate\Validation\ValidationException;
  */
 class ContractorInvoiceService
 {
-    public function create(User $worker, string $from, string $to): ContractorInvoice
+    /**
+     * $signer y $request: quien firma la factura con su contraseña (el consultor, o el dueño si la genera por él). La firma queda ligada a la
+     * factura y sale en el PDF.
+     */
+    public function create(User $worker, string $from, string $to, ?User $signer = null, ?\Illuminate\Http\Request $request = null): ContractorInvoice
     {
         if ($worker->worker_type !== 'consultant') {
             throw ValidationException::withMessages(['user' => __('Solo los consultores generan factura; los empleados no.')]);
@@ -68,7 +73,7 @@ class ContractorInvoiceService
         $ivu = $terms->ivu_agent ? round($ivuBase * (float) $terms->ivu_pct / 100, 2) : 0.0;
         $issued = now($company->timezone)->toDateString();
 
-        $invoice = \Illuminate\Support\Facades\DB::transaction(function () use ($company, $worker, $from, $to, $issued, $terms, $lines, $gross, $retention, $ivu, $sheets, $commissions) {
+        $invoice = \Illuminate\Support\Facades\DB::transaction(function () use ($company, $worker, $from, $to, $issued, $terms, $lines, $gross, $retention, $ivu, $sheets, $commissions, $signer, $request) {
             $seq = ContractorInvoice::where('company_id', $company->id)->whereYear('issued_on', substr($issued, 0, 4))->count() + 1;
             $inv = ContractorInvoice::create([
                 'company_id' => $company->id, 'user_id' => $worker->id,
@@ -80,6 +85,10 @@ class ContractorInvoiceService
             ]);
             Timesheet::whereIn('id', $sheets->pluck('id'))->update(['contractor_invoice_id' => $inv->id]);
             CommissionResult::whereIn('id', $commissions->pluck('id'))->update(['status' => 'invoiced', 'contractor_invoice_id' => $inv->id]);
+            if ($signer && $request) {
+                app(SignatureService::class)->record($request, $signer, 'invoice.create', $inv, ['number' => $inv->number, 'gross' => (float) $inv->gross, 'net' => (float) $inv->net,
+                    'period_from' => $from, 'period_to' => $to, 'worker_id' => $worker->id]);
+            }
             return $inv;
         });
 
@@ -133,8 +142,9 @@ class ContractorInvoiceService
         if ($company->logo_path && Storage::disk('public')->exists($company->logo_path)) {
             $logo = 'data:'.Storage::disk('public')->mimeType($company->logo_path).';base64,'.base64_encode(Storage::disk('public')->get($company->logo_path));
         }
+        $signature = Signature::where('subject_type', 'contractorinvoice')->where('subject_id', $inv->id)->where('action', 'invoice.create')->latest('id')->first();
         $html = view('pdf.contractor-invoice', ['inv' => $inv, 'worker' => $inv->user, 'terms' => $inv->user->terms,
-            'brand' => $brand, 'logo' => $logo, 'company' => $company, 'detail' => $this->hoursDetail($inv)])->render();
+            'brand' => $brand, 'logo' => $logo, 'company' => $company, 'detail' => $this->hoursDetail($inv), 'signature' => $signature])->render();
         $opts = new Options();
         $opts->set('isRemoteEnabled', false);
         $opts->set('defaultFont', 'DejaVu Sans');

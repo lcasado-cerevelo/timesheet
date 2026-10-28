@@ -8,6 +8,7 @@ use App\Models\Timesheet;
 use App\Services\ApprovalService;
 use App\Services\ExternalApprovalService;
 use App\Services\SheetService;
+use App\Services\SignatureService;
 use App\Models\Company;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
@@ -15,7 +16,8 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Páginas públicas de aprobación (sin cuenta). Abrir el enlace no aprueba nada:
- * la decisión se toma con un botón en la página (POST).
+ * la decisión se toma con un botón en la página (POST), y siempre después de verificar el código de 6 dígitos que llega al correo del
+ * aprobador: ese código es su firma digital (se guarda quién, cuándo y desde dónde, como las firmas con contraseña).
  */
 class ApprovalPageController extends Controller
 {
@@ -32,7 +34,7 @@ class ApprovalPageController extends Controller
         if ($err) {
             return $this->invalid($token, $err);
         }
-        if ($this->needsCode($token, $sheet) && ! $this->codeOk($token)) {
+        if (! $this->codeOk($token)) {
             return $this->codeView($token, $plain, 'a', $sheet->company);
         }
         return view('approval.sheet', $this->sheetData($token, $sheet, $plain));
@@ -60,13 +62,13 @@ class ApprovalPageController extends Controller
         return $ok ? redirect()->back() : redirect()->back()->withErrors(['code' => __('El código no es correcto o venció.')]);
     }
 
-    public function approve(string $plain)
+    public function approve(Request $request, string $plain)
     {
         [$token, $sheet, $err] = $this->loadSheetToken($plain);
         if ($err) {
             return $this->invalid($token, $err);
         }
-        if ($this->needsCode($token, $sheet) && ! $this->codeOk($token)) {
+        if (! $this->codeOk($token)) {
             return redirect()->back()->withErrors(['code' => __('Verifica el código primero.')]);
         }
         try {
@@ -74,6 +76,7 @@ class ApprovalPageController extends Controller
         } catch (ValidationException $e) {
             return $this->invalid($token, collect($e->errors())->flatten()->first());
         }
+        app(SignatureService::class)->recordByCode($request, $token->approver, 'sheet.approve', $after, ['version' => (int) $token->sheet_version, 'stage' => 'external', 'via' => 'link']);
         $name = $sheet->user->name;
         $week = $sheet->weekLabel();
         // Con varios aprobadores, la hoja puede seguir esperando a los demás.
@@ -89,14 +92,15 @@ class ApprovalPageController extends Controller
         if ($err) {
             return $this->invalid($token, $err);
         }
-        if ($this->needsCode($token, $sheet) && ! $this->codeOk($token)) {
+        if (! $this->codeOk($token)) {
             return redirect()->back()->withErrors(['code' => __('Verifica el código primero.')]);
         }
         try {
-            $this->sheets->return($sheet, $token->approver, null, 'link', (string) $request->input('comment'), (int) $token->sheet_version);
+            $returned = $this->sheets->return($sheet, $token->approver, null, 'link', (string) $request->input('comment'), (int) $token->sheet_version);
         } catch (ValidationException $e) {
             return redirect()->back()->withErrors($e->errors())->withInput();
         }
+        app(SignatureService::class)->recordByCode($request, $token->approver, 'sheet.return', $returned, ['version' => (int) $token->sheet_version, 'comment' => (string) $request->input('comment'), 'stage' => 'external', 'via' => 'link']);
         return view('approval.done', ['brand' => $sheet->company->brand(), 'title' => __('Hoja devuelta'),
             'message' => __('Devolviste la hoja de :name. Le avisamos para que la corrija y la vuelva a enviar.', ['name' => $sheet->user->name])]);
     }
@@ -146,7 +150,8 @@ class ApprovalPageController extends Controller
                 continue;
             }
             try {
-                $this->sheets->approve($sheet, $token->approver, null, 'link-batch', (int) $version);
+                $after = $this->sheets->approve($sheet, $token->approver, null, 'link-batch', (int) $version);
+                app(SignatureService::class)->recordByCode($request, $token->approver, 'sheet.approve', $after, ['version' => (int) $version, 'stage' => 'external', 'via' => 'batch']);
                 $approved++;
             } catch (ValidationException) {
                 $skipped++;
@@ -164,10 +169,11 @@ class ApprovalPageController extends Controller
         }
         abort_unless($this->external->involves($sheet, $token->approver), 404);
         try {
-            $this->sheets->approve($sheet, $token->approver, null, 'link-batch', (int) $request->input('version'));
+            $after = $this->sheets->approve($sheet, $token->approver, null, 'link-batch', (int) $request->input('version'));
         } catch (ValidationException $e) {
             return redirect('/b/'.$plain)->withErrors(collect($e->errors())->flatten()->all());
         }
+        app(SignatureService::class)->recordByCode($request, $token->approver, 'sheet.approve', $after, ['version' => (int) $request->input('version'), 'stage' => 'external', 'via' => 'batch']);
         return redirect('/b/'.$plain)->with('status', __('Hoja aprobada.'));
     }
 
@@ -179,10 +185,11 @@ class ApprovalPageController extends Controller
         }
         abort_unless($this->external->involves($sheet, $token->approver), 404);
         try {
-            $this->sheets->return($sheet, $token->approver, null, 'link-batch', (string) $request->input('comment'), (int) $request->input('version'));
+            $returned = $this->sheets->return($sheet, $token->approver, null, 'link-batch', (string) $request->input('comment'), (int) $request->input('version'));
         } catch (ValidationException $e) {
             return redirect('/b/'.$plain)->withErrors(collect($e->errors())->flatten()->all());
         }
+        app(SignatureService::class)->recordByCode($request, $token->approver, 'sheet.return', $returned, ['version' => (int) $request->input('version'), 'comment' => (string) $request->input('comment'), 'stage' => 'external', 'via' => 'batch']);
         return redirect('/b/'.$plain)->with('status', __('Hoja devuelta.'));
     }
 
@@ -232,14 +239,6 @@ class ApprovalPageController extends Controller
         return [$token, $sheet, null];
     }
 
-    private function needsCode(ApprovalToken $token, Timesheet $sheet): bool
-    {
-        $limit = $sheet->company->rules()->get('second_approval_hours');
-        $mine = $this->external->entriesOf($sheet, $token->approver);
-        $hours = $mine->isNotEmpty() ? (float) $mine->sum('hours') : (float) $sheet->total_hours;
-        return $token->approver->require_code || ($limit !== null && $hours > (float) $limit);
-    }
-
     private function codeOk(ApprovalToken $token): bool
     {
         return $token->code_verified_at !== null && $token->code_verified_at->gt(now()->subMinutes(30));
@@ -253,6 +252,7 @@ class ApprovalPageController extends Controller
             'brand' => $sheet->company->brand(), 'plain' => $plain, 'sheet' => $sheet,
             'summary' => $this->approvals->sheetSummary($sheet, $entries),
             'byDay' => $entries->groupBy(fn ($e) => $e->work_date->toDateString()),
+            'signatures' => app(SignatureService::class)->forSheet($sheet),
         ];
     }
 
