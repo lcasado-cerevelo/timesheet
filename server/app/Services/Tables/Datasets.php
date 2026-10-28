@@ -21,7 +21,7 @@ class Datasets
     /** Quién puede pedir cada tabla: 'any' o 'owner'. */
     public const ACCESS = [
         'report' => 'any', 'week' => 'any', 'invoices' => 'any', 'sheets' => 'any',
-        'pending' => 'owner', 'projects' => 'owner', 'people' => 'owner', 'approvers' => 'owner', 'customers' => 'owner',
+        'pending' => 'owner', 'commissions' => 'owner', 'projects' => 'owner', 'people' => 'owner', 'approvers' => 'owner', 'customers' => 'owner',
     ];
 
     public function allowed(string $dataset, User $user): bool
@@ -38,6 +38,7 @@ class Datasets
             'sheets' => $this->sheets($user, $p),
             'invoices' => $this->invoices($user, $p),
             'pending' => $this->pending($user, $p),
+            'commissions' => $this->commissions($user, $p),
             'projects' => $this->projects($user, $p),
             'people' => $this->people($user, $p),
             'approvers' => $this->approvers($user, $p),
@@ -318,6 +319,35 @@ class Datasets
             'columns' => [['h' => __('Nombre'), 't' => 'text'], ['h' => __('Correo'), 't' => 'text'], ['h' => __('Pide código extra'), 't' => 'bool'], ['h' => __('Activo'), 't' => 'bool']],
             'rows' => $list->map(fn ($a) => [$a->name, $a->email, (bool) $a->require_code, (bool) $a->active])->all(),
             'total' => null,
+        ];
+    }
+
+    /** Comisiones calculadas al completar tareas (no incluye las que no dieron nada, salvo con status=none). */
+    private function commissions(User $u, array $p = []): array
+    {
+        $f = validator($p, ['q' => 'nullable|string|max:100', 'status' => 'nullable|in:open,pending,released,invoiced,paid,none,all', 'user_id' => 'nullable|integer',
+            'project_id' => 'nullable|integer'])->validate();
+        $status = $f['status'] ?? null;
+        $labels = ['pending' => __('Por liberar'), 'released' => __('Liberada'), 'invoiced' => __('Facturada'), 'paid' => __('Pagada'), 'none' => __('Sin comisión')];
+        $list = \App\Models\CommissionResult::with('user:id,name', 'project:id,code,name', 'task:id,name')->where('company_id', $u->company_id)
+            ->when($status === 'open', fn ($x) => $x->whereIn('status', ['pending', 'released']))
+            ->when($status && ! in_array($status, ['open', 'all'], true), fn ($x) => $x->where('status', $status))
+            ->when(! $status, fn ($x) => $x->where('status', '!=', 'none'))
+            ->when(! empty($f['user_id']), fn ($x) => $x->where('user_id', $f['user_id']))
+            ->when(! empty($f['project_id']), fn ($x) => $x->where('project_id', $f['project_id']))
+            ->orderByDesc('completed_on')->orderBy('id')->get()
+            ->filter(fn ($r) => $this->matches($f['q'] ?? null, [$r->user?->name, $r->project?->code, $r->project?->name, $r->task?->name]))->values();
+        return [
+            'title' => __('Comisiones'), 'subtitle' => __(':count comisión(es)', ['count' => $list->count()]).$this->describe([$this->txt($f),
+                $status && $status !== 'all' ? ($status === 'open' ? __('por liberar y liberadas') : ($labels[$status] ?? $status)) : null]),
+            'columns' => [['h' => __('Persona'), 't' => 'text'], ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Tarea'), 't' => 'text'], ['h' => __('Completada'), 't' => 'date'],
+                ['h' => __('Horas de la persona'), 't' => 'hours'], ['h' => __('% del total'), 't' => 'text'], ['h' => __('Comisión'), 't' => 'money'],
+                ['h' => __('Ahorro'), 't' => 'money'], ['h' => __('Ajuste'), 't' => 'money'], ['h' => __('Total'), 't' => 'money'], ['h' => __('Estado'), 't' => 'text']],
+            'rows' => $list->map(fn ($r) => [$r->user?->name, $r->project?->code.' · '.$r->project?->name, $r->task?->name, $r->completed_on->toDateString(), (float) $r->user_hours,
+                rtrim(rtrim(number_format((float) $r->user_pct, 2, '.', ''), '0'), '.').'%', (float) $r->commission_amount, (float) $r->savings_amount, (float) $r->adjustment,
+                (float) $r->total, $labels[$r->status] ?? $r->status])->all(),
+            'total' => ['', '', '', '', '', '', round((float) $list->sum('commission_amount'), 2), round((float) $list->sum('savings_amount'), 2),
+                round((float) $list->sum('adjustment'), 2), round((float) $list->sum('total'), 2), __('Total')],
         ];
     }
 

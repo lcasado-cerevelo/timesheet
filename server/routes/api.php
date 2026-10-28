@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\ClientTimesheetController;
+use App\Http\Controllers\Api\CommissionController;
 use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\EntryController;
 use App\Http\Controllers\Api\ContractorInvoiceController;
@@ -62,6 +63,9 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
     Route::get('/tasks', [TaskController::class, 'index']);
     Route::get('/tasks/{task}/completion', [TaskController::class, 'completion']);
     Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->middleware('throttle:20,1');
+
+    // Lo que ve cada persona de sus comisiones (solo lo suyo)
+    Route::get('/me/commissions', [CommissionController::class, 'mine']);
 
     // Captura de horas (cualquier usuario)
     Route::get('/projects', [ProjectController::class, 'index']);
@@ -145,6 +149,14 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::post('/projects/{project}/tasks', [TaskController::class, 'store']);
         Route::put('/tasks/{task}', [TaskController::class, 'update']);
         Route::delete('/tasks/{task}', [TaskController::class, 'destroy']);
+        Route::get('/commissions', [CommissionController::class, 'index']);
+        Route::post('/commissions', [CommissionController::class, 'store']);
+        Route::put('/commissions/{commission}', [CommissionController::class, 'update']);
+        Route::delete('/commissions/{commission}', [CommissionController::class, 'destroy']);
+        Route::get('/commission-results', [CommissionController::class, 'results']);
+        Route::post('/commission-results/{result}/release', [CommissionController::class, 'release'])->middleware('throttle:20,1');
+        Route::put('/commission-results/{result}', [CommissionController::class, 'adjust'])->middleware('throttle:20,1');
+        Route::post('/commission-results/{result}/paid', [CommissionController::class, 'paid'])->middleware('throttle:20,1');
         Route::post('/tasks/{task}/reopen', [TaskController::class, 'reopen'])->middleware('throttle:20,1');
 
         Route::get('/sheets-pending', [SheetController::class, 'pending']);

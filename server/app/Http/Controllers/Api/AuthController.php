@@ -161,6 +161,8 @@ class AuthController extends Controller
         $extra = $user->isApprover() ? ['approver_id' => $user->approver_profile_id, 'two_step' => true] : [];
         return $extra + [
             'internal_approver' => ! $user->isApprover() && $user->isInternalApprover(),
+            // Con comisión activa, la persona ve la pantalla "Mis comisiones".
+            'has_commissions' => ! $user->isApprover() && \App\Models\Commission::where('user_id', $user->id)->where('active', true)->exists(),
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,

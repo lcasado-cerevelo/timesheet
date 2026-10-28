@@ -9,7 +9,10 @@ use App\Models\Signature;
 use App\Models\Task;
 use App\Models\Timesheet;
 use App\Models\User;
+use App\Services\CommissionService;
 use App\Services\InternalApprovalService;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Support\Facades\DB;
 use App\Services\SignatureService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -68,11 +71,31 @@ class TaskController extends Controller
         ])->values());
     }
 
-    /** Lo que se necesita para completar: la fecha por defecto (la de las últimas horas) y cuántas horas siguen sin aprobar. */
+    /**
+     * Lo que se necesita para completar: la fecha por defecto (la de las últimas horas), cuántas horas siguen sin aprobar y, si la tarea
+     * aplica comisión, el cálculo de cada persona como saldría con la fecha elegida (?completed_on=).
+     */
     public function completion(Request $request, Task $task)
     {
-        $this->authorizeComplete($request->user(), $task);
-        return response()->json($this->completionInfo($task));
+        $user = $request->user();
+        $this->authorizeComplete($user, $task);
+        $request->validate(['completed_on' => 'nullable|date_format:Y-m-d']);
+        $info = $this->completionInfo($task);
+        $on = $request->query('completed_on') ?: $info['default_completed_on'];
+        $info['commissions'] = $this->commissionPreview($task, $on, $user);
+        return response()->json($info);
+    }
+
+    private function commissionPreview(Task $task, string $on, User $user): array
+    {
+        $svc = app(CommissionService::class);
+        $commissions = $svc->applicable($task);
+        if ($commissions->isEmpty()) {
+            return ['applicable' => false, 'rows' => [], 'payable' => false, 'pending_hours' => 0, 'can_release' => $user->isOwner()];
+        }
+        $eval = $svc->evaluate($task, $on, $commissions);
+        return ['applicable' => true, 'rows' => array_map([CommissionService::class, 'rowPayload'], $eval['rows']), 'payable' => $svc->payable($eval),
+            'pending_hours' => $eval['pending_hours'], 'goal_hours' => $eval['goal_hours'], 'can_release' => $user->isOwner()];
     }
 
     public function complete(Request $request, Task $task)
@@ -82,14 +105,41 @@ class TaskController extends Controller
         if (! $task->active) {
             abort(422, __('Esta tarea ya está completada.'));
         }
-        $data = $request->validate(['completed_on' => 'nullable|date_format:Y-m-d']);
+        $data = $request->validate(['completed_on' => 'nullable|date_format:Y-m-d', 'release' => 'nullable|boolean']);
         $info = $this->completionInfo($task);
         $on = $data['completed_on'] ?? $info['default_completed_on'];
         if ($on > $info['today']) {
             throw ValidationException::withMessages(['completed_on' => __('La fecha de completada no puede ser futura.')]);
         }
-        app(SignatureService::class)->sign($request, $user, 'task.complete', $task, ['completed_on' => $on, 'hours' => $info['total_hours']]);
-        $task->update(['active' => false, 'completed_on' => $on]);
+
+        // Comisiones: se calculan con horas aprobadas. Con comisión que pagar, el dueño decide si la libera; un aprobador interno
+        // completa la tarea y la comisión queda pendiente de que el dueño la libere.
+        $svc = app(CommissionService::class);
+        $commissions = $svc->applicable($task);
+        $eval = $commissions->isNotEmpty() ? $svc->evaluate($task, $on, $commissions) : null;
+        $release = false;
+        if ($eval) {
+            if ($eval['pending_hours'] > 0) {
+                $this->refuse(__('Hay :h h de esta tarea sin aprobar: apruébalas antes de completarla, porque la comisión se calcula con horas aprobadas.', ['h' => rtrim(rtrim(number_format($eval['pending_hours'], 2, '.', ''), '0'), '.')]),
+                    'pending_hours', $this->commissionPreview($task, $on, $user));
+            }
+            if ($svc->payable($eval) && $user->isOwner()) {
+                if (($data['release'] ?? null) !== true) {
+                    $this->refuse(__('Esta tarea genera comisión: decide si la liberas, o revísala antes de completar la tarea.'), 'commission_decision_required', $this->commissionPreview($task, $on, $user));
+                }
+                $release = true;
+            }
+        }
+
+        $sig = app(SignatureService::class);
+        DB::transaction(function () use ($sig, $request, $user, $task, $on, $info, $eval, $release, $svc) {
+            $sig->sign($request, $user, 'task.complete', $task, ['completed_on' => $on, 'hours' => $info['total_hours'], 'release' => $release,
+                'commission_total' => $eval ? round(array_sum(array_column($eval['rows'], 'total')), 2) : 0]);
+            $task->update(['active' => false, 'completed_on' => $on]);
+            if ($eval) {
+                $svc->store($eval, $release, $user);
+            }
+        });
         return response()->json(self::payload($task->refresh(), true));
     }
 
@@ -101,9 +151,22 @@ class TaskController extends Controller
         if ($task->active) {
             abort(422, __('Esta tarea ya está abierta.'));
         }
+        $svc = app(CommissionService::class);
+        if ($svc->hasLockedResults($task)) {
+            abort(422, __('Esta tarea tiene comisiones ya facturadas o pagadas: no se puede reabrir.'));
+        }
         app(SignatureService::class)->sign($request, $user, 'task.reopen', $task, ['was_completed_on' => $task->completed_on?->toDateString()]);
-        $task->update(['active' => true, 'completed_on' => null]);
+        DB::transaction(function () use ($task, $svc) {
+            $svc->discardFor($task);
+            $task->update(['active' => true, 'completed_on' => null]);
+        });
         return response()->json(self::payload($task->refresh(), true));
+    }
+
+    /** 422 con un código y el cálculo, para que la pantalla pregunte o avise. */
+    private function refuse(string $message, string $code, array $commissions): never
+    {
+        throw new HttpResponseException(response()->json(['message' => $message, 'code' => $code, 'commissions' => $commissions], 422));
     }
 
     private function completionInfo(Task $task): array
