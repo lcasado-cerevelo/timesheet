@@ -80,14 +80,13 @@ class InternalBeforeExternalTest extends TestCase
         $this->assertCount(0, $this->getJson('/api/approver/sheets?status=all')->assertOk()->json());
         $this->getJson('/api/approver/sheets/'.$sheet->id)->assertNotFound();
 
-        // Un cambio de la persona durante la etapa interna avisa a la interna, no a la externa.
+        // La persona no puede cambiar la hoja mientras espera a la interna: no hay cambios que avisar.
         Sanctum::actingAs($this->worker);
         $entry = $sheet->entries()->first();
-        $this->putJson('/api/entries/'.$entry->id, $this->entry(['start_time' => '07:00']))->assertOk();
-        Carbon::setTestNow(now()->addMinutes(11));
-        $this->assertSame(1, app(SheetService::class)->sendDueChangeNotices());
+        $this->putJson('/api/entries/'.$entry->id, $this->entry(['start_time' => '07:00']))->assertStatus(423);
+        $this->assertSame(0, app(SheetService::class)->sendDueChangeNotices());
         $this->assertCount(0, $this->mails('mail.approval-request'));
-        $this->assertCount(2, $this->mails('mail.internal-approval-request', 'sara@cerevelo.test'));
+        $this->assertCount(1, $this->mails('mail.internal-approval-request', 'sara@cerevelo.test'));
 
         // Pasan los días: el recordatorio diario tampoco llega al externo.
         Carbon::setTestNow(now()->addDays(10));

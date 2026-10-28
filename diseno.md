@@ -616,3 +616,9 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - Al escribir un comentario en el cuadro de devolución, el botón **Approve se desactiva** hasta que se borre el comentario (no se aprueba por equivocación). Devolver sigue exigiendo comentario.
 - Una hoja que ya está **con el cliente** (etapa externa) no muestra al dueño los botones de aprobar ni devolver: «Esta hoja está con el cliente; ahora decide el aprobador externo». (Solo la pantalla: el servidor sigue aceptando la decisión del dueño por si hiciera falta.)
 - **Reabrir una hoja aprobada** (`POST /api/sheets/{hoja}/reopen`, solo el dueño, con su contraseña y un motivo): vuelve a la persona como devuelta con el motivo, se registra en el historial y en la firma (`sheet.reopen`), y la persona debe reenviarla y aprobarse de nuevo. No se reabre lo ya facturado ni lo que tiene horas de una tarea con comisión calculada. El aprobador externo no ve la hoja reabierta (cuenta como devolución de la etapa interna).
+
+## Hojas enviadas: bloqueadas (cambio de regla)
+- Una hoja **enviada** (a la espera de decisión) ya no se puede cambiar, igual que una aprobada: ni líneas nuevas, ni cambiar o borrar horas, ni días. Solo se vuelve a poder editar si se **devuelve** (o si el dueño la reabre). Antes una hoja enviada se podía editar y eso subía la versión y avisaba al aprobador; ahora eso no ocurre desde la pantalla ni la app (el servidor responde 423 «Esta hoja ya se envió y no se puede cambiar»).
+- Con envío por partes, los días de una parte enviada quedan bloqueados y los días abiertos siguen editables.
+- La web dice «Enviada a aprobación y bloqueada. No se puede cambiar a menos que te la devuelvan.»; la app móvil bloquea esas semanas y días con el mismo motivo.
+- Si una persona envía algo mal, la regresa quien la revisa (devolver) o el dueño (devolver / reabrir). El código de avisos de cambio sigue en el servidor pero ya no se alcanza por uso normal.

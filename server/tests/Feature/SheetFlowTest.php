@@ -79,44 +79,22 @@ class SheetFlowTest extends TestCase
         TimeEntry::find($e['id'])->update(['hours' => 1]);
     }
 
-    public function test_change_while_submitted_bumps_version_invalidates_link_and_sends_a_changed_notice(): void
+    public function test_a_sent_sheet_cannot_be_changed_until_it_is_returned(): void
     {
         [$sheet, $e] = $this->submitted();
-        $old = $this->tokenFromMail($this->lastMailHtml('mail.approval-request'));
-        $this->assertSame(1, $sheet->version);
+        $this->putJson('/api/entries/'.$e['id'], $this->entry(['end_time' => '15:00']))->assertStatus(423)->assertJsonPath('code', 'sheet_locked');
+        $this->postJson('/api/entries', $this->entry(['start_time' => '17:00', 'end_time' => '18:00']))->assertStatus(423);
+        $this->deleteJson('/api/entries/'.$e['id'])->assertStatus(423);
+        $this->assertSame(1, $sheet->fresh()->version);
+        $this->assertEquals(8.0, (float) $sheet->fresh()->total_hours);
+        $this->assertTrue($this->getJson('/api/sheets/'.$sheet->id)->json('locked'));
+        Mail::assertSentCount(1);                                           // nada cambió: no hay aviso de cambio
 
+        // Devuelta, la persona puede corregirla otra vez.
+        Timesheet::whereKey($sheet->id)->update(['status' => 'returned']);
         $this->putJson('/api/entries/'.$e['id'], $this->entry(['end_time' => '15:00']))->assertOk();
-        $this->assertSame(2, $sheet->fresh()->version);
-        $this->assertSame('submitted', $sheet->fresh()->status);
-        $this->get('/a/'.$old)->assertStatus(410);                         // enlace viejo anulado
-
-        // Aún no se avisa: hay una espera de 10 minutos para no mandar un email por cada línea.
-        Mail::assertSentCount(1);
-        $this->artisan('approvals:notify-changes')->assertSuccessful();
-        Mail::assertSentCount(1);
-
-        Carbon::setTestNow(now()->addMinutes(11));
-        $this->artisan('approvals:notify-changes')->assertSuccessful();
-        Mail::assertSentCount(2);
-        $html = $this->lastMailHtml('mail.approval-request');
-        $this->assertStringContainsString('Esta hoja cambió', $html);
-        $this->assertStringContainsString('Cambiada', $html);
-        $new = $this->tokenFromMail($html);
-        $this->assertNotSame($old, $new);
-        $this->get('/a/'.$new)->assertOk();
     }
 
-    public function test_several_quick_edits_produce_a_single_notice(): void
-    {
-        [$sheet, $e] = $this->submitted();
-        $this->putJson('/api/entries/'.$e['id'], $this->entry(['end_time' => '15:00']))->assertOk();
-        $this->putJson('/api/entries/'.$e['id'], $this->entry(['end_time' => '14:00']))->assertOk();
-        $this->postJson('/api/entries', $this->entry(['start_time' => '17:00', 'end_time' => '18:00']))->assertCreated();
-        Carbon::setTestNow(now()->addMinutes(11));
-        $this->artisan('approvals:notify-changes');
-        $this->artisan('approvals:notify-changes');
-        Mail::assertSentCount(2);   // el original + un solo aviso de cambio
-    }
 
     public function test_return_needs_a_comment_then_worker_fixes_and_resubmits(): void
     {
@@ -149,7 +127,9 @@ class SheetFlowTest extends TestCase
     public function test_stale_version_cannot_be_approved(): void
     {
         [$sheet, $e] = $this->submitted();
+        app(SheetService::class)->return($sheet->fresh(), $this->approver, null, 'link', 'Corrige las horas.', 1);
         $this->putJson('/api/entries/'.$e['id'], $this->entry(['end_time' => '15:00']))->assertOk();
+        $this->postJson('/api/sheets/'.$sheet->id.'/submit')->assertOk();   // reenviada: versión 2
         $this->expectException(\Illuminate\Validation\ValidationException::class);
         app(SheetService::class)->approve($sheet->fresh(), $this->approver, null, 'link', 1);
     }
@@ -248,7 +228,7 @@ class SheetFlowTest extends TestCase
         $this->company->update(['rules' => ['week_starts_on' => 1, 'second_approval_hours' => 9]]);
         $this->actingAs($this->worker);
         Sanctum::actingAs($this->worker);
-        $this->putJson('/api/entries/'.$e1['id'], $this->entry(['end_time' => '15:00']))->assertOk();   // Ana: versión 2
+        Timesheet::whereKey($s1->id)->update(['version' => 2]);   // Ana: la hoja cambió de versión después de verse
         $this->post('/b/'.$plain.'/approve-all', ['items' => [$s1->id.':1', $s2 = $e2['timesheet_id'].':1']])
             ->assertOk()->assertSee('Aprobadas: 0');
         $this->assertSame('submitted', $s1->fresh()->status);

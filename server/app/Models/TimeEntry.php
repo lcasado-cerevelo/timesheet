@@ -71,7 +71,7 @@ class TimeEntry extends Model
         return $this->belongsTo(Timesheet::class);
     }
 
-    /** Segunda barrera: aunque algo llame al modelo directo, una hoja aprobada no se toca. */
+    /** Segunda barrera: aunque algo llame al modelo directo, una hoja enviada o aprobada no se toca. */
     protected static function booted(): void
     {
         $guard = function (TimeEntry $e) {

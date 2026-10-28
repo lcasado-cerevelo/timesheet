@@ -242,7 +242,7 @@ class InternalApprovalTest extends TestCase
         $this->assertSame(['Sara Díaz'], array_column($this->getJson('/api/sheets/'.$sheet->id)->json('internal.0.approvers'), 'name'));
     }
 
-    public function test_a_change_during_the_internal_stage_invalidates_approvals_and_notifies_again(): void
+    public function test_a_sheet_in_the_internal_stage_cannot_be_changed_so_approvals_stay_valid(): void
     {
         $this->setUpInternal();
         $this->addSecondProject();
@@ -253,21 +253,10 @@ class InternalApprovalTest extends TestCase
 
         Sanctum::actingAs($this->worker);
         $entry = $sheet->entries()->where('project_id', $this->project->id)->first();
-        $this->putJson('/api/entries/'.$entry->id, $this->entry(['start_time' => '07:00']))->assertOk();
-        $this->assertSame(2, $sheet->fresh()->version);
-        $this->assertSame(['pending', 'pending'], array_column($this->getJson('/api/sheets/'.$sheet->id)->json('internal'), 'status'));
-        $this->assertContains('internal_invalidated', $sheet->events()->pluck('type')->all());
-
-        // La versión vieja ya no se aprueba.
-        Sanctum::actingAs($this->sara);
-        $this->postJson('/api/internal/sheets/'.$sheet->id.'/approve', ['version' => 1])->assertStatus(422)->assertJsonValidationErrors('version');
-
-        // Aviso diferido igual que con el externo.
+        $this->putJson('/api/entries/'.$entry->id, $this->entry(['start_time' => '07:00']))->assertStatus(423);
+        $this->assertSame(1, $sheet->fresh()->version);
+        $this->assertSame(['approved', 'pending'], array_column($this->getJson('/api/sheets/'.$sheet->id)->json('internal'), 'status'));
         $this->assertSame($before, $this->mails('mail.internal-approval-request')->count());
-        Carbon::setTestNow(now()->addMinutes(11));
-        $this->assertSame(1, app(SheetService::class)->sendDueChangeNotices());
-        $this->assertSame($before + 2, $this->mails('mail.internal-approval-request')->count());
-        $this->assertStringContainsString('cambió', $this->mails('mail.internal-approval-request')->last()->render());
     }
 
     public function test_owner_can_override_in_the_internal_stage(): void

@@ -77,7 +77,7 @@ describe('reglas de captura (las mismas del servidor)', () => {
   test('futuro, muy atrás, semana aprobada, cruce y máximo del día', () => {
     expect(validateEntry({ project_id: 1, work_date: '2026-10-22', start_time: '08:00', end_time: '09:00' }, ctx()).join()).toMatch(/futuras/);
     expect(validateEntry({ project_id: 1, work_date: '2026-06-01', start_time: '08:00', end_time: '09:00' }, ctx()).join()).toMatch(/más atrás/);
-    expect(validateEntry({ project_id: 1, work_date: '2026-10-20', start_time: '08:00', end_time: '09:00' }, ctx({ lockedWeeks: new Set(['2026-10-25']) })).join()).toMatch(/aprobada/);
+    expect(validateEntry({ project_id: 1, work_date: '2026-10-20', start_time: '08:00', end_time: '09:00' }, ctx({ lockedWeeks: new Set(['2026-10-25']) })).join()).toMatch(/se envió/);
     const other = entry({ start_time: '08:00', end_time: '12:00', hours: 4 });
     expect(validateEntry({ project_id: 1, work_date: '2026-10-20', start_time: '11:00', end_time: '13:00' }, ctx({ sameDay: [other] })).join()).toMatch(/cruza/);
     expect(validateEntry({ project_id: 1, work_date: '2026-10-20', start_time: '12:00', end_time: '13:00' }, ctx({ sameDay: [other] }))).toEqual([]);
@@ -136,7 +136,7 @@ describe('sincronización sin conexión', () => {
     ]);
     expect(out).toHaveLength(4);
     expect(out.find((e) => e.uuid === ok.uuid)).toMatchObject({ sync: 'synced', id: 7 });
-    expect(out.find((e) => e.uuid === locked.uuid)).toMatchObject({ sync: 'rejected', reject_reason: expect.stringMatching(/aprobada/) });
+    expect(out.find((e) => e.uuid === locked.uuid)).toMatchObject({ sync: 'rejected', reject_reason: expect.stringMatching(/se envió/) });
     expect(out.find((e) => e.uuid === bad.uuid)?.reject_reason).toBe('Pasa del máximo');
     expect(out.find((e) => e.uuid === untouched.uuid)?.sync).toBe('dirty');
   });

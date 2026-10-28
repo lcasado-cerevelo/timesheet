@@ -251,6 +251,7 @@ class PartialSubmissionTest extends TestCase
         $this->postJson("/api/sheets/{$a['timesheet_id']}/submit", ['note' => 'Del envío'])->assertOk();
         $id = $a['id'];
         $this->assertTrue(TimeEntry::find($id)->note_from_submission);
+        Timesheet::whereKey($a['timesheet_id'])->update(['status' => 'returned']);   // enviada no se toca: devuelta, sí
         // Si manda de vuelta la misma nota, sigue marcada; si la cambia, es suya.
         $this->putJson("/api/entries/$id", $this->entry(['note' => 'Del envío']))->assertOk();
         $this->assertTrue(TimeEntry::find($id)->note_from_submission);

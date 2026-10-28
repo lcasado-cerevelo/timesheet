@@ -52,14 +52,14 @@ describe('el móvil reconoce el día aprobado', () => {
   test('un día aprobado no se puede cambiar, pero los otros días de la misma semana sí', () => {
     const lockedDays = new Set(['2026-10-19']);
     const input = (d: string) => ({ project_id: 1, work_date: d, start_time: '08:00', end_time: '09:00' });
-    expect(validateEntry(input('2026-10-19'), ctx({ lockedDays })).join()).toMatch(/Ese día ya fue aprobado/);
+    expect(validateEntry(input('2026-10-19'), ctx({ lockedDays })).join()).toMatch(/Ese día ya se envió/);
     expect(validateEntry(input('2026-10-20'), ctx({ lockedDays }))).toEqual([]);
     expect(validateEntry(input('2026-10-22'), ctx({ lockedDays }))).toEqual([]);
   });
 
   test('una semana entera aprobada sigue diciendo semana', () => {
     expect(validateEntry({ project_id: 1, work_date: '2026-10-20', start_time: '08:00', end_time: '09:00' },
-      ctx({ lockedWeeks: new Set(['2026-10-25']), lockedDays: new Set(['2026-10-20']) })).join()).toMatch(/Esa semana ya fue aprobada/);
+      ctx({ lockedWeeks: new Set(['2026-10-25']), lockedDays: new Set(['2026-10-20']) })).join()).toMatch(/Esa semana ya se envió/);
   });
 });
 
@@ -80,7 +80,7 @@ describe('la hoja de la semana trae el estado de cada día (store)', () => {
     const ok = useEntries.getState().save({ project_id: 1, work_date: '2026-10-20', start_time: '08:00', end_time: '09:00' });
     expect(ok.errors).toEqual([]);
     const no = useEntries.getState().save({ project_id: 1, work_date: '2026-10-19', start_time: '10:00', end_time: '11:00' });
-    expect(no.errors.join()).toMatch(/Ese día ya fue aprobado/);
+    expect(no.errors.join()).toMatch(/Ese día ya se envió/);
   });
 
   test('si el servidor libera el día (parte devuelta), el bloqueo se quita', async () => {

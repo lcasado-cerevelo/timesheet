@@ -72,8 +72,8 @@ export const en: Record<keyof typeof es, string> = {
   'rules.bad_date': 'Invalid date.',
   'rules.future': 'Hours cannot be logged on future dates.',
   'rules.too_old': 'That date is further back than you are allowed to fill in.',
-  'rules.locked_week': 'That week is already approved and cannot be changed.',
-  'rules.locked_day': 'That day is already approved and cannot be changed.',
+  'rules.locked_week': 'That week was already sent (or approved) and cannot be changed.',
+  'rules.locked_day': 'That day was already sent (or approved) and cannot be changed.',
   'rules.total_no_times': 'This service is logged with the total hours of the day; it has no from or to time.',
   'rules.project_needs_times': 'That project requires from and to times; this service is logged with the day total.',
   'rules.write_hours': 'Enter the hours for the day.',
@@ -88,7 +88,7 @@ export const en: Record<keyof typeof es, string> = {
   'rules.below_min': 'The minimum duration of an entry is {m} min.',
 
   // sync
-  'sync.locked': 'The timesheet for that week is already approved.',
+  'sync.locked': 'The timesheet for that week was already sent (or approved).',
   'sync.rejected': 'The server did not accept this entry.',
   'entries.offline': 'Offline: it will sync when you are back online.',
   'entries.has_rejected': 'There are rejected entries: fix or discard them before submitting.',

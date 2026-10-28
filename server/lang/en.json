@@ -126,7 +126,6 @@
     "Esta hoja cambió después de enviarse. Revisa el correo más reciente.": "This sheet changed after it was submitted. Check the most recent email.",
     "Esta hoja cambió: :name, semana :week": "This sheet changed: :name, week :week",
     "Esta hoja se envió después de la fecha límite.": "This sheet was submitted after the deadline.",
-    "Esta hoja ya fue aprobada y no se puede cambiar.": "This sheet has already been approved and cannot be changed.",
     "Esta hoja ya fue decidida.": "This sheet has already been decided.",
     "Esta hoja ya fue enviada o aprobada.": "This sheet has already been submitted or approved.",
     "Esta hoja ya no está pendiente de aprobación.": "This sheet is no longer pending approval.",
@@ -441,5 +440,6 @@
     "Escribe el motivo para reabrir la hoja.": "Write the reason to reopen the timesheet.",
     "Solo se puede reabrir una hoja aprobada.": "Only an approved timesheet can be reopened.",
     "Esta hoja ya se facturó: no se puede reabrir.": "This timesheet was already invoiced: it cannot be reopened.",
-    "Esta hoja tiene horas de una tarea con comisión calculada: reabre primero esa tarea.": "This timesheet has hours of a task with a calculated commission: reopen that task first."
+    "Esta hoja tiene horas de una tarea con comisión calculada: reabre primero esa tarea.": "This timesheet has hours of a task with a calculated commission: reopen that task first.",
+    "Esta hoja ya se envió y no se puede cambiar.": "This timesheet was already sent and cannot be changed."
 }

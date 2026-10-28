@@ -55,8 +55,8 @@ class ProductionReadinessTest extends TestCase
         Sanctum::actingAs($this->worker);
         $e = $this->postJson('/api/entries', $this->entry())->assertCreated()->json();
         $this->postJson('/api/sheets/'.$e['timesheet_id'].'/submit')->assertOk();
-        $this->putJson('/api/entries/'.$e['id'], $this->entry(['end_time' => '15:00']))->assertOk();   // cambia después de enviada
-        Timesheet::whereKey($e['timesheet_id'])->update(['change_notice_due_at' => now()->subMinute()]);
+        // Un aviso de cambio pendiente (de antes de que las hojas enviadas se bloquearan): el cron lo manda.
+        Timesheet::whereKey($e['timesheet_id'])->update(['version' => 2, 'change_notice_due_at' => now()->subMinute()]);
         Mail::assertSentCount(1);
 
         app('auth')->forgetGuards();

@@ -349,30 +349,20 @@ class ExternalApprovalTest extends TestCase
         $this->assertCount(2, $this->mails('mail.approval-request', 'jorge@cliente.test'));
     }
 
-    public function test_a_change_during_the_external_stage_invalidates_approvals_and_notifies_everyone_again(): void
+    public function test_a_sheet_with_the_clients_cannot_be_changed_so_approvals_and_links_stay_valid(): void
     {
         $sheet = $this->submitBoth();
-        $oldJorge = $this->link('jorge@cliente.test');
+        $jorge = $this->link('jorge@cliente.test');
         $this->post('/a/'.$this->link('pablo@otro.test').'/approve')->assertOk();
         $before = $this->mails('mail.approval-request')->count();
 
         Sanctum::actingAs($this->worker);
         $entry = $sheet->entries()->where('project_id', $this->project->id)->first();
-        $this->putJson('/api/entries/'.$entry->id, $this->entry(['start_time' => '07:00']))->assertOk();
-        $this->assertSame(2, $sheet->fresh()->version);
-        $this->assertSame(0, $sheet->externalApprovals()->count());
-        $this->assertSame(['pending', 'pending'], array_column($this->getJson('/api/sheets/'.$sheet->id)->json('external'), 'status'));
-        $this->assertContains('external_invalidated', $sheet->events()->pluck('type')->all());
-        $this->get('/a/'.$oldJorge)->assertStatus(410);          // el enlace de la versión anterior ya no sirve
-
-        // Aviso diferido igual que antes.
+        $this->putJson('/api/entries/'.$entry->id, $this->entry(['start_time' => '07:00']))->assertStatus(423);
+        $this->assertSame(1, $sheet->fresh()->version);
+        $this->assertSame(1, $sheet->externalApprovals()->count());           // la aprobación de Pablo sigue
+        $this->get('/a/'.$jorge)->assertOk();                                  // el enlace sigue sirviendo
         $this->assertSame($before, $this->mails('mail.approval-request')->count());
-        Carbon::setTestNow(now()->addMinutes(11));
-        $this->assertSame(1, app(SheetService::class)->sendDueChangeNotices());
-        $this->assertSame($before + 3, $this->mails('mail.approval-request')->count());
-        $last = $this->mails('mail.approval-request', 'pablo@otro.test')->last()->render();
-        $this->assertStringContainsString('cambió', $last);
-        $this->assertStringNotContainsString('P-1', $last);
         $this->post('/a/'.$this->link('jorge@cliente.test').'/approve')->assertOk();
     }
 

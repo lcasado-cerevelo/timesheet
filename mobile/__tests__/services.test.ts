@@ -197,7 +197,7 @@ describe('cola de sincronización con service_id', () => {
   test('el mensaje de hoja aprobada sale en el idioma activo', () => {
     const e = entry();
     setLocaleValue('en');
-    expect(applySyncResults([e], [{ client_uuid: e.uuid, status: 'locked' }])[0].reject_reason).toBe('The timesheet for that week is already approved.');
+    expect(applySyncResults([e], [{ client_uuid: e.uuid, status: 'locked' }])[0].reject_reason).toBe('The timesheet for that week was already sent (or approved).');
     setLocaleValue('es');
   });
 });

@@ -70,8 +70,8 @@ export const es = {
   'rules.bad_date': 'Fecha inválida.',
   'rules.future': 'No se pueden registrar horas en fechas futuras.',
   'rules.too_old': 'Esa fecha queda más atrás de lo que se permite llenar.',
-  'rules.locked_week': 'Esa semana ya fue aprobada y no se puede cambiar.',
-  'rules.locked_day': 'Ese día ya fue aprobado y no se puede cambiar.',
+  'rules.locked_week': 'Esa semana ya se envió (o se aprobó) y no se puede cambiar.',
+  'rules.locked_day': 'Ese día ya se envió (o se aprobó) y no se puede cambiar.',
   'rules.total_no_times': 'Este servicio se registra con el total de horas del día; no lleva hora desde ni hasta.',
   'rules.project_needs_times': 'Ese proyecto exige hora desde y hasta; este servicio se registra con el total del día.',
   'rules.write_hours': 'Escribe las horas del día.',
@@ -86,7 +86,7 @@ export const es = {
   'rules.below_min': 'La duración mínima de una entrada es de {m} min.',
 
   // sincronización
-  'sync.locked': 'La hoja de esa semana ya fue aprobada.',
+  'sync.locked': 'La hoja de esa semana ya se envió (o se aprobó).',
   'sync.rejected': 'El servidor no aceptó esta entrada.',
   'entries.offline': 'Sin conexión: se sincroniza al volver.',
   'entries.has_rejected': 'Hay entradas rechazadas: corrígelas o descártalas antes de enviar.',

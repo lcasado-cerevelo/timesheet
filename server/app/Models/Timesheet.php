@@ -119,10 +119,10 @@ class Timesheet extends Model
         return $end.' ('.__('parte :n: del :from al :to', ['n' => $this->part, 'from' => $this->periodStarting(), 'to' => $this->periodEnding()]).')';
     }
 
-    /** Aprobada = bloqueada. */
+    /** Enviada (a la espera de decisión) o aprobada = bloqueada: ya no se cambia nada hasta que se devuelva (o el dueño la reabra). */
     public function isLocked(): bool
     {
-        return $this->status === self::APPROVED;
+        return in_array($this->status, [self::SUBMITTED, self::APPROVED], true);
     }
 
     public function isEditable(): bool
