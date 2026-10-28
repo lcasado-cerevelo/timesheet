@@ -151,6 +151,20 @@ class CommissionTest extends TestCase
         $this->assertEquals(65, $j->commission_amount);         // 13 h × $5
     }
 
+    public function test_going_over_the_goal_pays_nothing_even_if_the_person_did_their_share_with_the_assigned_percentage(): void
+    {
+        $this->setUpTask(['budget_hours' => 15, 'savings_goal_pct' => 20]);                  // meta: 12 h
+        $this->commission($this->jarvis, ['commission_basis' => 'assigned', 'percent_required' => 80]);
+        $this->teamHours(11, 2);                                                             // Jarvis hizo 11 (84.6%, cumple su parte) pero el equipo hizo 13 > 12
+        $this->complete(['release' => true])->assertOk();
+        $j = CommissionResult::where('user_id', $this->jarvis->id)->firstOrFail();
+        $this->assertTrue((bool) $j->met_share);
+        $this->assertFalse((bool) $j->met_goal);
+        $this->assertEquals(0, $j->commission_amount);
+        $this->assertEquals(0, $j->total);
+        $this->assertSame('none', $j->status);
+    }
+
     public function test_the_basis_of_the_commission_is_saved_from_the_api(): void
     {
         $this->setUpTask();
