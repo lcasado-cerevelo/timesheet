@@ -16,8 +16,9 @@ use Illuminate\Support\Collection;
  *
  * Condiciones del equipo (las mismas para todos): (1) el total de horas de la tarea no pasa de la meta (presupuesto × (1 − ahorro%))
  * más la tolerancia de la comisión; (2) la tarea se completa a más tardar en su fecha estimada. Si falla alguna, no hay bono para nadie.
- * - Bono por ahorro (del equipo): con las dos condiciones, toda persona con comisión en la tarea que trabajó al menos 1 hora lo gana:
- *   horas ahorradas (presupuesto − total) × % del ahorro × monto por hora.
+ * - Bono del equipo: con las dos condiciones, toda persona con comisión en la tarea que trabajó al menos 1 hora lo gana. Se paga sobre las
+ *   horas de la META (p. ej. 16 h de una tarea de 20 h con meta de ahorro del 20%), no sobre las horas ahorradas:
+ *   horas de la meta × parte del bono (% fijo, o el % que le correspondía) × monto por hora.
  * - Comisión por hora (individual): además, sus horas deben ser al menos su % mínimo del total trabajado; gana sus horas × extra por hora.
  */
 class CommissionService
@@ -62,6 +63,7 @@ class CommissionService
         $deadline = $task->estimated_end?->toDateString();
         $metDate = $deadline === null || $completedOn <= $deadline;
         $saved = round(max(0.0, $budget - $total), 2);
+        $bonusHours = $goal;   // el bono del equipo es sobre las horas de la meta, no sobre las ahorradas
 
         $rows = [];
         foreach ($commissions as $c) {
@@ -74,14 +76,14 @@ class CommissionService
             $metShare = $userPct + self::EPS >= (float) $c->percent_required;
             $team = $metGoal && $metDate && $workedMin;
             $sharePct = $c->savingsShare();
-            $savings = $team ? round($saved * $sharePct / 100 * (float) $c->savings_per_hour, 2) : 0.0;
+            $savings = $team ? round($bonusHours * $sharePct / 100 * (float) $c->savings_per_hour, 2) : 0.0;
             $commission = $team && $metShare ? round($userHours * (float) $c->extra_per_hour, 2) : 0.0;
             $rows[] = [
                 'commission_id' => $c->id, 'user_id' => $c->user_id, 'user_name' => $c->user->name, 'worker_type' => $c->user->worker_type,
                 'project_id' => $task->project_id, 'task_id' => $task->id,
                 'completed_on' => $completedOn, 'deadline' => $deadline,
                 'budget_hours' => $budget, 'goal_hours' => $goal, 'tolerance_hours' => (float) $c->tolerance_hours,
-                'total_hours' => $total, 'user_hours' => $userHours, 'user_pct' => round($userPct, 2), 'saved_hours' => $saved,
+                'total_hours' => $total, 'user_hours' => $userHours, 'user_pct' => round($userPct, 2), 'saved_hours' => $saved, 'bonus_hours' => $bonusHours,
                 'percent_required' => (float) $c->percent_required, 'extra_per_hour' => (float) $c->extra_per_hour,
                 'savings_mode' => $c->savings_mode, 'savings_pct' => $sharePct, 'savings_per_hour' => (float) $c->savings_per_hour,
                 'met_goal' => $metGoal, 'met_date' => $metDate, 'worked_min' => $workedMin, 'met_share' => $metShare,
@@ -131,7 +133,7 @@ class CommissionService
             'completed_on' => $r['completed_on'] ?? null, 'deadline' => $r['deadline'] ?? null,
             'budget_hours' => (float) $r['budget_hours'], 'goal_hours' => (float) $r['goal_hours'], 'tolerance_hours' => (float) $r['tolerance_hours'],
             'total_hours' => (float) $r['total_hours'], 'user_hours' => (float) $r['user_hours'], 'user_pct' => (float) $r['user_pct'],
-            'saved_hours' => (float) $r['saved_hours'], 'percent_required' => (float) $r['percent_required'],
+            'saved_hours' => (float) $r['saved_hours'], 'bonus_hours' => (float) ($r['bonus_hours'] ?? $r['saved_hours']), 'percent_required' => (float) $r['percent_required'],
             'extra_per_hour' => (float) $r['extra_per_hour'], 'savings_pct' => (float) $r['savings_pct'], 'savings_per_hour' => (float) $r['savings_per_hour'],
             'met_goal' => (bool) $r['met_goal'], 'met_date' => (bool) $r['met_date'], 'worked_min' => (bool) $r['worked_min'], 'met_share' => (bool) $r['met_share'],
             'commission_amount' => (float) $r['commission_amount'], 'savings_amount' => (float) $r['savings_amount'],

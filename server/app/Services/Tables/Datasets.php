@@ -342,7 +342,7 @@ class Datasets
                 $status && $status !== 'all' ? ($status === 'open' ? __('por liberar y liberadas') : ($labels[$status] ?? $status)) : null]),
             'columns' => [['h' => __('Persona'), 't' => 'text'], ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Tarea'), 't' => 'text'], ['h' => __('Completada'), 't' => 'date'],
                 ['h' => __('Horas de la persona'), 't' => 'hours'], ['h' => __('% del total'), 't' => 'text'], ['h' => __('Comisión'), 't' => 'money'],
-                ['h' => __('Ahorro'), 't' => 'money'], ['h' => __('Ajuste'), 't' => 'money'], ['h' => __('Total'), 't' => 'money'], ['h' => __('Estado'), 't' => 'text']],
+                ['h' => __('Bono de equipo'), 't' => 'money'], ['h' => __('Ajuste'), 't' => 'money'], ['h' => __('Total'), 't' => 'money'], ['h' => __('Estado'), 't' => 'text']],
             'rows' => $list->map(fn ($r) => [$r->user?->name, $r->project?->code.' · '.$r->project?->name, $r->task?->name, $r->completed_on->toDateString(), (float) $r->user_hours,
                 rtrim(rtrim(number_format((float) $r->user_pct, 2, '.', ''), '0'), '.').'%', (float) $r->commission_amount, (float) $r->savings_amount, (float) $r->adjustment,
                 (float) $r->total, $labels[$r->status] ?? $r->status])->all(),

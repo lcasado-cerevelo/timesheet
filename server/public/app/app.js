@@ -615,8 +615,8 @@ const pct = n => String(Math.round(Number(n || 0) * 100) / 100) + '%';
 const ck = ok => `<span class="ck ${ok ? 'ok' : 'no'}" aria-label="${ok ? 'Yes' : 'No'}">${ok ? '✔' : '✘'}</span>`;
 const COMM_STATUS = { pending: ['To release', 'amber'], released: ['Released', 'green'], invoiced: ['Invoiced', 'blue'], paid: ['Paid', 'gray'], none: ['No commission', 'gray'], in_review: ['In review', 'amber'], open: ['Open', 'green'] };
 const commPill = k => { const a = COMM_STATUS[k] || [k, 'gray']; return pill(a[0], a[1]); };
-const SAVINGS_MODES = { fixed: 'A fixed % of the savings', assigned: 'The % that corresponded to the person (the minimum share)' };
-const commTerms = c => `${pct(c.percent_required)} ${T('of the task')} · +${money(c.extra_per_hour)}/h · ${T('savings')} ${c.savings_mode === 'assigned' ? T('by assigned %') : pct(c.savings_pct)} × ${money(c.savings_per_hour)}/h${Number(c.tolerance_hours) ? ' · ' + T('tolerance') + ' ' + h1(c.tolerance_hours) + ' h' : ''}`;
+const SAVINGS_MODES = { fixed: 'A fixed % of the team bonus', assigned: 'The % that corresponded to the person (the minimum share)' };
+const commTerms = c => `${pct(c.percent_required)} ${T('of the task')} · +${money(c.extra_per_hour)}/h · ${T('team bonus')} ${c.savings_mode === 'assigned' ? T('by assigned %') : pct(c.savings_pct)} × ${money(c.savings_per_hour)}/h${Number(c.tolerance_hours) ? ' · ' + T('tolerance') + ' ' + h1(c.tolerance_hours) + ' h' : ''}`;
 
 /* in the person's window: their commissions (one per project) */
 function commBox(u, list, projects) {
@@ -651,9 +651,9 @@ async function openCommissionModal(uid, cid) {
       <div data-comm-scope>${scope(first, c?.service_ids || [], c?.task_ids || [])}</div>
       <div class="grid"><div><label>Minimum share of the task (%)</label><input name="percent_required" type="number" step="0.5" min="0" max="100" required value="${esc(c?.percent_required ?? 80)}"><small class="help">How much of the hours worked on the task this person must have worked. 80 = 80% of the total.</small></div>
       <div><label>Extra per hour</label><input name="extra_per_hour" type="number" step="0.01" min="0" required value="${esc(c?.extra_per_hour ?? 0)}"><small class="help">On top of the normal rate, for each hour this person worked on the task.</small></div>
-      <div><label>Savings bonus: how it is shared</label><select name="savings_mode">${Object.entries(SAVINGS_MODES).map(([k, l]) => `<option value="${k}" ${(c?.savings_mode || 'fixed') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-      <div data-comm-fixed><label>Share of the savings (%)</label><input name="savings_pct" type="number" step="0.5" min="0" max="100" required value="${esc(c?.savings_pct ?? 100)}"></div>
-      <div><label>Savings bonus per hour saved</label><input name="savings_per_hour" type="number" step="0.01" min="0" required value="${esc(c?.savings_per_hour ?? 0)}"><small class="help">Hours saved = estimated hours minus the hours worked.</small></div>
+      <div><label>Team bonus: how it is shared</label><select name="savings_mode">${Object.entries(SAVINGS_MODES).map(([k, l]) => `<option value="${k}" ${(c?.savings_mode || 'fixed') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div data-comm-fixed><label>Share of the team bonus (%)</label><input name="savings_pct" type="number" step="0.5" min="0" max="100" required value="${esc(c?.savings_pct ?? 100)}"></div>
+      <div><label>Team bonus per hour of the goal</label><input name="savings_per_hour" type="number" step="0.01" min="0" required value="${esc(c?.savings_per_hour ?? 0)}"><small class="help">Paid for each hour of the goal (for example 16 h) when the team meets it, times the share above.</small></div>
       <div><label>Tolerance (hours)</label><input name="tolerance_hours" type="number" step="0.25" min="0" max="999" required value="${esc(c?.tolerance_hours ?? 0)}"><small class="help">Hours over the savings goal that are forgiven.</small></div></div>
       <label class="chk"><input type="checkbox" name="withhold" ${c ? (c.withhold ? 'checked' : '') : 'checked'}> Withholding applies to this commission</label>
       <label class="chk"><input type="checkbox" name="ivu" ${c?.ivu ? 'checked' : ''}> IVU withholding applies to this commission</label>
@@ -683,7 +683,7 @@ function commPreview(c) {
   return `<div class="mdl-sec"><h3>Commissions</h3>
     <p class="muted" style="margin:0 0 6px">${T('Team hours (approved)')}: <b>${h1(c.rows[0]?.total_hours)}</b> · ${T('goal')}: <b>${h1(c.goal_hours)}</b> h</p>
     ${c.pending_hours > 0 ? `<div class="msg err" role="alert">${T('There are')} ${h1(c.pending_hours)} ${T('h on this task that are not approved yet. Approve them first: the commission is calculated with approved hours.')}</div>` : ''}
-    <div class="scrollx"><table class="svct"><tr><th>Person</th><th class="r">Hours · share</th><th title="${esc(T('Team hours within the goal'))}">Goal</th><th title="${esc(T('Completed on time'))}">Date</th><th title="${esc(T('At least 1 hour worked'))}">1 h</th><th>Share</th><th class="r">Commission</th><th class="r">Savings</th><th class="r">Total</th></tr>${c.rows.map(row).join('')}</table></div>
+    <div class="scrollx"><table class="svct"><tr><th>Person</th><th class="r">Hours · share</th><th title="${esc(T('Team hours within the goal'))}">Goal</th><th title="${esc(T('Completed on time'))}">Date</th><th title="${esc(T('At least 1 hour worked'))}">1 h</th><th>Share</th><th class="r">Commission</th><th class="r">Team bonus</th><th class="r">Total</th></tr>${c.rows.map(row).join('')}</table></div>
     ${c.pending_hours > 0 ? '' : c.payable
       ? (c.can_release ? `<label class="chk" style="margin-top:8px"><input type="checkbox" name="release" required> ${T('I release these commissions to be paid')}</label><small class="help">${T('If you want to review them first, close this window: the task stays open.')}</small>`
         : `<p class="note" style="margin:8px 0 0">${T('The owner will release these commissions after you complete the task.')}</p>`)
@@ -705,7 +705,7 @@ async function commissionsView() {
   return `<div class="pghead"><div><h1>Commissions</h1><p class="sub">Productivity commissions earned when a task is completed. Release them to be paid: consultants collect them on their invoice, employees are marked as paid here.</p></div></div>
     <div class="card"><div class="pills" style="margin-bottom:12px">${pills}</div>
     <div style="text-align:right;margin-bottom:8px">${exportBar('commissions', { status: st })}</div>
-    ${list.length ? `<div class="scrollx"><table><tr><th>Person</th><th>Project · task</th><th>Completed</th><th class="r">Hours · share</th><th class="r">Commission</th><th class="r">Savings</th><th class="r">Adjustment</th><th class="r">Total</th><th>Status</th><th></th></tr>${list.map(row).join('')}
+    ${list.length ? `<div class="scrollx"><table><tr><th>Person</th><th>Project · task</th><th>Completed</th><th class="r">Hours · share</th><th class="r">Commission</th><th class="r">Team bonus</th><th class="r">Adjustment</th><th class="r">Total</th><th>Status</th><th></th></tr>${list.map(row).join('')}
       <tr><td colspan="7"><b>Total</b></td><td class="r"><b>${money(tot)}</b></td><td colspan="2"></td></tr></table></div>` : '<p class="muted">Nothing here.</p>'}</div>`;
 }
 /* the whole calculation of one result, so the owner can see why */
@@ -716,7 +716,7 @@ function commCalcHtml(r) {
     ${li(r.worked_min, `${T('Hours of the person')}: ${h1(r.user_hours)} h (${T('at least 1 h')})`)}
     ${li(r.met_share, `${T('Share of the team')}: ${pct(r.user_pct)} · ${T('needs')} ${pct(r.percent_required)}`)}</ul>
     <p style="margin:8px 0 0">${T('Commission')}: ${h1(r.user_hours)} h × ${money(r.extra_per_hour)} = <b>${money(r.commission_amount)}</b><br>
-    ${T('Savings bonus')}: ${h1(r.saved_hours)} h ${T('saved')} × ${pct(r.savings_pct)} × ${money(r.savings_per_hour)} = <b>${money(r.savings_amount)}</b>
+    ${T('Team bonus')}: ${h1(r.bonus_hours)} h ${T('of the goal')} × ${pct(r.savings_pct)} × ${money(r.savings_per_hour)} = <b>${money(r.savings_amount)}</b>
     ${Number(r.adjustment) ? `<br>${T('Adjustment')}: <b>${money(r.adjustment)}</b> <span class="muted">${esc(r.adjustment_note || '')}</span>` : ''}<br>${T('Total')}: <b>${money(r.total)}</b></p>`;
 }
 function openCommissionDetail(r) {
@@ -755,9 +755,9 @@ async function myCommissionsView() {
       <li>${ck(c.min_hours)} ${T('At least 1 hour worked')}</li>
       <li>${ck(c.share)} ${T('Your share')}: <b>${h1(t.mine.hours)}</b> h = <b>${pct(t.mine.pct)}</b> ${T('of the team; you need')} <b>${pct(t.mine.percent_required)}</b></li></ul>`;
     const pend = !done && t.mine.pending_hours > 0 ? `<p class="muted" style="margin:4px 0">${T('You have')} ${h1(t.mine.pending_hours)} h ${T('not approved yet: they count once approved.')}</p>` : '';
-    const out = !done ? `<p style="margin:6px 0 0">${T('If the task were completed today you would earn')}: ${money(t.would_earn.commission)} ${T('commission')} + ${money(t.would_earn.savings)} ${T('savings')} = <b>${money(t.would_earn.total)}</b></p>`
+    const out = !done ? `<p style="margin:6px 0 0">${T('If the task were completed today you would earn')}: ${money(t.would_earn.commission)} ${T('commission')} + ${money(t.would_earn.savings)} ${T('team bonus')} = <b>${money(t.would_earn.total)}</b></p>`
       : t.status === 'in_review' ? `<p class="note" style="margin:6px 0 0">${T('Your commission is being reviewed. You will see the amount when it is released.')}</p>`
-      : t.earned ? `<p style="margin:6px 0 0">${T('You earned')}: ${money(t.earned.commission)} ${T('commission')} + ${money(t.earned.savings)} ${T('savings')}${Number(t.earned.adjustment) ? ` ${Number(t.earned.adjustment) > 0 ? '+' : '−'} ${money(Math.abs(t.earned.adjustment))} ${T('adjustment')}` : ''} = <b>${money(t.earned.total)}</b></p>`
+      : t.earned ? `<p style="margin:6px 0 0">${T('You earned')}: ${money(t.earned.commission)} ${T('commission')} + ${money(t.earned.savings)} ${T('team bonus')}${Number(t.earned.adjustment) ? ` ${Number(t.earned.adjustment) > 0 ? '+' : '−'} ${money(Math.abs(t.earned.adjustment))} ${T('adjustment')}` : ''} = <b>${money(t.earned.total)}</b></p>`
       : `<p class="note" style="margin:6px 0 0">${T('No commission was earned on this task.')}</p>`;
     return `<div class="cmtask">${head}${due}${lines}${pend}${out}</div>`;
   };
