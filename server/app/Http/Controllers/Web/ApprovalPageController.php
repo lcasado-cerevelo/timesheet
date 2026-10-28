@@ -259,7 +259,8 @@ class ApprovalPageController extends Controller
     private function codeView(ApprovalToken $token, string $plain, string $prefix, $company)
     {
         return view('approval.code', ['brand' => $company->brand(), 'plain' => $plain, 'prefix' => $prefix,
-            'sent' => $token->code_hash !== null && $token->code_expires_at?->isFuture()]);
+            'sent' => $token->code_hash !== null && $token->code_expires_at?->isFuture(),
+            'email' => \App\Support\Mask::email($token->approver?->email)]);
     }
 
     private function invalid(?ApprovalToken $token, ?string $message)

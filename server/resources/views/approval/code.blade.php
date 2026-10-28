@@ -3,7 +3,7 @@
 @section('content')
 <div class="card">
 <h1>{{ __('Verifica que eres tú') }}</h1>
-<p>{{ __('Por seguridad, enviamos un código de 6 dígitos al correo del aprobador. Escríbelo aquí para continuar.') }}</p>
+<p>{{ $email ? __('Por seguridad, enviamos un código de 6 dígitos al correo :email. Escríbelo aquí para continuar.', ['email' => $email]) : __('Por seguridad, enviamos un código de 6 dígitos al correo del aprobador. Escríbelo aquí para continuar.') }}</p>
 <form method="post" action="/{{ $prefix }}/{{ $plain }}/code" style="margin-bottom:14px">@csrf
 <button class="btn pri small" type="submit">{{ $sent ? __('Enviar otro código') : __('Enviarme el código') }}</button></form>
 <form method="post" action="/{{ $prefix }}/{{ $plain }}/verify">@csrf
