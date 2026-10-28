@@ -1985,9 +1985,35 @@ async function weekView() {
   const total = Number(sheet.total_hours ?? tot.all);
   const bill = sheet.billable_hours ?? list.filter(e => e.billable !== false).reduce((a, e) => a + Number(e.hours), 0);
   const non = sheet.non_billable_hours ?? Math.max(0, total - bill);
-  const left = emp
-    ? `<div class="card wktotals"><div><div class="lbl">Billable hours</div><div class="mono big">${h1(bill)}</div></div><div><div class="lbl">Non-billable hours</div><div class="mono big">${h1(non)}</div></div><div><div class="lbl">Employee total</div><div class="mono big acc wktotbig">${h1(total)}</div></div></div>`
-    : `<div class="card wktotals"><div><div class="lbl">Total hours</div><div class="mono big acc wktotbig">${h1(total)}</div></div><p class="note">Your invoice is generated from approved weeks. You never retype hours.</p></div>`;
+  // Week summary (same height as the card on the right; long lists scroll inside): total of ALL the parts, hours by state, hours by line, deadline.
+  const partState = Object.fromEntries((sheet.parts || []).map(x => [x.id, x.status]));
+  const byState = { draft: 0, submitted: 0, approved: 0, returned: 0 }, byLine = new Map();
+  for (const e of list) {
+    const h = Number(e.hours) || 0; byState[partState[e.timesheet_id] || sheet.status] = (byState[partState[e.timesheet_id] || sheet.status] || 0) + h;
+    const pr = projects.find(x => x.id === Number(e.project_id));
+    const lbl = [pr?.code, wkSvcs(pr).length > 1 ? e.service?.name : '', e.task?.name].filter(Boolean).join(' · ') || '—';
+    byLine.set(lbl, (byLine.get(lbl) || 0) + h);
+  }
+  const weekTotal = list.reduce((a, e) => a + (Number(e.hours) || 0), 0);
+  const wBill = list.filter(e => e.billable !== false && ['reg', 'ot', undefined, null, ''].includes(e.hour_type)).reduce((a, e) => a + Number(e.hours), 0);
+  const wNon = Math.max(0, weekTotal - wBill);
+  let dlTxt = '';
+  if (R.deadline_dow != null && (byState.draft > 0 || byState.returned > 0)) {
+    const d = parse(end); do { d.setDate(d.getDate() + 1); } while (d.getDay() !== Number(R.deadline_dow));
+    const [hh, mm] = String(R.deadline_time || '12:00').split(':').map(Number); d.setHours(hh || 0, mm || 0, 0, 0);
+    const n = Math.ceil((d - new Date()) / 86400000);
+    dlTxt = `<div class="muted wksumdl">${T('Deadline')}: ${esc(d.toLocaleDateString(LOC(), { weekday: 'short' }))} ${esc(R.deadline_time || '')} · ${n >= 0 ? n + ' d' : T('passed')}</div>`;
+  }
+  const chips = [['draft', 'Draft'], ['submitted', 'Sent'], ['approved', 'Approved'], ['returned', 'Returned']].filter(([k]) => byState[k] > 0 || k === 'draft' || k === 'submitted')
+    .map(([k, l]) => `<span class="wkchip ${byState[k] > 0 ? 'on' : ''}"><b>${h1(byState[k])}</b> ${T(l)}</span>`).join('');
+  const lineRows = [...byLine.entries()].sort((a, b) => b[1] - a[1]).map(([l, h]) => `<div class="wksl"><span>${esc(l)}</span><b class="mono">${h1(h)} h</b></div>`).join('');
+  const goal = emp && S.me.weekly_hours ? Number(S.me.weekly_hours) : 0;
+  const goalBar = goal ? `<div class="wkgoal" title="${h1(weekTotal)} / ${h1(goal)} h"><i style="width:${Math.min(100, weekTotal / goal * 100)}%"></i></div><div class="muted wksumdl">${h1(weekTotal)} / ${h1(goal)} h</div>` : '';
+  const left = `<div class="card wktotals wksumcard"><div class="wksumin">
+    <div class="wksumtop"><div><div class="lbl">${T(emp ? 'Employee total' : 'Total hours')}</div><div class="mono big acc wktotbig">${h1(weekTotal)}</div></div>${emp ? `<div><div class="lbl">${T('Billable hours')}</div><div class="mono big">${h1(wBill)}</div></div><div><div class="lbl">${T('Non-billable hours')}</div><div class="mono big">${h1(wNon)}</div></div>` : ''}</div>
+    ${goalBar}<div class="wkchips">${chips}</div>
+    ${lineRows ? `<div class="wklines"><div class="lbl">${T('By line')}</div>${lineRows}</div>` : '<div class="wklines"></div>'}
+    ${dlTxt}${emp ? '' : `<div class="muted wksumdl">${T('Your invoice is generated from approved weeks. You never retype hours.')}</div>`}</div></div>`;
   const canSubmit = ['draft', 'returned'].includes(sheet.status);
   const needNote = lines.some(l => (projects.find(x => x.id === Number(l.project_id))?.services || []).some(v => v.id === Number(l.service_id) && v.require_note));
   const noteBox = `<div><label for="wk-snote">Submission note</label><textarea id="wk-snote" class="wksnote" rows="2" maxlength="1000" data-snote placeholder="${esc(T('Applied to every line that has no note'))}">${esc(st.snote ?? sheet.submission_note ?? '')}</textarea>${needNote ? `<small class="help">${T('Some services require a note on every line: write one in each line or here.')}</small>` : ''}</div>`;

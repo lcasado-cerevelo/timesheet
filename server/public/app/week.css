@@ -105,3 +105,14 @@
 .aprh{background:none;border:0;padding:0;font:inherit;color:var(--primary);text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer}.aprh:hover{text-decoration-style:solid}
 .wkpop .ent{padding:6px 0;border-bottom:1px solid var(--line)}.wkpop .ent:last-of-type{border-bottom:0}.wkpop .nt{white-space:pre-wrap;margin-top:2px;font-size:14px}
 .wkpop textarea{min-height:64px;line-height:1.35}
+
+/* Week summary card: same height as the card on its right; the list scrolls inside instead of growing the row */
+.wksumcard{position:relative;min-height:250px;overflow:hidden;display:block}
+.wksumin{position:absolute;inset:14px 18px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.wksumtop{display:flex;flex-wrap:wrap;gap:6px 30px;align-items:flex-end}
+.wkchips{display:flex;flex-wrap:wrap;gap:6px}
+.wkchip{font-size:12px;padding:2px 9px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}.wkchip.on{color:var(--text);border-color:var(--primary)}
+.wklines{flex:1 1 auto;min-height:0;overflow:auto;font-size:13px}
+.wksl{display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px solid var(--line)}
+.wksumdl{font-size:12px}
+.wkgoal{height:8px;border-radius:4px;background:var(--line);overflow:hidden}.wkgoal i{display:block;height:100%;background:var(--accent)}

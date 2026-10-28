@@ -634,3 +634,8 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - **Con el cliente:** el dueño no ve Approve ni Return, y el servidor rechaza su Approve («Esta hoja espera la aprobación del cliente: nadie la aprueba por él»). La hoja trae `can_approve` para que la pantalla muestre u oculte el botón.
 - **Si un aprobador externo no puede aprobar:** se cambia el aprobador del servicio o se le reenvía la invitación; el dueño no lo sustituye.
 - Las pruebas que usaban «el dueño aprueba» como atajo ahora aprueban con el aprobador (ayuda `approveSheet` de `BuildsWorld`).
+
+## Hoja semanal: tarjeta de resumen (construido)
+- La tarjeta de la izquierda (abajo) resume **toda la semana, sumando todas las partes** (antes mostraba solo la hoja abierta y marcaba 0 cuando todo estaba enviado por partes): total de horas; horas por estado (borrador, enviadas, aprobadas, devueltas); horas por línea (proyecto · servicio · tarea, de más a menos); y el plazo de envío con los días que faltan (solo si hay horas por enviar o devueltas).
+- Empleado: además facturables, no facturables y una barra contra sus horas semanales. Consultor: la nota de que su factura sale de las semanas aprobadas queda como línea al pie.
+- Mide lo mismo que la tarjeta de la derecha: si hay muchas líneas, la lista se desliza dentro de la tarjeta sin agrandar la fila.
