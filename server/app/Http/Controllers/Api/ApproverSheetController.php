@@ -45,7 +45,7 @@ class ApproverSheetController extends Controller
         // Solo las hojas con partes suyas; mientras la hoja espera a los aprobadores internos, el externo todavía no la ve.
         $scope = Timesheet::query()->whereIn('id', $this->external->sheetIdsFor($approver));
         return response()->json($this->review->run($request, $scope, fn ($s) => $this->summary($s, $approver) + $this->review->extras($s),
-            fn ($s) => $this->external->classify($s, $approver)));
+            fn ($s) => $this->external->classify($s, $approver), fn ($s) => $this->external->entriesOf($s, $approver)));
     }
 
     public function show(Request $request, Timesheet $sheet)

@@ -193,7 +193,10 @@ class Datasets
     private function sheets(User $u, array $p = [], bool $detail = false): array
     {
         $f = validator($p, ['from' => 'required|date_format:Y-m-d', 'to' => 'required|date_format:Y-m-d|after_or_equal:from', 'q' => 'nullable|string|max:100',
-            'user_id' => 'nullable|integer', 'project_id' => 'nullable|integer', 'status' => 'nullable|in:draft,submitted,approved,returned'])->validate();
+            'user_id' => 'nullable|integer', 'project_id' => 'nullable|integer', 'status' => 'nullable|in:draft,submitted,approved,returned',
+            'project_ids' => 'nullable|string|max:300', 'service_ids' => 'nullable|string|max:300', 'task_ids' => 'nullable|string|max:300'])->validate();
+        $ids = fn (?string $csv) => array_values(array_unique(array_filter(array_map('intval', explode(',', (string) $csv)))));
+        [$P, $S, $T] = [$ids($f['project_ids'] ?? null), $ids($f['service_ids'] ?? null), $ids($f['task_ids'] ?? null)];
         $external = app(\App\Services\ExternalApprovalService::class);
         $approver = $u->isApprover() ? \App\Models\Approver::find($u->approver_profile_id) : null;
         $q = Timesheet::with('user:id,name')->where('company_id', $u->company_id)
@@ -217,6 +220,9 @@ class Datasets
             foreach ($entries->sortBy(fn ($e) => $e->work_date->toDateString().'|'.$e->start_time) as $e) {
                 $day = $e->work_date->toDateString();
                 if ($day < $f['from'] || $day > $f['to'] || (! empty($f['project_id']) && (int) $e->project_id !== (int) $f['project_id'])) {
+                    continue;
+                }
+                if (($P && ! in_array((int) $e->project_id, $P, true)) || ($S && ! in_array((int) $e->service_id, $S, true)) || ($T && ! in_array((int) $e->task_id, $T, true))) {
                     continue;
                 }
                 $row = [$s->user->name, $s->week_ending->toDateString(), $s->part ? (string) $s->part : '', $status[$s->status] ?? $s->status,

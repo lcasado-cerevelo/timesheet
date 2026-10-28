@@ -223,6 +223,7 @@ async function render() {
     const body = await ROUTES[name].f();
     if (rid !== RID) return;
     setApp(shell(name, body, true));
+    $app.querySelectorAll('[data-msel]').forEach(mselSync);
   } catch (e) {
     if (S.token && rid === RID) { setApp(`<main><div class="msg err">${esc(e.message)}</div></main>`); }
   }
@@ -1220,7 +1221,8 @@ async function peopleScreen() {
 }
 /* Approvals (owner and approver see the same screen): status pills with counts, filters, list on the left, the selected timesheet on the right. */
 function rvState() {
-  const R = (S.cache.rv ??= { status: 'pending', q: '', type: '', period: '4w', from: '', to: '' });
+  const R = (S.cache.rv ??= { status: 'pending', q: '', type: '', period: '4w', from: '', to: '', proj: [], svc: [], task: [] });
+  R.proj ??= []; R.svc ??= []; R.task ??= [];
   if (R.period === '4w') { R.from = addDays(today(), -28); R.to = ''; } else if (R.period === '3m') { R.from = addDays(today(), -91); R.to = ''; } else if (R.period === 'all') { R.from = ''; R.to = ''; }
   return R;
 }
@@ -1230,8 +1232,16 @@ async function reviewScreen() {
   if (R.q.trim()) qs.set('q', R.q.trim());
   if (R.type) qs.set('type', R.type);
   if (!pend) { if (R.from) qs.set('from', R.from); if (R.to) qs.set('to', R.to); }
+  if (R.proj.length) qs.set('project_ids', R.proj.join(','));
+  if (R.svc.length) qs.set('service_ids', R.svc.join(','));
+  if (R.task.length) qs.set('task_ids', R.task.join(','));
   const res = await api((ap ? '/approver/review?' : inn ? '/internal/review?' : '/review/sheets?') + qs.toString());
   const sheets = res.sheets || [], cnt = res.counts || {};
+  // Project, service and task filters: services and tasks follow the projects chosen; a choice that no longer applies is dropped.
+  const opt = res.options || { projects: [], services: [], tasks: [] };
+  const svcOpts = opt.services.filter(x => !R.proj.length || R.proj.includes(x.project_id)), taskOpts = opt.tasks.filter(x => !R.proj.length || R.proj.includes(x.project_id));
+  R.svc = R.svc.filter(id => svcOpts.some(x => x.id === id)); R.task = R.task.filter(id => taskOpts.some(x => x.id === id));
+  const msf = (key, lbl, ph, list, sel) => `<div class="flbl" style="flex:1 1 220px"><span>${lbl}</span><div data-rv-ms="${key}">${msel({ label: lbl, placeholder: ph, options: list, selected: sel, name: 'rv_' + key, empty: 'Nothing to choose from yet.' })}</div></div>`;
   const sel = sheets.find(s => s.id === S.cache.apSel) || sheets[0];
   const stColor = { submitted: 'amber', pending: 'amber', approved: 'green', returned: 'red' };
   const stName = s => (s === 'submitted' || s === 'pending' ? 'Pending' : STATUS[s] || s);
@@ -1276,12 +1286,20 @@ async function reviewScreen() {
       <label class="flbl" style="flex:1 1 140px">Type<select data-rv="type">${optHtml('', 'All types', R.type)}${optHtml('employee', 'Employees', R.type)}${optHtml('consultant', 'Contractors', R.type)}</select></label>
       <label class="flbl" style="flex:1 1 150px">Week ending from<input type="date" data-rv="from" ${pend ? 'disabled' : ''} value="${esc(R.from)}"></label>
       <label class="flbl" style="flex:1 1 150px">to<input type="date" data-rv="to" ${pend ? 'disabled' : ''} value="${esc(R.to)}"></label>
-      <div style="flex:1 1 100%;text-align:right">${exportBar('sheets', { from: pend || !R.from ? addDays(today(), -365) : R.from, to: pend || !R.to ? today() : R.to, ...(R.q ? { q: R.q } : {}), ...({ pending: { status: 'submitted' }, approved: { status: 'approved' }, returned: { status: 'returned' } }[R.status] || {}) })}</div>
+      ${msf('proj', 'Project', 'Search project', opt.projects, R.proj)}${msf('svc', 'Service', 'Search service', svcOpts, R.svc)}${msf('task', 'Task', 'Search task', taskOpts, R.task)}
+      <div style="flex:1 1 100%;text-align:right">${exportBar('sheets', { from: pend || !R.from ? addDays(today(), -365) : R.from, to: pend || !R.to ? today() : R.to, ...(R.q ? { q: R.q } : {}), ...(R.proj.length ? { project_ids: R.proj.join(',') } : {}), ...(R.svc.length ? { service_ids: R.svc.join(',') } : {}), ...(R.task.length ? { task_ids: R.task.join(',') } : {}), ...({ pending: { status: 'submitted' }, approved: { status: 'approved' }, returned: { status: 'returned' } }[R.status] || {}) })}</div>
       <div class="pillrow" style="flex:1 1 100%"><span class="note">Quick period:</span>${[['4w', 'Last 4 weeks'], ['3m', 'Last 3 months'], ['all', 'All time']].map(per).join('')}</div></div>
       <p class="note" style="margin:0 0 8px">Pending always shows everything waiting for you, whatever the dates. The period applies to Approved, Returned and All.</p>
       <div class="revscroll"><div style="min-width:620px"><div class="hd cols-rev" style="padding:0 8px 8px"><div class="th">Person</div><div class="th">Week ending</div><div class="th">Type</div><div class="th">Project</div><div class="th r">Hours</div><div class="th">Status</div></div>
       ${rows || `<div class="empty">${pend && !R.q && !R.type ? 'Nothing is waiting for approval.' : 'No timesheet matches the filter.'}</div>`}</div></div></div>${detail}</div></div>`;
 }
+let rvTimer = 0;
+/* picking in the project / service / task filters: wait a moment so several can be picked, then reload the list */
+document.addEventListener('mselchange', e => {
+  const host = e.target.closest?.('[data-rv-ms]'); if (!host) return;
+  const R = rvState(); R[host.dataset.rvMs] = mselOpts(e.target.closest('.msel')).filter(li => li.querySelector('input').checked).map(li => Number(li.dataset.v));
+  clearTimeout(rvTimer); rvTimer = setTimeout(() => { S.cache.apSel = null; render(); }, 700);
+});
 Object.assign(actions, {
   'rv-status'(el) { rvState().status = el.dataset.s; S.cache.apSel = null; render(); },
   'rv-pick'(el) { S.cache.apSel = Number(el.dataset.id); render(); },
