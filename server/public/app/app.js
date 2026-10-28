@@ -573,7 +573,7 @@ async function projectsView() {
   S.cache.pl = list;
   const F = FL('projects');
   const shown = list.filter(x => matchQ(F.q, [x.code, x.name, x.customer?.name]) && sameFlag(F.active, x.active) && sameFlag(F.billable, x.billable) && (!F.customer_id || x.customer_id === Number(F.customer_id)));
-  return `<div class="pghead"><div><h1>Projects</h1></div><button class="btn pri" type="button" data-act="project-new">New project</button></div>
+  return `<div class="pghead"><div><h1>Projects</h1><p class="sub">Only the company owner manages projects.</p></div><button class="btn pri" type="button" data-act="project-new">New project</button></div>
     <div class="card">${exportBar('projects', activeF('projects'))}${filterBar('projects', [{ k: 'q', label: 'Search', ph: 'Code, name or client' }, { k: 'customer_id', label: 'Client', type: 'select', opts: [['', 'All'], ...customers.map(c => [c.id, c.name])] }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }, { k: 'billable', label: 'Billable', type: 'select', opts: YN('Billable', 'Non-billable') }])}
     <div class="scroll"><table><tr><th>Code</th><th>Name</th><th>Client</th><th class="r">Rate</th><th>Status</th><th></th></tr>
     ${shown.map(x => `<tr><td>${esc(x.code)}</td><td>${esc(x.name)}${(x.services || []).filter(s => s.active).length > 1 ? ' <span class="muted">· ' + (x.services || []).filter(s => s.active).length + ' ' + T('services') + '</span>' : ''}</td><td>${esc(x.customer?.name || '—')}</td>
