@@ -2074,7 +2074,7 @@ function wkPop(lid, d, anchor, editId) {
       : `<div><label>Hours for the day</label><input name="hours" type="number" min="0" max="${C.maxDay}" step="${C.inc}" data-hh required value="${ed ? ed.hours : ''}"></div>`}</div>
     ${mode === 'from_to' ? `<div class="brk"><label for="wk-brk">Break time</label><input id="wk-brk" name="break" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="0:00" data-brk value="${esc(wkBreakFmt(ed?.break_minutes))}"><small class="muted">h:mm</small></div>` : ''}
     <div class="poperr" role="alert" hidden></div>
-    <div><label>Note</label><input name="note" maxlength="1000" value="${esc(ed?.note || '')}"></div>
+    <div><label>Note</label><textarea name="note" rows="2" maxlength="1000">${esc(ed?.note || '')}</textarea></div>
     <div class="fb"><button class="btn pri sm" type="submit">${ed ? 'Save entry' : 'Add entry'}</button><button class="btn ghost sm" type="button" data-act="pop-close">Close</button></div></form>`;
   const el = document.createElement('div'); el.className = 'wkpop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Entries for ' + dayLabel(d));
   el.innerHTML = localizeHtml(`<div class="h"><b>${dayLabel(d)}</b><span class="muted">${esc(wkPL(p))}${svc && wkSvcs(p).length > 1 ? ' · ' + esc(svc.name) : ''}${ln.task_id ? ' · ' + esc(wkTaskName(p, ln.task_id)) : ''}</span></div>${items ? `<ul>${items}</ul>` : ''}${form}`);
