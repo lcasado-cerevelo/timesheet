@@ -328,6 +328,7 @@ async function setPasswordView(token, err) {
       ${err ? `<div class="msg err" role="alert">${esc(err)}</div>` : ''}
       <form data-form="set-password"><p><label for="sp-email">Email</label><input id="sp-email" type="email" value="${esc(i.email)}" readonly autocomplete="username" aria-readonly="true"></p>
       <div style="margin:0 0 14px">${pwField('password', 'New password', { auto: 'new-password', min: 10, strength: true })}</div>
+      <div style="margin:0 0 14px">${pwField('confirm_password', 'Confirm new password', { auto: 'new-password', min: 10 })}</div>
       <p class="muted" style="margin:-4px 0 14px">A short phrase that only you know works well.</p>
       <button class="btn pri" type="submit">Save password</button></form>`;
   }
@@ -346,6 +347,7 @@ async function accountView() {
       <form data-form="change-pw">
       <div style="margin:0 0 14px">${pwField('current_password', 'Current password', { auto: 'current-password' })}</div>
       <div style="margin:0 0 14px">${pwField('password', 'New password', { auto: 'new-password', min: 10, strength: true })}</div>
+      <div style="margin:0 0 14px">${pwField('confirm_password', 'Confirm new password', { auto: 'new-password', min: 10 })}</div>
       <button class="btn pri" type="submit">Change password</button></form></div>`;
 }
 
@@ -1096,11 +1098,13 @@ const forms = {
   },
   async 'set-password'(f) {
     const o = formObj(f); const sp = S.cache.sp;
+    if (o.password !== o.confirm_password) return setPasswordView(sp.token, T('The passwords do not match.'));
     try { await api('/password/setup', { method: 'POST', anon: true, body: { token: sp.token, password: o.password } }); sp.done = true; setPasswordView(sp.token); }
     catch (e) { if (e.status === 404 || e.status === 410) { sp.bad = 'expired'; return setPasswordView(sp.token); } setPasswordView(sp.token, e.message); }
   },
   async 'change-pw'(f) {
     const o = formObj(f);
+    if (o.password !== o.confirm_password) throw new Error('The passwords do not match.');
     if (o.current_password === o.password) throw new Error('The new password must be different from the current one.');
     await api('/password/change', { method: 'POST', body: { current_password: o.current_password, password: o.password } });
     flash('Password changed. Your other sessions were signed out.'); render();

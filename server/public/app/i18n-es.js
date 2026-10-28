@@ -204,7 +204,7 @@ window.I18N_ES = {
     'Password saved': 'Contraseña guardada', 'Your password is ready. You can sign in now.': 'Tu contraseña está lista. Ya puedes entrar.', 'Go to sign in': 'Ir a entrar',
     'This link no longer works': 'Este enlace ya no sirve', 'We could not reach the server. Try again in a moment.': 'No pudimos conectar con el servidor. Inténtalo de nuevo en un momento.',
     'This link has expired or was already used. Ask your administrator for a new one.': 'Este enlace venció o ya se usó. Pídele a tu administrador uno nuevo.',
-    'Create a new password': 'Crea una contraseña nueva', 'Create your password': 'Crea tu contraseña', 'Welcome': 'Bienvenido', 'New password': 'Contraseña nueva',
+    'Create a new password': 'Crea una contraseña nueva', 'Create your password': 'Crea tu contraseña', 'Welcome': 'Bienvenido', 'New password': 'Contraseña nueva', 'Confirm new password': 'Confirma la contraseña nueva', 'The passwords do not match.': 'Las contraseñas no coinciden.',
     'A short phrase that only you know works well.': 'Una frase corta que solo tú conozcas funciona bien.', 'Save password': 'Guardar contraseña',
     'My account': 'Mi cuenta', 'Your sign-in details, language and password.': 'Tus datos de acceso, idioma y contraseña.', 'Role': 'Rol', 'Approver': 'Aprobador',
     'Change password': 'Cambiar contraseña', 'Current password': 'Contraseña actual',
