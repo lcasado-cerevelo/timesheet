@@ -19,6 +19,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Correo por la API HTTP de Brevo (443), para hosting que bloquea el SMTP saliente.
+        \Illuminate\Support\Facades\Mail::extend('brevo', fn (array $config) => new \App\Mail\BrevoTransport((string) ($config['key'] ?? ''), (int) ($config['timeout'] ?? 20)));
+
         \Laravel\Sanctum\Sanctum::authenticateAccessTokensUsing(\App\Support\SessionExpiry::check(...));
 
         // Los enlaces de los emails y de las aprobaciones deben salir con https cuando la aplicación se publica con https.
