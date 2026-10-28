@@ -40,6 +40,7 @@ class SimpleCrudController extends Controller
             'require_code' => 'boolean',
             'active' => 'boolean',
             'can_login' => 'boolean',
+            'project_manager' => 'boolean',
             'customer_ids' => 'nullable|array',
             'customer_ids.*' => ['integer', Rule::exists('customers', 'id')->where('company_id', $cid)],
         ]);

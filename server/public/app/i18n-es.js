@@ -3,6 +3,13 @@
 window.I18N_ES = {
   exact: {
     // --- v2: edit approvers/clients, brand, sign-in rule ---
+    // --- project manager (Progress) ---
+    "Progress": "Avance", "Project manager": "Gerente de proyecto", "Read only. Approved hours count in full; the lighter part is still waiting for approval.": "Solo lectura. Las horas aprobadas cuentan completas; la parte más clara todavía espera aprobación.",
+    "Also sees the Progress screen (read only) for the projects of their clients. It never shows rates, pay, commissions or savings goals. Needs sign-in.": "También ve la pantalla Avance (solo lectura) de los proyectos de sus clientes. Nunca muestra tarifas, pagos, comisiones ni metas de ahorro. Necesita poder entrar.",
+    "There are no projects for your clients yet.": "Todavía no hay proyectos para tus clientes.", "This project has no hours budget.": "Este proyecto no tiene presupuesto de horas.", "This project has no tasks.": "Este proyecto no tiene tareas.",
+    "This week": "Esta semana", "Last week": "Semana pasada", "Change": "Cambio", "To approve": "Por aprobar", "Timesheets waiting for you": "Hojas que esperan tu aprobación", "Last 8 weeks": "Últimas 8 semanas",
+    "Approved (h)": "Aprobadas (h)", "To approve (h)": "Por aprobar (h)", "Estimated end": "Fin estimado", "By service": "Por servicio", "By person": "Por persona", "No hours yet.": "Todavía no hay horas.",
+    "Late": "Atrasada", "left": "restantes", "over the budget": "sobre el presupuesto", "completed": "completadas", "new": "nuevas", "in the last 7 days": "en los últimos 7 días", "inactive": "inactivo",
     // --- digital signature (phase 4) ---
     "Type your password to sign.": "Escribe tu contraseña para firmar.",
     "Submit for approval": "Enviar para aprobación", "Sign and submit": "Firmar y enviar", "Send for approval": "Enviar para aprobación", "Sign and send": "Firmar y enviar",

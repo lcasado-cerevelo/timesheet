@@ -158,7 +158,8 @@ class AuthController extends Controller
     public static function userPayload(User $user): array
     {
         $company = $user->company;
-        $extra = $user->isApprover() ? ['approver_id' => $user->approver_profile_id, 'two_step' => true] : [];
+        $extra = $user->isApprover() ? ['approver_id' => $user->approver_profile_id, 'two_step' => true,
+            'project_manager' => (bool) \App\Models\Approver::whereKey($user->approver_profile_id)->where('project_manager', true)->where('active', true)->exists()] : [];
         return $extra + [
             'internal_approver' => ! $user->isApprover() && $user->isInternalApprover(),
             // Con comisión activa, la persona ve la pantalla "Mis comisiones".

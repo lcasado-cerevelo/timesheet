@@ -12,7 +12,7 @@ class Approver extends Model
 
     protected function casts(): array
     {
-        return ['require_code' => 'boolean', 'active' => 'boolean', 'can_login' => 'boolean'];
+        return ['require_code' => 'boolean', 'active' => 'boolean', 'can_login' => 'boolean', 'project_manager' => 'boolean'];
     }
 
     /** Clientes a los que sirve este aprobador externo. */

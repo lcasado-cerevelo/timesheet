@@ -414,5 +414,14 @@
     "Firmada digitalmente por :name el :date": "Digitally signed by :name on :date",
     "huella :hash": "fingerprint :hash",
     "Aprobada digitalmente por :names.": "Digitally approved by :names.",
-    "Enviada y firmada digitalmente por :name el :date.": "Submitted and digitally signed by :name on :date."
+    "Enviada y firmada digitalmente por :name el :date.": "Submitted and digitally signed by :name on :date.",
+    "Abierta": "Open",
+    "Avance": "Progress",
+    "Fecha estimada": "Estimated date",
+    "Presupuesto (h)": "Budget (h)",
+    "Horas aprobadas": "Approved hours",
+    "Por aprobar": "To approve",
+    "Atrasada": "Late",
+    "Total del proyecto": "Project total",
+    "Esta cuenta no es de gerente de proyecto.": "This account is not a project manager."
 }

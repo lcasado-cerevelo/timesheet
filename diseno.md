@@ -529,7 +529,7 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - **Web:** el formulario de la tarea lleva presupuesto, fecha estimada, meta de ahorro y "aplica comisión"; completar y reabrir abren una ventana con la contraseña; hay una pestaña **Tareas** (dueño y aprobadores internos) con las tareas abiertas/completadas, horas usadas y sin aprobar.
 - **Pruebas:** `tests/Feature/TaskTest.php` (servidor) y una prueba real en navegador (crear tarea con los campos nuevos, firma con contraseña mala y buena, completar, reabrir, pantalla Tareas y hoja semanal con tarea obligatoria).
 
-## Gerente de proyecto: aprobador con vista de Avance (diseño acordado; se construye en una fase posterior)
+## Gerente de proyecto: aprobador con vista de Avance (construido; ver "Gerente de proyecto construido" al final)
 **Para qué:** el aprobador externo con cuenta suele ser el project manager del cliente, y el dueño se reúne con él cada semana para el estado del proyecto (cuánto vamos, por dónde vamos, qué falta, peticiones). Hoy el aprobador solo ve las hojas con horas suyas que ya salieron de la etapa interna; no ve cómo va el proyecto.
 
 **Cómo se marca:** una marca en el perfil del **aprobador** ("**Gerente de proyecto** / Project manager"), que solo pone el dueño. Un aprobador puede ser gerente de proyecto (no se crea otro tipo de usuario). Requiere que el aprobador tenga cuenta. Ve el **proyecto completo** (todos los servicios) de los clientes a los que está ligado; más adelante se puede afinar por proyecto. Los aprobadores sin la marca, y los que aprueban solo por el enlace del correo, siguen igual.
@@ -580,3 +580,11 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - Reportes y PDF dicen "firmado/aprobado digitalmente por …"; la factura imprime la firma y la huella.
 - En móvil, enviar la semana pide conexión y la contraseña en una ventana; el error de contraseña sale dentro de la ventana.
 - Pruebas: `TestCase::$autoSign` inyecta la firma; las pruebas de firma lo desactivan.
+
+## Gerente de proyecto construido
+- Marca `approvers.project_manager` (migración 2026_11_10), que solo pone el dueño en la ventana del aprobador; requiere que pueda entrar. `/me` devuelve `project_manager` para la cuenta de aprobador.
+- Pestaña **Avance/Progress** (solo para esa cuenta) y `GET /api/approver/progress`, `/progress/{proyecto}`, `/progress/{proyecto}/export?format=pdf|xlsx`. Ve los proyectos de los clientes a los que está ligado, completos (todos los servicios).
+- Cuenta solo horas facturables (reg/ot) de hojas aprobadas y, aparte, las enviadas que ya salieron de la etapa interna; nunca borradores. Muestra presupuesto, porcentaje, horas que quedan, semana actual contra la pasada, hojas que esperan al aprobador, tareas (estado, atrasada, presupuesto, horas), últimas 8 semanas, por servicio y por persona.
+- Nunca sale: tarifas, pagos, comisiones, meta de ahorro, "aplica comisión", tipos de hora internos (una prueba lo verifica).
+- Decisión tomada por defecto: solo horas facturables; la opción de mostrar trabajo no facturado como cortesía queda para después (por confirmar).
+- "Desde la última reunión" se aproxima con los últimos 7 días. Pruebas: `ProjectProgressTest` (5) y recorrido en navegador.

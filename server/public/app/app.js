@@ -141,6 +141,7 @@ const ROUTES = {
   week: { t: 'Timesheet', f: weekView },
   weeks: { t: 'All weeks', f: weeksView },
   approvals: { t: 'Approvals', owner: true, f: reviewScreen },
+  progress: { t: 'Progress', pm: true, f: progressView },
   tasks: { t: 'Tasks', staff: true, f: tasksView },
   commissions: { t: 'Commissions', owner: true, f: commissionsView },
   mycommissions: { t: 'My commissions', mine: true, f: myCommissionsView },
@@ -161,6 +162,7 @@ const ROUTES = {
 const GROUPS = [
   { t: 'Timesheet', r: ['week', 'weeks'] },
   { t: 'Approvals', r: ['approvals'] },
+  { t: 'Progress', r: ['progress'] },
   { t: 'Tasks', r: ['tasks', 'commissions'] },
   { t: 'My commissions', r: ['mycommissions'] },
   { t: 'Invoices', r: ['invoices'] },
@@ -172,7 +174,7 @@ const route = () => (location.hash.replace('#/', '') || 'week').split('?')[0];
 const isAp = () => S.me?.role === 'approver';
 /* The approver (an outside person with an account) only has Approvals, plus My account to change the password. */
 const isIn = () => !!S.me?.internal_approver && S.me.role !== 'owner' && !isAp();   // an employee who approves hours internally
-const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' : ROUTES[k].mine ? !!S.me.has_commissions : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (k === 'approvals' && isIn()));
+const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' || (k === 'progress' && !!S.me.project_manager) : ROUTES[k].pm ? false : ROUTES[k].mine ? !!S.me.has_commissions : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (k === 'approvals' && isIn()));
 const home = () => (isAp() ? 'approvals' : 'week');
 const roleLabel = u => (u.role === 'approver' ? 'Approver' : u.role === 'owner' ? 'Owner' : u.worker_type === 'employee' ? 'Employee' : 'Consultant');
 const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
@@ -578,7 +580,7 @@ async function approversView() {
   const shown = list.filter(a => matchQ(F.q, [a.name, a.email]) && sameFlag(F.active, a.active));
   return `<div class="pghead"><div><h1>Approvers</h1><p class="sub">They can be external and need no account: they receive an email with a secure link. Optionally they can also sign in to the system to see their approvals.</p></div><button class="btn pri" type="button" data-act="approver-new">Add approver</button></div>
     <div class="card">${exportBar('approvers', activeF('approvers'))}${filterBar('approvers', [{ k: 'q', label: 'Search', ph: 'Name or email' }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }])}
-    <div class="scroll"><table><tr><th>Name</th><th>Email</th><th>Clients</th><th>Extra code</th><th>Can sign in</th><th>Account</th><th>Status</th><th></th></tr>${shown.map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.email)}</td><td>${pchips((a.customers || []).map(c => c.name), 3)}</td><td>${a.require_code ? pill('Yes', 'blue') : pill('No')}</td><td>${a.can_login ? pill('Yes', 'blue') : pill('No')}</td><td>${accountPill(a.account_status)}</td><td>${activePill(a.active)}</td>
+    <div class="scroll"><table><tr><th>Name</th><th>Email</th><th>Clients</th><th>Extra code</th><th>Can sign in</th><th>Project manager</th><th>Account</th><th>Status</th><th></th></tr>${shown.map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.email)}</td><td>${pchips((a.customers || []).map(c => c.name), 3)}</td><td>${a.require_code ? pill('Yes', 'blue') : pill('No')}</td><td>${a.can_login ? pill('Yes', 'blue') : pill('No')}</td><td>${a.project_manager ? pill('Yes', 'blue') : pill('No')}</td><td>${accountPill(a.account_status)}</td><td>${activePill(a.active)}</td>
     <td class="r"><button class="btn ghost sm" data-act="edit-approver" data-id="${a.id}">Edit</button> <button class="btn ghost sm" data-act="toggle-login" data-id="${a.id}">${a.can_login ? 'Remove sign-in' : 'Allow sign-in'}</button> <button class="btn ghost sm" data-act="toggle-approver" data-id="${a.id}">${a.active ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('')}</table></div></div>
 `;
 }
@@ -612,6 +614,38 @@ async function tasksView() {
     ${list.length ? `<div class="scrollx"><table><tr><th>Project</th><th>Task</th><th class="r">Budget (h)</th><th class="r">Used (h)</th><th class="r">Not approved (h)</th><th>Estimated end</th><th>Status</th><th></th></tr>${list.map(row).join('')}</table></div>` : '<p class="muted">No tasks here.</p>'}</div>`;
 }
 
+
+/* ================= Progress: read-only view for the project manager (see diseno.md) ================= */
+const meter = (done, budget, pend) => {
+  if (budget == null || !Number(budget)) return '';
+  const a = Math.min(100, done / budget * 100), b = Math.min(100 - a, (pend || 0) / budget * 100);
+  return `<div class="meter" role="img" aria-label="${esc(h1(done))} / ${esc(h1(budget))} h"><i class="ok" style="width:${a}%;${done > budget ? 'background:var(--danger)' : ''}"></i><i class="pd" style="width:${b}%"></i></div>`;
+};
+document.addEventListener('change', e => { const x = e.target.closest?.('[data-pr-project]'); if (x) { S.cache.prProject = Number(x.value); render(); } });
+async function progressView() {
+  const list = await api('/approver/progress');
+  if (!list.length) return `<div class="pghead"><div><h1>Progress</h1></div></div><div class="card"><p class="muted">There are no projects for your clients yet.</p></div>`;
+  let pid = Number(S.cache.prProject) || list[0].id; if (!list.some(x => x.id === pid)) pid = list[0].id; S.cache.prProject = pid;
+  const d = await api('/approver/progress/' + pid);
+  const p = d.project, trend = d.this_week - d.last_week;
+  const kpi = (v, l) => `<div class="kpi"><b>${v}</b><small>${l}</small></div>`;
+  const taskRow = t => `<tr><td><b>${esc(t.name)}</b></td><td>${t.status === 'open' ? pill('Open', 'green') : pill('Completed', 'gray')}${t.status === 'completed' && t.completed_on ? ` <span class="muted">${esc(nice(t.completed_on))}</span>` : ''}${t.late ? ' ' + pill('Late', 'red') : ''}</td>
+    <td>${t.estimated_end ? esc(nice(t.estimated_end)) : '<span class="muted">—</span>'}</td><td class="r">${t.budget_hours != null ? h1(t.budget_hours) : '<span class="muted">—</span>'}</td>
+    <td class="r" ${t.over_budget ? 'style="color:var(--danger);font-weight:600"' : ''}>${h1(t.hours)}${t.pending_hours > 0 ? ` <span class="muted">+${h1(t.pending_hours)}</span>` : ''}</td><td style="min-width:110px">${t.budget_hours != null ? meter(t.hours, t.budget_hours, t.pending_hours) + `<small class="muted">${t.pct}%</small>` : ''}</td></tr>`;
+  const grp = (title, rows) => `<div class="card"><h2>${title}</h2>${rows.length ? `<div class="scrollx"><table><tr><th>Name</th><th class="r">Approved (h)</th><th class="r">To approve (h)</th></tr>${rows.map(r => `<tr><td>${esc(r.name)}</td><td class="r">${h1(r.hours)}</td><td class="r">${r.pending_hours > 0 ? h1(r.pending_hours) : '<span class="muted">—</span>'}</td></tr>`).join('')}</table></div>` : '<p class="muted">No hours yet.</p>'}</div>`;
+  const maxW = Math.max(1, ...d.weeks.map(w => w.hours + w.pending));
+  const bars = d.weeks.map(w => `<div class="wk" title="${esc(nice(w.week_starting))}: ${h1(w.hours)} h${w.pending ? ' + ' + h1(w.pending) + ' h' : ''}"><div class="col"><i class="pd" style="height:${w.pending / maxW * 100}%"></i><i class="ok" style="height:${w.hours / maxW * 100}%"></i></div><small>${esc(nice(w.week_starting).replace(/,? \d{4}$/, ''))}</small><b>${h1(w.hours + w.pending)}</b></div>`).join('');
+  return `<div class="pghead"><div><h1>Progress</h1><p class="sub">Read only. Approved hours count in full; the lighter part is still waiting for approval.</p></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select data-pr-project aria-label="Project" style="width:auto;max-width:100%">${list.map(x => `<option value="${x.id}" ${x.id === pid ? 'selected' : ''}>${esc(x.code)} · ${esc(x.name)}${x.active ? '' : ' (' + T('inactive') + ')'}</option>`).join('')}</select>
+      <button type="button" class="btn ghost sm" data-act="pr-export" data-f="pdf">PDF</button><button type="button" class="btn ghost sm" data-act="pr-export" data-f="xlsx">Excel</button></div></div>
+    <div class="card"><h2>${esc(p.code)} · ${esc(p.name)} <small class="muted">${esc(p.customer || '')}</small></h2>
+      ${d.budget_hours != null ? `${meter(d.hours, d.budget_hours, d.pending_hours)}<p style="margin:6px 0 12px"><b>${h1(d.hours)}</b> ${T('of')} ${h1(d.budget_hours)} h (${d.pct}%) · ${d.remaining_hours >= 0 ? h1(d.remaining_hours) + ' h ' + T('left') : `<span style="color:var(--danger)">${h1(-d.remaining_hours)} h ${T('over the budget')}</span>`}</p>` : `<p class="muted">${T('This project has no hours budget.')}</p>`}
+      <div class="kpis">${kpi(h1(d.this_week) + ' h', 'This week')}${kpi(h1(d.last_week) + ' h', 'Last week')}${kpi((trend > 0 ? '+' : '') + h1(trend) + ' h', 'Change')}${kpi(h1(d.pending_hours) + ' h', 'To approve')}${kpi(d.awaiting_you, 'Timesheets waiting for you')}</div></div>
+    <div class="card"><h2>Tasks</h2><p class="muted" style="margin:0 0 8px">${d.completed_this_week} ${T('completed')} · ${d.new_this_week} ${T('new')} ${T('in the last 7 days')}</p>
+      ${d.tasks.length ? `<div class="scrollx"><table><tr><th>Task</th><th>Status</th><th>Estimated end</th><th class="r">Budget (h)</th><th class="r">Approved (h)</th><th>Progress</th></tr>${d.tasks.map(taskRow).join('')}</table></div>` : '<p class="muted">This project has no tasks.</p>'}</div>
+    <div class="card"><h2>Last 8 weeks</h2><div class="wks">${bars}</div></div>
+    ${grp('By service', d.by_service)}${grp('By person', d.by_person)}`;
+}
 
 /* ================= Commissions (see diseno.md, v1.11) ================= */
 const pct = n => String(Math.round(Number(n || 0) * 100) / 100) + '%';
@@ -1002,11 +1036,11 @@ const actions = {
   'exp-all'(el) { document.querySelectorAll('input[name="project_ids"]').forEach(c => { c.checked = el.dataset.on === '1'; }); },
   async 'del-tpl'(el) { if (!confirm(T('Delete the template?'))) return; await api('/export-templates/' + el.dataset.id, { method: 'DELETE' }); render(); },
   lang: async el => { const to = el.dataset.to; S.lang = to; localStorage.setItem('lang', to); if (S.token) { S.me = await api('/me/locale', { method: 'PUT', body: { locale: to } }); } render(); },
-  async 'toggle-approver'(el) { const a = (await api('/approvers')).find(x => x.id === Number(el.dataset.id)); await api('/approvers/' + a.id, { method: 'PUT', body: { name: a.name, email: a.email, require_code: a.require_code, can_login: !!a.can_login, active: !a.active, customer_ids: a.customer_ids || [] } }); render(); },
+  async 'toggle-approver'(el) { const a = (await api('/approvers')).find(x => x.id === Number(el.dataset.id)); await api('/approvers/' + a.id, { method: 'PUT', body: { name: a.name, email: a.email, require_code: a.require_code, can_login: !!a.can_login, project_manager: !!a.project_manager, active: !a.active, customer_ids: a.customer_ids || [] } }); render(); },
   async 'toggle-login'(el) {
     const a = (await api('/approvers')).find(x => x.id === Number(el.dataset.id)); const on = !a.can_login;
     if (!on && !confirm(T('This approver will no longer be able to sign in. Their sessions will be closed.'))) return;
-    await api('/approvers/' + a.id, { method: 'PUT', body: { name: a.name, email: a.email, require_code: a.require_code, can_login: on, active: a.active, customer_ids: a.customer_ids || [] } });
+    await api('/approvers/' + a.id, { method: 'PUT', body: { name: a.name, email: a.email, require_code: a.require_code, can_login: on, project_manager: !!a.project_manager, active: a.active, customer_ids: a.customer_ids || [] } });
     flash(on ? 'Invitation sent to ' + a.email : 'Sign-in removed.'); render();
   },
   async 'revert-brand'(el) { await api(`/brand/history/${el.dataset.id}/revert`, { method: 'POST' }); S.me = null; flash('Branding restored.'); render(); },
@@ -1438,9 +1472,10 @@ async function openApproverModal(id) {
       <div><label>Clients</label>${msel({ name: 'customer_ids', ef: 'customer_ids', label: 'Clients', placeholder: 'Search clients', empty: 'There are no clients yet.', selected: mine, options: custs.filter(c => c.active || mine.includes(c.id)).map(c => ({ id: c.id, label: c.name })) })}<small class="help">This approver can be chosen for services of these clients.</small></div>
       <label class="chk"><input type="checkbox" name="require_code" ${a?.require_code ? 'checked' : ''}> Always ask for a 6-digit code</label>
       <div><label class="chk"><input type="checkbox" name="can_login" ${a?.can_login ? 'checked' : ''}> Can sign in to the system</label><small class="help">The person receives an invitation at the same email, creates a password and signs in with a code sent by email.</small></div>
+      <div><label class="chk"><input type="checkbox" name="project_manager" ${a?.project_manager ? 'checked' : ''}> Project manager</label><small class="help">Also sees the Progress screen (read only) for the projects of their clients. It never shows rates, pay, commissions or savings goals. Needs sign-in.</small></div>
       ${a ? `<label class="chk"><input type="checkbox" name="active" ${a.active ? 'checked' : ''}> Active</label>` : ''}`,
     async onSubmit(m) {
-      const o = formObj(m.form); o.can_login = !!o.can_login; o.require_code = !!o.require_code; o.customer_ids = o.customer_ids || [];
+      const o = formObj(m.form); o.can_login = !!o.can_login; o.project_manager = !!o.project_manager; o.require_code = !!o.require_code; o.customer_ids = o.customer_ids || [];
       if (a) { o.active = !!o.active; await api('/approvers/' + a.id, { method: 'PUT', body: o }); return m.finish('Approver saved.'); }
       await api('/approvers', { method: 'POST', body: o }); await m.finish(o.can_login ? 'Approver added. An invitation was sent to ' + o.email : 'Approver added.');
     } });
@@ -1640,6 +1675,7 @@ Object.assign(actions, {
   'project-new': () => openProjectModal(), 'edit-project': el => openProjectModal(el.dataset.id),
   'svc-add': el => openServiceModal(el.dataset.pid), 'svc-edit': el => openServiceModal(el.dataset.pid, el.dataset.id),
   'tk-status'(el) { S.cache.tkStatus = el.dataset.s; render(); },
+  async 'pr-export'(el) { await download('/approver/progress/' + S.cache.prProject + '/export?format=' + el.dataset.f, {}, 'progress.' + el.dataset.f); },
   'cm-status'(el) { S.cache.cmStatus = el.dataset.s; render(); },
   'cm-detail'(el) { return openCommissionDetail(S.cache.cm.find(x => x.id === Number(el.dataset.id))); },
   'cm-release'(el) { return openReleaseModal(S.cache.cm.find(x => x.id === Number(el.dataset.id))); },

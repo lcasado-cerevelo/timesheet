@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ContractorInvoiceController;
 use App\Http\Controllers\Api\ExportController;
 use App\Http\Controllers\Api\IntegrationController;
 use App\Http\Controllers\Api\InternalSheetController;
+use App\Http\Controllers\Api\ApproverProgressController;
 use App\Http\Controllers\Api\ApproverSheetController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\ProjectController;
@@ -46,6 +47,10 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::post('/sheets/{sheet}/code', [ApproverSheetController::class, 'code'])->middleware('throttle:5,1');
         Route::post('/sheets/{sheet}/approve', [ApproverSheetController::class, 'approve']);
         Route::post('/sheets/{sheet}/return', [ApproverSheetController::class, 'return']);
+        // Gerente de proyecto: Avance de los proyectos de sus clientes (solo lectura)
+        Route::get('/progress', [ApproverProgressController::class, 'index']);
+        Route::get('/progress/{project}', [ApproverProgressController::class, 'show']);
+        Route::get('/progress/{project}/export', [ApproverProgressController::class, 'export']);
     });
 
     // Aprobadores internos (supervisores): solo las líneas de los proyectos que supervisan
