@@ -16,7 +16,8 @@ class Task extends Model
 
     protected function casts(): array
     {
-        return ['active' => 'boolean', 'budget_hours' => 'decimal:2', 'completed_on' => 'date:Y-m-d'];
+        return ['active' => 'boolean', 'budget_hours' => 'decimal:2', 'completed_on' => 'date:Y-m-d', 'estimated_end' => 'date:Y-m-d',
+            'savings_goal_pct' => 'decimal:2', 'commissionable' => 'boolean'];
     }
 
     public function entries(): HasMany
@@ -27,5 +28,10 @@ class Task extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
     }
 }

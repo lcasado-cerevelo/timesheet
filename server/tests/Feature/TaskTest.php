@@ -40,7 +40,8 @@ class TaskTest extends TestCase
         $this->postJson('/api/projects/'.$other->id.'/tasks', ['name' => 'Diseño'])->assertCreated();   // el mismo nombre en otro proyecto sí
 
         $this->putJson('/api/tasks/'.$t['id'], ['name' => 'Diseño gráfico'])->assertOk()->assertJsonPath('name', 'Diseño gráfico');
-        $this->putJson('/api/tasks/'.$t['id'], ['active' => false])->assertOk()->assertJsonPath('active', false);
+        // Abrir y cerrar una tarea no se hace editándola: se completa o se reabre (con firma).
+        $this->putJson('/api/tasks/'.$t['id'], ['active' => false])->assertOk()->assertJsonPath('active', true);
     }
 
     public function test_a_task_of_another_company_cannot_be_touched(): void
@@ -200,15 +201,134 @@ class TaskTest extends TestCase
         $this->assertDatabaseMissing('tasks', ['id' => $mistake->id]);
     }
 
-    public function test_completing_a_task_records_the_date_and_reopening_clears_it(): void
+    /** Una persona (no dueña) que supervisa los servicios del proyecto: aprobador interno. */
+    private function supervisor(Project $p, string $email = 'sara@cerevelo.test'): User
+    {
+        $u = User::create(['company_id' => $this->company->id, 'name' => 'Sara Díaz', 'email' => $email, 'password' => 'secret-password',
+            'role' => 'member', 'worker_type' => 'employee', 'capture_mode' => 'from_to', 'approver_id' => $this->approver->id]);
+        foreach ($p->services()->get() as $svc) {
+            $svc->update(['approval_mode' => 'internal']);
+            $svc->internalApprovers()->attach($u->id);
+        }
+        return $u;
+    }
+
+    public function test_completing_a_task_needs_the_password_records_a_signature_and_defaults_to_the_last_hours_date(): void
+    {
+        $this->world();
+        $t = $this->task('Diseño');
+        Sanctum::actingAs($this->worker);
+        $this->postJson('/api/entries', $this->entry(['task_id' => $t->id, 'work_date' => '2026-10-19']))->assertCreated();
+        $this->postJson('/api/entries', $this->entry(['task_id' => $t->id, 'work_date' => '2026-10-20']))->assertCreated();
+
+        Sanctum::actingAs($this->owner);
+        $info = $this->getJson('/api/tasks/'.$t->id.'/completion')->assertOk()
+            ->assertJsonPath('default_completed_on', '2026-10-20')->assertJsonPath('last_work_date', '2026-10-20')->json();
+        $this->assertEquals(16, $info['total_hours']);
+        $this->assertEquals(16, $info['pending_hours']);   // todavía no hay hojas aprobadas
+
+        $this->postJson('/api/tasks/'.$t->id.'/complete')->assertStatus(422)->assertJsonValidationErrors('signature');
+        $this->postJson('/api/tasks/'.$t->id.'/complete', ['signature' => 'mala-contraseña'])->assertStatus(422)->assertJsonValidationErrors('signature');
+        $this->assertTrue($t->fresh()->active);
+        $this->assertSame(0, \App\Models\Signature::count());
+
+        $this->postJson('/api/tasks/'.$t->id.'/complete', ['signature' => 'secret-password'])->assertOk()
+            ->assertJsonPath('active', false)->assertJsonPath('completed_on', '2026-10-20')->assertJsonPath('completed_by', 'Luis');
+        $sig = \App\Models\Signature::firstOrFail();
+        $this->assertSame([$this->owner->id, 'task.complete', 'task', $t->id], [$sig->user_id, $sig->action, $sig->subject_type, $sig->subject_id]);
+        $this->assertSame(64, strlen($sig->fingerprint));
+        $this->postJson('/api/tasks/'.$t->id.'/complete', ['signature' => 'secret-password'])->assertStatus(422);   // ya estaba completada
+    }
+
+    public function test_the_completion_date_can_be_chosen_but_not_in_the_future(): void
     {
         $this->world();
         $t = $this->task('Diseño');
         Sanctum::actingAs($this->owner);
-        $this->putJson('/api/tasks/'.$t->id, ['active' => false])->assertOk()->assertJsonPath('active', false)->assertJsonPath('completed_on', '2026-10-21');
-        // Guardar otra cosa (el nombre) no cambia la fecha de completada.
-        $this->putJson('/api/tasks/'.$t->id, ['name' => 'Diseño final', 'active' => false])->assertOk()->assertJsonPath('completed_on', '2026-10-21');
-        $this->putJson('/api/tasks/'.$t->id, ['active' => true])->assertOk()->assertJsonPath('active', true)->assertJsonPath('completed_on', null);
+        $this->postJson('/api/tasks/'.$t->id.'/complete', ['signature' => 'secret-password', 'completed_on' => '2026-10-22'])->assertStatus(422)->assertJsonValidationErrors('completed_on');
+        $this->postJson('/api/tasks/'.$t->id.'/complete', ['signature' => 'secret-password', 'completed_on' => '2026-10-15'])->assertOk()->assertJsonPath('completed_on', '2026-10-15');
+        // Sin horas y sin fecha, se completa hoy.
+        $u = $this->task('Otra');
+        $this->postJson('/api/tasks/'.$u->id.'/complete', ['signature' => 'secret-password'])->assertOk()->assertJsonPath('completed_on', '2026-10-21');
+    }
+
+    public function test_only_the_owner_and_the_internal_approvers_of_the_project_complete_tasks(): void
+    {
+        $this->world();
+        $t = $this->task('Diseño');
+        $sara = $this->supervisor($this->project);
+        $other = Project::create(['company_id' => $this->company->id, 'code' => 'P-2', 'name' => 'Otra']);
+        $foreign = $this->task('Ajena', $other);
+
+        Sanctum::actingAs($this->worker);
+        $this->postJson('/api/tasks/'.$t->id.'/complete', ['signature' => 'secret-password'])->assertForbidden();
+        $this->getJson('/api/tasks')->assertForbidden();
+
+        Sanctum::actingAs($sara);
+        $this->postJson('/api/tasks/'.$foreign->id.'/complete', ['signature' => 'secret-password'])->assertForbidden();   // supervisa otro proyecto
+        $this->assertSame(['Diseño'], collect($this->getJson('/api/tasks')->assertOk()->json())->pluck('name')->all());
+        $this->postJson('/api/tasks/'.$t->id.'/complete', ['signature' => 'secret-password'])->assertOk()->assertJsonPath('completed_by', 'Sara Díaz');
+
+        $account = User::create(['company_id' => $this->company->id, 'name' => 'Jorge', 'email' => 'cuenta@cliente.test', 'password' => 'secret-password',
+            'role' => 'approver', 'worker_type' => 'employee', 'capture_mode' => 'full_day', 'approver_profile_id' => $this->approver->id]);
+        Sanctum::actingAs($account);
+        $this->postJson('/api/tasks/'.$foreign->id.'/complete', ['signature' => 'secret-password'])->assertForbidden();
+
+        Sanctum::actingAs($this->owner);
+        $this->assertCount(2, $this->getJson('/api/tasks')->assertOk()->json());
+        $this->assertCount(1, $this->getJson('/api/tasks?status=completed')->json());
+        $this->assertCount(1, $this->getJson('/api/tasks?status=open')->json());
+    }
+
+    public function test_only_the_owner_reopens_a_task_and_it_is_signed(): void
+    {
+        $this->world();
+        $t = $this->task('Diseño');
+        $sara = $this->supervisor($this->project);
+        Sanctum::actingAs($this->owner);
+        $this->postJson('/api/tasks/'.$t->id.'/reopen', ['signature' => 'secret-password'])->assertStatus(422);   // ya está abierta
+        $this->postJson('/api/tasks/'.$t->id.'/complete', ['signature' => 'secret-password', 'completed_on' => '2026-10-15'])->assertOk();
+
+        Sanctum::actingAs($sara);
+        $this->postJson('/api/tasks/'.$t->id.'/reopen', ['signature' => 'secret-password'])->assertForbidden();
+        Sanctum::actingAs($this->owner);
+        $this->postJson('/api/tasks/'.$t->id.'/reopen', ['signature' => 'mala'])->assertStatus(422)->assertJsonValidationErrors('signature');
+        $this->postJson('/api/tasks/'.$t->id.'/reopen', ['signature' => 'secret-password'])->assertOk()
+            ->assertJsonPath('active', true)->assertJsonPath('completed_on', null)->assertJsonPath('completed_by', null);
+        $this->assertSame(['task.complete', 'task.reopen'], \App\Models\Signature::orderBy('id')->pluck('action')->all());
+    }
+
+    public function test_the_signature_is_locked_after_too_many_wrong_passwords(): void
+    {
+        $this->world();
+        $t = $this->task('Diseño');
+        Sanctum::actingAs($this->owner);
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/tasks/'.$t->id.'/complete', ['signature' => 'mala'])->assertStatus(422);
+        }
+        // Ya bloqueada: ni siquiera la contraseña correcta firma.
+        $this->postJson('/api/tasks/'.$t->id.'/complete', ['signature' => 'secret-password'])->assertStatus(429);
+        $this->assertTrue($t->fresh()->active);
+    }
+
+    public function test_a_task_has_an_estimated_end_a_savings_goal_and_a_commission_flag_that_needs_a_budget(): void
+    {
+        $this->world();
+        Sanctum::actingAs($this->owner);
+        $t = $this->postJson('/api/projects/'.$this->project->id.'/tasks', ['name' => 'Diseño', 'budget_hours' => 20, 'estimated_end' => '2026-11-05',
+            'savings_goal_pct' => 20, 'commissionable' => true])->assertCreated()
+            ->assertJsonPath('estimated_end', '2026-11-05')->assertJsonPath('savings_goal_pct', 20)->assertJsonPath('commissionable', true)->json();
+        // Sin presupuesto no se puede marcar que aplica comisión.
+        $this->postJson('/api/projects/'.$this->project->id.'/tasks', ['name' => 'Sin presupuesto', 'commissionable' => true])
+            ->assertStatus(422)->assertJsonValidationErrors('budget_hours');
+        $this->putJson('/api/tasks/'.$t['id'], ['budget_hours' => null])->assertStatus(422)->assertJsonValidationErrors('budget_hours');
+        $this->putJson('/api/tasks/'.$t['id'], ['estimated_end' => '2026-11-12'])->assertOk()->assertJsonPath('estimated_end', '2026-11-12');   // la fecha se puede cambiar
+        $this->putJson('/api/tasks/'.$t['id'], ['savings_goal_pct' => 120])->assertStatus(422)->assertJsonValidationErrors('savings_goal_pct');
+        $this->putJson('/api/tasks/'.$t['id'], ['commissionable' => false, 'budget_hours' => null])->assertOk()->assertJsonPath('budget_hours', null);
+
+        // Los demás no ven estos datos.
+        Sanctum::actingAs($this->worker);
+        $this->getJson('/api/projects')->assertJsonMissingPath('0.tasks.0.estimated_end')->assertJsonMissingPath('0.tasks.0.commissionable');
     }
 
     public function test_the_approver_sees_the_task_on_the_page_and_in_the_account_api(): void

@@ -374,6 +374,11 @@
     "proyecto :name": "project :name",
     "Tarea": "Task",
     "Escoge la tarea.": "Choose the task.",
+    "Esta tarea ya está completada.": "This task is already completed.",
+    "Esta tarea ya está abierta.": "This task is already open.",
+    "La fecha de completada no puede ser futura.": "The completion date cannot be in the future.",
+    "Una tarea con comisión necesita un presupuesto de horas.": "A task with a commission needs an hours budget.",
+    "La contraseña no es correcta: no se pudo firmar.": "The password is not correct: it could not be signed.",
     "Esta tarea ya tiene horas registradas: no se puede borrar. Márcala como completada.": "This task already has hours logged: it cannot be deleted. Mark it as completed.",
     "Esa tarea no existe en este proyecto o está desactivada.": "That task does not exist in this project or is deactivated."
 }

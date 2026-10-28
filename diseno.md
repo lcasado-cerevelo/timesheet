@@ -469,7 +469,7 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - **Resolución en tiempo de ejecución** de una parte externa: (a) lista del servicio; (b) si está vacía, aprobadores activos del cliente; (c) RESPALDO para datos viejos: `projects.approver_id` o, si no, `users.approver_id`. Para internos: lista del servicio; si está vacía (viejos), la lista vieja `project_internal_approvers`. `users.approver_id`, `projects.approver_id` y `project_internal_approvers` se conservan solo para ese respaldo.
 - API: ver `ServiceController::payload` (internal/external_approver_ids, *_approvers, external_effective, client), `GET /api/projects/{id}/approver-options`, `customer_ids`/`customers` y `?customer_id=` en aprobadores; la hoja trae `internal[]` y `external[]` (por servicio) y `waiting_for` con `kind`.
 
-# Adenda v1.11 (2026-10-28) — tareas por proyecto y comisiones (la parte de comisiones es DISEÑO, no está construida)
+# Adenda v1.11 (2026-10-28) — tareas por proyecto y comisiones (tareas y fase 1 construidas; el resto de las comisiones es DISEÑO)
 
 ## Lo que ya está construido: tareas
 - **Tareas por proyecto** (`tasks`, `time_entries.task_id`). Un proyecto puede no tener tareas. Si tiene al menos una **abierta** (`tasks.active`), la tarea es **obligatoria** en cada entrada de horas (web, móvil y reloj); una entrada vieja que ya estaba sin tarea se puede seguir editando sin ella. Sin tareas abiertas no se muestra ni se pide nada.
@@ -492,12 +492,12 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 **Datos nuevos en la tarea:** **fecha estimada de terminación** (editable; no hay "buffer de días": si hace falta más plazo, se edita la fecha), **meta de ahorro** (%, p. ej. 20) y **aplica comisión** (sí/no).
 
 **Cálculo (al completar la tarea).** Ejemplo: estimado 20 h, meta de ahorro 20%.
-1. Meta: 20 × (1 − 20%) = **16 h**. Cumple si el total de horas de la tarea ≤ 16 + tolerancia.
-2. Fecha: completada a más tardar en la **fecha estimada**.
-3. Parte de la persona: sus horas ≥ su % mínimo del total trabajado.
-4. Si cumple las tres: **comisión = sus horas en la tarea × extra por hora**; **bono por ahorro = horas ahorradas × % del ahorro × monto por hora**, con horas ahorradas = estimado − total trabajado (20 − 16 = 4). Ambos se suman en una sola partida.
-- Solo cuentan horas de **hojas aprobadas**. El total de la tarea incluye las horas de todas las personas y servicios; las horas propias de la persona se cuentan solo en los servicios marcados en su comisión.
-- Si la tarea no tiene presupuesto, no hay comisión que calcular.
+- **Condiciones del equipo** (las mismas para todos): (1) total de horas de la tarea ≤ meta + tolerancia de la comisión, con meta = 20 × (1 − 20%) = **16 h**; (2) tarea completada a más tardar en la **fecha estimada**. Si se pasó del plazo, **no hay bono para nadie** (ni comisión ni ahorro).
+- **Bono por ahorro (del equipo):** si se cumplen las dos condiciones del equipo, lo gana **toda persona que tenga comisión en esa tarea y haya trabajado al menos 1 hora en ella**, aunque no haya hecho su porcentaje. Cada persona tiene su propio monto por hora ahorrada. Horas ahorradas = estimado − total trabajado (20 − 16 = 4). Bono = horas ahorradas × **parte del ahorro** × monto por hora. La **parte del ahorro** se escoge en cada comisión: un **porcentaje fijo** (p. ej. 100%) o **el porcentaje que le correspondía hacer** (el mínimo configurado; con 40 y 40 el ahorro se reparte en vez de pagarse dos veces completo). *(Por definir: si se ofrece también "el porcentaje que realmente trabajó".)*
+- **Comisión por hora (individual):** las condiciones del equipo **más** que sus horas sean ≥ su % mínimo del total trabajado. Comisión = sus horas en la tarea × extra por hora.
+- Ejemplo: se completa a tiempo con 16 h en total; Jarvis hizo 13 h (81%) y Ana 3 h (19%), ambos con comisión en la tarea. Con parte del ahorro fija en 100% y monto 5, ambos ganan 4 × 100% × 5 = 20 de ahorro; Jarvis cumple su 80% y gana además 13 × 5 = 65; Ana no llegó a su mínimo y solo gana el ahorro.
+- Solo cuentan horas de **hojas aprobadas** (confirmado): los números del cálculo no deben cambiar. El total de la tarea incluye las horas de todas las personas y servicios; las horas propias de la persona se cuentan solo en los servicios marcados en su comisión. Si quedan horas de la tarea sin aprobar, el sistema avisa y la tarea no se puede completar con comisión hasta que se aprueben.
+- Si la tarea no tiene presupuesto, no hay comisión que calcular (por eso "aplica comisión" exige presupuesto).
 
 **Completar y liberar.**
 - Completan la tarea el **dueño** y los **aprobadores internos** del proyecto. La fecha por defecto es la de las últimas horas de la tarea; quien completa puede cambiarla. Se firma con contraseña.
@@ -509,7 +509,7 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 
 **Factura del consultor.** Sus horas, a su tarifa, como hoy. Las comisiones **liberadas** que aún no se han facturado entran como **una línea aparte por proyecto** (el total globalizado, con el detalle por tarea y por comisión disponible), con retención/IVU según lo marcado en cada comisión. Los empleados no facturan: la oficina necesita un reporte de comisiones por pagar.
 
-**Lo que ve el trabajador:** un lugar donde ve **sus** horas por proyecto y tarea y cómo va con respecto a su meta, **nunca** lo de los demás. Ojo: mostrarle su porcentaje le permite deducir el total de la tarea (horas ÷ %); por eso se propone mostrar solo sus horas y un indicador (va bien / por debajo) en lugar del porcentaje. Su comisión aparece en la factura como línea aparte.
+**Lo que ve el trabajador (aprobado):** quiere transparencia, no solo "va bien / por debajo". Una **tarjeta por tarea** con la lista de condiciones y cómo va en cada una: meta de horas del equipo (lleva 9.5 h de 16), fecha (faltan 3 días), su parte (lleva 7.6 h = 80% del equipo; necesita 80%) y "si la tarea se completara hoy ganarías: comisión + ahorro". Una vez completada y liberada, el resultado final y su estado. No se muestran nombres ni desglose por persona. Consecuencia aceptada: el total del equipo y su porcentaje le permiten deducir lo que trabajaron los demás en conjunto (con dos personas, lo de la otra). Su comisión aparece en la factura como línea aparte.
 
 **Firma digital con contraseña** (se construye al final, toca muchas pantallas): someter la hoja, aprobar, completar la tarea, liberar/ajustar una comisión y someter la factura. El campo de firma **cambia de nombre cada vez** para que el navegador no lo autocomplete (es una mitigación, un gestor de contraseñas puede ignorarla). Se guarda quién, cuándo, desde qué IP y una huella del contenido firmado, y los informes dicen "firmado/aprobado digitalmente por …". Los **aprobadores externos** (enlace del correo, sin cuenta) firman con el código de 6 dígitos que reciben por correo. En el **móvil**, someter una hoja pasa a exigir conexión.
 
@@ -517,6 +517,14 @@ Las tablas de la web tienen filtros y la exportación (CSV, Excel, PDF) usa exac
 - La **tolerancia en horas va en la comisión, no en la tarea**: la meta de ahorro es de la tarea (qué quiere ahorrar), pero cuánto se perdona es un acuerdo con cada persona; así dos personas en la misma tarea pueden tener tolerancias distintas. El buffer de días se descartó.
 - **Editar a mano la comisión tiene sentido** (excepciones, errores del cálculo), siempre que quede el cálculo original, el ajuste y el motivo, firmado por el dueño.
 
-**Por confirmar antes de construir:** (a) si el bono por ahorro se multiplica por la parte de la persona o se reconoce completo a cada persona que cumple (el diseño asume completo, "para todo el mundo"); (b) que solo cuenten horas aprobadas y que el total incluya a todos; (c) el indicador del trabajador en lugar del porcentaje; (d) que las comisiones de empleados tengan su reporte de "por pagar".
+**Por definir antes de la fase 2:** (a) la opción "el porcentaje que realmente trabajó" como tercera forma de calcular la parte del ahorro; (b) el reporte de comisiones por pagar para empleados (aprobado: tabla con persona, proyecto, tarea, monto y estado, exportable, y marcar como pagada).
 
-**Fases:** 1) datos de la tarea y flujo de completar; 2) comisiones (configuración, cálculo, pantalla del trabajador); 3) línea de comisión en la factura; 4) firma digital con contraseña en todas las pantallas. Cada fase se puede usar sola.
+**Fases:** 1) datos de la tarea y flujo de completar — **construida (abajo)**; 2) comisiones (configuración, cálculo, pantalla del trabajador, reporte); 3) línea de comisión en la factura; 4) firma digital con contraseña en las demás pantallas (someter hoja, aprobar, someter factura). Cada fase se puede usar sola.
+
+## Fase 1 construida: datos de la tarea, completar con firma y pantalla Tareas
+- **Datos de la tarea** (migración `2026_11_06_000000_task_goals_and_signatures`): `estimated_end` (fecha estimada, editable), `savings_goal_pct` (meta de ahorro) y `commissionable` (aplica comisión; exige presupuesto de horas). Solo los ven el dueño y los aprobadores internos.
+- **Completar y reabrir se firman con la contraseña.** `POST /api/tasks/{id}/complete` (`completed_on` opcional, `signature`) y `POST /api/tasks/{id}/reopen`. Ya no se completa editando la tarea (`PUT` ignora `active`). `GET /api/tasks/{id}/completion` da la fecha por defecto (la de las últimas horas, o hoy si no hay) y las horas sin aprobar; `GET /api/tasks?status=open|completed|all` lista las tareas.
+- **Quién completa:** el dueño y los aprobadores internos de algún servicio del proyecto (403 para los demás y para las cuentas de aprobador externo). **Reabrir: solo el dueño.** La fecha de completada no puede ser futura.
+- **Firma** (`SignatureService`, tabla `signatures`): se verifica la contraseña (`signature`) y se guarda quién, qué (`task.complete`, `task.reopen`), cuándo, la IP y una huella sha256 del contenido; 5 contraseñas malas bloquean 15 minutos. En pantalla el campo de firma **cambia de nombre cada vez** y lleva `autocomplete="new-password"`. La tarea muestra "completada por …". La tabla `signatures` es la base de la fase 4.
+- **Web:** el formulario de la tarea lleva presupuesto, fecha estimada, meta de ahorro y "aplica comisión"; completar y reabrir abren una ventana con la contraseña; hay una pestaña **Tareas** (dueño y aprobadores internos) con las tareas abiertas/completadas, horas usadas y sin aprobar.
+- **Pruebas:** `tests/Feature/TaskTest.php` (servidor) y una prueba real en navegador (crear tarea con los campos nuevos, firma con contraseña mala y buena, completar, reabrir, pantalla Tareas y hoja semanal con tarea obligatoria).

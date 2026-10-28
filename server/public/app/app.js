@@ -141,6 +141,7 @@ const ROUTES = {
   week: { t: 'Timesheet', f: weekView },
   weeks: { t: 'All weeks', f: weeksView },
   approvals: { t: 'Approvals', owner: true, f: reviewScreen },
+  tasks: { t: 'Tasks', staff: true, f: tasksView },
   invoices: { t: 'Invoices', f: invoicesView },
   reports: { t: 'Hours report', f: reportsView },
   clientsheet: { t: 'Client timesheet', owner: true, f: clientSheetView },
@@ -158,6 +159,7 @@ const ROUTES = {
 const GROUPS = [
   { t: 'Timesheet', r: ['week', 'weeks'] },
   { t: 'Approvals', r: ['approvals'] },
+  { t: 'Tasks', r: ['tasks'] },
   { t: 'Invoices', r: ['invoices'] },
   { t: 'Reports', r: ['reports', 'clientsheet', 'export'] },
   { t: 'People & projects', r: ['people', 'approvers', 'customers', 'projects'] },
@@ -167,7 +169,7 @@ const route = () => (location.hash.replace('#/', '') || 'week').split('?')[0];
 const isAp = () => S.me?.role === 'approver';
 /* The approver (an outside person with an account) only has Approvals, plus My account to change the password. */
 const isIn = () => !!S.me?.internal_approver && S.me.role !== 'owner' && !isAp();   // an employee who approves hours internally
-const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' : !ROUTES[k].owner || S.me.role === 'owner' || (k === 'approvals' && isIn()));
+const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (k === 'approvals' && isIn()));
 const home = () => (isAp() ? 'approvals' : 'week');
 const roleLabel = u => (u.role === 'approver' ? 'Approver' : u.role === 'owner' ? 'Owner' : u.worker_type === 'employee' ? 'Employee' : 'Consultant');
 const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
@@ -574,6 +576,25 @@ async function customersView() {
   return `<div class="pghead"><div><h1>Clients</h1><p class="sub">For Consultorio 1500, each client is an office.</p></div><button class="btn pri" type="button" data-act="customer-new">Add client</button></div>
     <div class="card">${exportBar('customers', activeF('customers'))}${filterBar('customers', [{ k: 'q', label: 'Search', ph: 'Name or email' }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }, { k: 'linked', label: 'Accountisi', type: 'select', opts: YN('Linked', 'Not linked') }])}<div class="scroll"><table><tr><th>Name</th><th>Email</th><th>Accountisi</th><th>Status</th><th></th></tr>${shown.map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.email || '')}</td><td>${c.accountisi_id ? pill('Linked', 'green') + ' <span class="muted">' + esc(c.accountisi_id) + '</span>' : pill('Not linked')}</td><td>${activePill(c.active)}</td><td class="r"><button class="btn ghost sm" data-act="edit-customer" data-id="${c.id}">Edit</button></td></tr>`).join('')}</table></div></div>
 `;
+}
+
+/* --- Tasks: every task (owner) or the tasks of the projects a supervisor approves. Completing a task is signed with the password. --- */
+async function tasksView() {
+  const st = S.cache.tkStatus || 'open'; const owner = S.me.role === 'owner';
+  const list = await api('/tasks' + (st === 'all' ? '' : '?status=' + st)); S.cache.tk = list;
+  const pills = [['open', 'Open'], ['completed', 'Completed'], ['all', 'All']].map(([k, l]) => `<button type="button" class="${k === st ? 'on' : ''}" data-act="tk-status" data-s="${k}">${l}${k === st ? ` (${list.length})` : ''}</button>`).join('');
+  const row = x => {
+    const over = x.budget_hours != null && Number(x.used_hours) > Number(x.budget_hours); const late = x.active && x.estimated_end && x.estimated_end < today();
+    return `<tr><td>${esc(x.project.code)} · ${esc(x.project.name)}</td><td><b>${esc(x.name)}</b>${x.commissionable ? ` <span class="muted" title="${esc(T('Counts toward a commission'))}">★</span>` : ''}</td>
+    <td class="r">${x.budget_hours != null ? h1(x.budget_hours) : '<span class="muted">—</span>'}</td><td class="r" ${over ? 'style="color:var(--danger);font-weight:600"' : ''}>${h1(x.used_hours || 0)}</td>
+    <td class="r">${x.pending_hours > 0 ? h1(x.pending_hours) : '<span class="muted">—</span>'}</td>
+    <td ${late ? 'style="color:var(--danger)"' : ''}>${x.estimated_end ? esc(nice(x.estimated_end)) : '<span class="muted">—</span>'}</td>
+    <td>${x.active ? pill('Open', 'green') : pill('Completed', 'gray')}${!x.active && x.completed_on ? ` <span class="muted">${esc(nice(x.completed_on))}</span>${x.completed_by ? ' · ' + esc(x.completed_by) : ''}` : ''}</td>
+    <td class="r">${x.active ? `<button type="button" class="btn ghost sm" data-act="tk-complete" data-id="${x.id}">Complete</button>` : owner ? `<button type="button" class="btn ghost sm" data-act="tk-reopen" data-id="${x.id}">Reopen</button>` : ''}</td></tr>`;
+  };
+  return `<div class="pghead"><div><h1>Tasks</h1><p class="sub">${owner ? 'The tasks of every project.' : 'The tasks of the projects you approve.'} Completing a task is signed with your password.</p></div></div>
+    <div class="card"><div class="pills" style="margin-bottom:12px">${pills}</div>
+    ${list.length ? `<div class="scrollx"><table><tr><th>Project</th><th>Task</th><th class="r">Budget (h)</th><th class="r">Used (h)</th><th class="r">Not approved (h)</th><th>Estimated end</th><th>Status</th><th></th></tr>${list.map(row).join('')}</table></div>` : '<p class="muted">No tasks here.</p>'}</div>`;
 }
 
 /* --- Branding --- */
@@ -1102,6 +1123,10 @@ const mdlCloseAll = () => [...MDL].forEach(m => m.close(true));
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && MDL.length && !e.target.closest?.('.msel-q[aria-expanded="true"]')) { e.preventDefault(); e.stopImmediatePropagation(); MDL[MDL.length - 1].request(); } }, true);
 window.addEventListener('hashchange', mdlCloseAll);
 const needErr = (field, msg) => Object.assign(new Error(msg), { errors: { [field]: [msg] } });
+/* Digital signature: the person types the password again. The box gets a different name every time so the browser has nothing to autofill;
+   the code finds it by data-sig and sends the value as `signature`. */
+const sigField = () => `<div><label>Password to sign *</label><input type="password" data-sig data-ef="signature" name="sig${Math.random().toString(36).slice(2, 10)}" autocomplete="new-password" required><small class="help">Type your password again: this signs the action digitally.</small></div>`;
+const sigTake = (form, o) => { const i = form.querySelector('[data-sig]'); if (o && i) delete o[i.name]; return i ? i.value : ''; };
 
 /* --- Searchable multi-select: the one component for every long list (people, projects, approvers, clients) ---
    Chips on top (with ✕), a search box that filters while typing (no accents, no case; name and email), a scrolling list
@@ -1265,26 +1290,57 @@ function taskBox(p) {
   const list = p.tasks || [];
   const row = x => {
     const over = x.budget_hours != null && Number(x.used_hours) > Number(x.budget_hours);
-    return `<tr><td><b>${esc(x.name)}</b></td><td class="r">${x.budget_hours != null ? h1(x.budget_hours) : '<span class="muted">—</span>'}</td>
-    <td class="r" ${over ? `style="color:var(--danger);font-weight:600" title="${esc(T('Over the budget'))}"` : ''}>${h1(x.used_hours || 0)}</td><td>${x.active ? pill('Open', 'green') : pill('Completed', 'gray')}${!x.active && x.completed_on ? ` <span class="muted">${esc(nice(x.completed_on))}</span>` : ''}</td>
+    const late = x.active && x.estimated_end && x.estimated_end < today();
+    return `<tr><td><b>${esc(x.name)}</b>${x.commissionable ? ` <span class="muted" title="${esc(T('Counts toward a commission'))}">★</span>` : ''}</td><td class="r">${x.budget_hours != null ? h1(x.budget_hours) : '<span class="muted">—</span>'}</td>
+    <td class="r" ${over ? `style="color:var(--danger);font-weight:600" title="${esc(T('Over the budget'))}"` : ''}>${h1(x.used_hours || 0)}</td>
+    <td ${late ? 'style="color:var(--danger)" title="' + esc(T('Past the estimated date')) + '"' : ''}>${x.estimated_end ? esc(nice(x.estimated_end)) : '<span class="muted">—</span>'}</td>
+    <td>${x.active ? pill('Open', 'green') : pill('Completed', 'gray')}${!x.active && x.completed_on ? ` <span class="muted">${esc(nice(x.completed_on))}</span>` : ''}</td>
     <td class="r"><button type="button" class="btn ghost sm" data-act="task-edit" data-pid="${p.id}" data-id="${x.id}">Edit</button> <button type="button" class="btn ghost sm" data-act="task-toggle" data-pid="${p.id}" data-id="${x.id}">${x.active ? 'Complete' : 'Reopen'}</button>${x.can_delete ? ` <button type="button" class="btn ghost sm" data-act="task-del" data-pid="${p.id}" data-id="${x.id}">Delete</button>` : ''}</td></tr>`;
   };
   return `<div class="mdl-sech"><h3>Tasks</h3><button type="button" class="btn ghost sm" data-act="task-add" data-pid="${p.id}">Add task</button></div>
-    <p class="muted" style="margin:0 0 8px">A project may have no tasks. When it has active tasks, the person must pick one on each line of the week, and the approver sees it next to the project and the service. Mark a task as completed when it is finished so nobody picks it any more; a task created by mistake can be deleted while it has no hours.</p>
-    ${list.length ? `<div class="scrollx"><table class="svct"><tr><th>Task</th><th class="r">Budget (h)</th><th class="r">Used (h)</th><th>Status</th><th></th></tr>${list.map(row).join('')}</table></div>` : '<p class="muted" style="margin:0">No tasks yet.</p>'}`;
+    <p class="muted" style="margin:0 0 8px">A project may have no tasks. When it has open tasks, the person must pick one on each line of the week, and the approver sees it next to the project and the service. Mark a task as completed when it is finished so nobody picks it any more; a task created by mistake can be deleted while it has no hours.</p>
+    ${list.length ? `<div class="scrollx"><table class="svct"><tr><th>Task</th><th class="r">Budget (h)</th><th class="r">Used (h)</th><th>Estimated end</th><th>Status</th><th></th></tr>${list.map(row).join('')}</table></div>` : '<p class="muted" style="margin:0">No tasks yet.</p>'}`;
 }
 function openTaskModal(pid, tid) {
   const p = (S.cache.pl || []).find(x => x.id === Number(pid)); if (!p) return;
   const t = tid ? (p.tasks || []).find(x => x.id === Number(tid)) : null;
   modalOpen({ title: t ? 'Edit task' : 'Add task', sub: `${p.code} · ${p.name}`, size: 'sm', save: t ? 'Save' : 'Add',
     body: `<div><label>Name</label><input name="name" required maxlength="120" value="${esc(t?.name)}"></div>
-      <div><label>Estimated hours (budget)</label><input name="budget_hours" type="number" step="0.5" min="0" max="99999" value="${esc(t?.budget_hours)}"><small class="help">Optional. It only shows how many hours were used against it; it does not block anyone.</small></div>
-      ${t ? `<label class="chk"><input type="checkbox" name="completed" ${t.active ? '' : 'checked'}> Completed</label>
-      <small class="help">A completed task stops showing when people log hours. Hours already logged keep it.</small>` : ''}`,
+      <div><label>Estimated hours (budget)</label><input name="budget_hours" type="number" step="0.5" min="0" max="99999" value="${esc(t?.budget_hours)}"><small class="help">Optional. It shows how many hours were used against it; it does not block anyone.</small></div>
+      <div><label>Estimated end date</label><input name="estimated_end" type="date" value="${esc(t?.estimated_end)}"><small class="help">Optional. You can change it later. A task completed after this date earns no bonus.</small></div>
+      <div><label>Savings goal (%)</label><input name="savings_goal_pct" type="number" step="0.5" min="0" max="100" value="${esc(t?.savings_goal_pct)}"><small class="help">Optional. 20 means the goal is to finish it in 80% of the estimated hours.</small></div>
+      <label class="chk"><input type="checkbox" name="commissionable" ${t?.commissionable ? 'checked' : ''}> Counts toward a commission</label>
+      <small class="help">Needs an hours budget. Only these tasks can be added to a person's commission.</small>`,
     async onSubmit(mm) {
-      const o = formObj(mm.form); if (t) o.active = !o.completed; delete o.completed; o.budget_hours = o.budget_hours === '' || o.budget_hours == null ? null : Number(o.budget_hours);
+      const o = formObj(mm.form); o.commissionable = !!o.commissionable;
+      for (const k of ['budget_hours', 'savings_goal_pct']) o[k] = o[k] === '' || o[k] == null ? null : Number(o[k]);
+      o.estimated_end = o.estimated_end || null;
       if (t) await api('/tasks/' + t.id, { method: 'PUT', body: o }); else await api('/projects/' + p.id + '/tasks', { method: 'POST', body: o });
       await mm.finish('Task saved.', () => refreshSvcBox(p.id));
+    } });
+}
+/* Completing a task is signed with the password. The date defaults to the last hours logged on it and can be changed. */
+async function openCompleteTaskModal(t, label, after) {
+  const info = await api('/tasks/' + t.id + '/completion');
+  modalOpen({ title: 'Complete task', sub: label, size: 'sm', save: 'Sign and complete',
+    body: `<p style="margin:0"><b>${esc(t.name)}</b></p>
+      <p class="muted" style="margin:0">${T('Hours logged')}: <b>${h1(info.total_hours)}</b> · ${T('not approved yet')}: <b>${h1(info.pending_hours)}</b></p>
+      ${info.pending_hours > 0 ? `<div class="msg warn">${T('Some hours of this task are not approved yet. They will not count toward a commission.')}</div>` : ''}
+      <div><label>Completed on</label><input name="completed_on" type="date" required max="${esc(info.today)}" value="${esc(info.default_completed_on)}"><small class="help">${info.last_work_date ? T('By default: the date of the last hours logged on the task.') : T('The task has no hours yet: by default, today.')}</small></div>
+      ${sigField()}`,
+    async onSubmit(mm) {
+      const o = formObj(mm.form); const signature = sigTake(mm.form, o);
+      await api('/tasks/' + t.id + '/complete', { method: 'POST', body: { completed_on: o.completed_on, signature } });
+      await mm.finish('Task completed.', after);
+    } });
+}
+function openReopenTaskModal(t, label, after) {
+  modalOpen({ title: 'Reopen task', sub: label, size: 'sm', save: 'Sign and reopen',
+    body: `<p style="margin:0"><b>${esc(t.name)}</b></p><p class="muted" style="margin:0">${T('People will be able to pick it again when they log hours.')}</p>${sigField()}`,
+    async onSubmit(mm) {
+      const o = formObj(mm.form); const signature = sigTake(mm.form, o);
+      await api('/tasks/' + t.id + '/reopen', { method: 'POST', body: { signature } });
+      await mm.finish('Task reopened.', after);
     } });
 }
 async function openProjectModal(id) {
@@ -1378,10 +1434,13 @@ Object.assign(actions, {
   'customer-new': () => openCustomerModal(), 'edit-customer': el => openCustomerModal(el.dataset.id),
   'project-new': () => openProjectModal(), 'edit-project': el => openProjectModal(el.dataset.id),
   'svc-add': el => openServiceModal(el.dataset.pid), 'svc-edit': el => openServiceModal(el.dataset.pid, el.dataset.id),
+  'tk-status'(el) { S.cache.tkStatus = el.dataset.s; render(); },
+  'tk-complete'(el) { const t = S.cache.tk.find(x => x.id === Number(el.dataset.id)); return openCompleteTaskModal(t, `${t.project.code} · ${t.project.name}`, () => render()); },
+  'tk-reopen'(el) { const t = S.cache.tk.find(x => x.id === Number(el.dataset.id)); return openReopenTaskModal(t, `${t.project.code} · ${t.project.name}`, () => render()); },
   'task-add': el => openTaskModal(el.dataset.pid), 'task-edit': el => openTaskModal(el.dataset.pid, el.dataset.id),
-  async 'task-toggle'(el) {
-    const p = S.cache.pl.find(x => x.id === Number(el.dataset.pid)); const t = p.tasks.find(x => x.id === Number(el.dataset.id));
-    await api('/tasks/' + t.id, { method: 'PUT', body: { active: !t.active } }); await refreshSvcBox(p.id); toast(t.active ? 'Task completed.' : 'Task reopened.');
+  'task-toggle'(el) {
+    const p = S.cache.pl.find(x => x.id === Number(el.dataset.pid)); const t = p.tasks.find(x => x.id === Number(el.dataset.id)); const label = `${p.code} · ${p.name}`;
+    return t.active ? openCompleteTaskModal(t, label, () => refreshSvcBox(p.id)) : openReopenTaskModal(t, label, () => refreshSvcBox(p.id));
   },
   async 'task-del'(el) {
     const p = S.cache.pl.find(x => x.id === Number(el.dataset.pid)); const t = p.tasks.find(x => x.id === Number(el.dataset.id));

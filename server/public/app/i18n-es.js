@@ -4,6 +4,21 @@ window.I18N_ES = {
   exact: {
     // --- v2: edit approvers/clients, brand, sign-in rule ---
     // --- tasks (optional, per project) ---
+    'Tasks': 'Tareas', 'Complete task': 'Completar tarea', 'Reopen task': 'Reabrir tarea', 'Sign and complete': 'Firmar y completar', 'Sign and reopen': 'Firmar y reabrir',
+    'Password to sign *': 'Contraseña para firmar *', 'Type your password again: this signs the action digitally.': 'Escribe tu contraseña otra vez: así firmas la acción digitalmente.',
+    'Completed on': 'Completada el', 'Hours logged': 'Horas registradas', 'not approved yet': 'sin aprobar todavía',
+    'Some hours of this task are not approved yet. They will not count toward a commission.': 'Algunas horas de esta tarea aún no están aprobadas. No contarán para una comisión.',
+    'By default: the date of the last hours logged on the task.': 'Por defecto: la fecha de las últimas horas registradas en la tarea.',
+    'The task has no hours yet: by default, today.': 'La tarea aún no tiene horas: por defecto, hoy.',
+    'People will be able to pick it again when they log hours.': 'La gente podrá volver a escogerla al registrar horas.',
+    'Estimated end': 'Fin estimado', 'Estimated end date': 'Fecha estimada de terminación', 'Past the estimated date': 'Pasó la fecha estimada',
+    'Optional. You can change it later. A task completed after this date earns no bonus.': 'Opcional. Se puede cambiar después. Una tarea completada después de esta fecha no gana bono.',
+    'Savings goal (%)': 'Meta de ahorro (%)', 'Optional. 20 means the goal is to finish it in 80% of the estimated hours.': 'Opcional. 20 significa que la meta es terminarla en el 80% de las horas estimadas.',
+    'Counts toward a commission': 'Aplica comisión', 'Needs an hours budget. Only these tasks can be added to a person\'s commission.': 'Necesita un presupuesto de horas. Solo estas tareas se pueden añadir a la comisión de una persona.',
+    'Not approved (h)': 'Sin aprobar (h)', 'No tasks here.': 'No hay tareas aquí.', 'Open': 'Abierta', 'Completed': 'Completada', 'All': 'Todas',
+    'The tasks of every project.': 'Las tareas de todos los proyectos.', 'The tasks of the projects you approve.': 'Las tareas de los proyectos que apruebas.',
+    'Completing a task is signed with your password.': 'Completar una tarea se firma con tu contraseña.',
+    'Optional. It shows how many hours were used against it; it does not block anyone.': 'Opcional. Muestra cuántas horas se han usado contra ella; no bloquea a nadie.',
     'Tasks': 'Tareas', 'Add task': 'Añadir tarea', 'Edit task': 'Editar tarea', 'Budget (h)': 'Presupuesto (h)', 'Used (h)': 'Usadas (h)', 'Over the budget': 'Pasa del presupuesto', 'Estimated hours (budget)': 'Horas estimadas (presupuesto)',
     'Optional. It only shows how many hours were used against it; it does not block anyone.': 'Opcional. Solo muestra cuántas horas se han usado contra ella; no bloquea a nadie.',
     'A completed task stops showing when people log hours. Hours already logged keep it.': 'Una tarea completada deja de salir al registrar horas. Las horas ya registradas la conservan.', 'Task': 'Tarea', 'No task': 'Sin tarea', 'No tasks yet.': 'Aún no hay tareas.',

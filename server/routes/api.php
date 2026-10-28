@@ -58,6 +58,11 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
+    // Tareas: las completan el dueño y los aprobadores internos del proyecto (la regla está en el controlador; firman con contraseña)
+    Route::get('/tasks', [TaskController::class, 'index']);
+    Route::get('/tasks/{task}/completion', [TaskController::class, 'completion']);
+    Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->middleware('throttle:20,1');
+
     // Captura de horas (cualquier usuario)
     Route::get('/projects', [ProjectController::class, 'index']);
     Route::get('/entries', [EntryController::class, 'index']);
@@ -140,6 +145,7 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::post('/projects/{project}/tasks', [TaskController::class, 'store']);
         Route::put('/tasks/{task}', [TaskController::class, 'update']);
         Route::delete('/tasks/{task}', [TaskController::class, 'destroy']);
+        Route::post('/tasks/{task}/reopen', [TaskController::class, 'reopen'])->middleware('throttle:20,1');
 
         Route::get('/sheets-pending', [SheetController::class, 'pending']);
         Route::get('/review/sheets', [SheetController::class, 'review']);
