@@ -4,6 +4,9 @@ window.I18N_ES = {
   exact: {
     // --- v2: edit approvers/clients, brand, sign-in rule ---
     // --- commissions ---
+    "Includes a commission line": "Incluye una línea de comisión",
+    "Released commissions that will be included": "Comisiones liberadas que se incluirán",
+    "They appear as a separate line; your hours are billed at your normal rate.": "Salen en una línea aparte; tus horas se facturan a tu tarifa normal.",
     "Commissions": "Comisiones",
     "My commissions": "Mis comisiones",
     "Add commission": "Añadir comisión",

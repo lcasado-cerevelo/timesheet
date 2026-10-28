@@ -95,6 +95,7 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
     Route::match(['get', 'post'], '/export', [ExportController::class, 'export']);
 
     Route::get('/contractor-invoices', [ContractorInvoiceController::class, 'index']);
+    Route::get('/contractor-invoices/pending-commissions', [ContractorInvoiceController::class, 'pendingCommissions']);
     Route::post('/contractor-invoices', [ContractorInvoiceController::class, 'store']);
     Route::get('/contractor-invoices/{invoice}/pdf', [ContractorInvoiceController::class, 'pdf']);
 

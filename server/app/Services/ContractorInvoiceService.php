@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Support\Lang;
 use App\Mail\BrandedMail;
+use App\Models\CommissionResult;
 use App\Models\ContractorInvoice;
 use App\Models\Integration;
 use App\Models\Timesheet;
@@ -19,6 +20,8 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Factura del consultor hacia la compañía, a partir de sus hojas aprobadas. Los empleados no facturan.
+ * Sus horas salen siempre a su tarifa normal. Las comisiones por productividad que el dueño ya LIBERÓ y que aún no se facturaron entran como
+ * una línea aparte por proyecto (el total globalizado, con el detalle por tarea), con retención e IVU solo si esa comisión los lleva.
  * Genera el PDF con la marca, lo envía por email al dueño y, si hay integración, lo crea en Accountisi
  * como cuenta por pagar en borrador (la retención la calcula Accountisi según la configuración del suplidor).
  */
@@ -37,28 +40,35 @@ class ContractorInvoiceService
         $company = $worker->company;
         $sheets = Timesheet::with('entries.project.services', 'entries.service', 'entries.user.terms')->where('user_id', $worker->id)->where('status', Timesheet::APPROVED)
             ->whereNull('contractor_invoice_id')->whereBetween('week_ending', [$from, $to])->orderBy('week_ending')->get();
-        if ($sheets->isEmpty()) {
+        $commissions = $this->releasedCommissions($worker);
+        if ($sheets->isEmpty() && $commissions->isEmpty()) {
             throw ValidationException::withMessages(['from' => __('No hay semanas aprobadas sin facturar en ese período.')]);
         }
 
         // Cada entrada trae la tarifa que tenía al crearse; un cambio de tarifa posterior no toca horas ya registradas.
-        $lines = $sheets->flatMap->entries->where('billable', true)->groupBy(fn ($e) => $e->project_id.'|'.$e->service_id.'|'.number_format($e->payRate(), 2, '.', ''))->map(function ($rows) {
+        $hourLines = $sheets->flatMap->entries->where('billable', true)->groupBy(fn ($e) => $e->project_id.'|'.$e->service_id.'|'.number_format($e->payRate(), 2, '.', ''))->map(function ($rows) {
             $e = $rows->first();
             $rate = $e->payRate();
             $hours = round((float) $rows->sum('hours'), 2);
             $title = $e->project->code.' · '.$e->project->name.($e->project->services->count() > 1 && $e->service ? ' · '.$e->service->name : '');
             return ['description' => $title, 'hours' => $hours, 'rate' => $rate, 'amount' => round($hours * $rate, 2)];
         })->values()->all();
-        if (! $lines) {
+        $commissionLines = $this->commissionLines($commissions);
+        if (! $hourLines && ! $commissionLines) {
             throw ValidationException::withMessages(['from' => __('Las horas de ese período no son facturables.')]);
         }
+        $lines = array_merge($hourLines, $commissionLines);
 
+        $hoursGross = round(array_sum(array_column($hourLines, 'amount')), 2);
         $gross = round(array_sum(array_column($lines, 'amount')), 2);
-        $retention = round($gross * (float) $terms->retention_pct / 100, 2);
-        $ivu = $terms->ivu_agent ? round($gross * (float) $terms->ivu_pct / 100, 2) : 0.0;
+        // La retención y el IVU se calculan sobre las horas y sobre las comisiones que los llevan.
+        $withholdBase = round($hoursGross + array_sum(array_map(fn ($l) => $l['withhold'] ? $l['amount'] : 0, $commissionLines)), 2);
+        $ivuBase = round($hoursGross + array_sum(array_map(fn ($l) => $l['ivu'] ? $l['amount'] : 0, $commissionLines)), 2);
+        $retention = round($withholdBase * (float) $terms->retention_pct / 100, 2);
+        $ivu = $terms->ivu_agent ? round($ivuBase * (float) $terms->ivu_pct / 100, 2) : 0.0;
         $issued = now($company->timezone)->toDateString();
 
-        $invoice = \Illuminate\Support\Facades\DB::transaction(function () use ($company, $worker, $from, $to, $issued, $terms, $lines, $gross, $retention, $ivu, $sheets) {
+        $invoice = \Illuminate\Support\Facades\DB::transaction(function () use ($company, $worker, $from, $to, $issued, $terms, $lines, $gross, $retention, $ivu, $sheets, $commissions) {
             $seq = ContractorInvoice::where('company_id', $company->id)->whereYear('issued_on', substr($issued, 0, 4))->count() + 1;
             $inv = ContractorInvoice::create([
                 'company_id' => $company->id, 'user_id' => $worker->id,
@@ -69,6 +79,7 @@ class ContractorInvoiceService
                 'lines' => $lines, 'status' => 'issued',
             ]);
             Timesheet::whereIn('id', $sheets->pluck('id'))->update(['contractor_invoice_id' => $inv->id]);
+            CommissionResult::whereIn('id', $commissions->pluck('id'))->update(['status' => 'invoiced', 'contractor_invoice_id' => $inv->id]);
             return $inv;
         });
 
@@ -76,6 +87,35 @@ class ContractorInvoiceService
         $this->emailOwners($invoice);
         $this->pushToAccountisi($invoice);
         return $invoice->refresh();
+    }
+
+    /** Comisiones liberadas de esta persona que todavía no salen en ninguna factura. */
+    public function releasedCommissions(User $worker): \Illuminate\Support\Collection
+    {
+        return CommissionResult::with('project:id,code,name', 'task:id,name')->where('user_id', $worker->id)->where('status', 'released')
+            ->whereNull('contractor_invoice_id')->where('total', '>', 0)->orderBy('project_id')->orderBy('completed_on')->orderBy('id')->get();
+    }
+
+    /**
+     * Una línea por proyecto con el total de sus comisiones (cantidad 1 al importe total, para el PDF y para Accountisi) y, aparte, el
+     * detalle por tarea. Si dos comisiones del mismo proyecto difieren en retención o IVU, quedan en líneas distintas.
+     * @return array<int, array{description:string, hours:float, rate:float, amount:float, kind:string, withhold:bool, ivu:bool, details:array}>
+     */
+    public function commissionLines(\Illuminate\Support\Collection $results): array
+    {
+        $lines = [];
+        foreach ($results->groupBy(fn ($r) => $r->project_id.'|'.(int) $r->withhold.'|'.(int) $r->ivu) as $rows) {
+            $first = $rows->first();
+            $amount = round((float) $rows->sum('total'), 2);
+            $lines[] = [
+                'description' => __('Comisión').' · '.$first->project->code.' · '.$first->project->name, 'hours' => 1.0, 'rate' => $amount, 'amount' => $amount,
+                'kind' => 'commission', 'withhold' => (bool) $first->withhold, 'ivu' => (bool) $first->ivu,
+                'details' => $rows->map(fn ($r) => ['task' => $r->task->name, 'completed_on' => $r->completed_on->toDateString(),
+                    'commission' => (float) $r->commission_amount, 'savings' => (float) $r->savings_amount, 'adjustment' => (float) $r->adjustment,
+                    'total' => (float) $r->total])->values()->all(),
+            ];
+        }
+        return $lines;
     }
 
     public function renderPdf(ContractorInvoice $inv): string

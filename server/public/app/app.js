@@ -482,11 +482,20 @@ async function approvalsView() {
 }
 
 /* --- Invoices --- */
+/* the released commissions that will go in the next invoice, as a separate line (the hours keep the normal rate) */
+const pendCommHtml = p => (p && p.items?.length
+  ? `<p class="note" data-pend-comm style="margin:10px 0 0">${T('Released commissions that will be included')}: <b>${p.items.length}</b> · <b>${money(p.total)}</b>. ${T('They appear as a separate line; your hours are billed at your normal rate.')}</p>`
+  : '<p class="note" data-pend-comm style="margin:10px 0 0" hidden></p>');
+document.addEventListener('change', async e => {
+  const sel = e.target.closest?.('form[data-form=cinv] select[name=user_id]'); if (!sel) return;
+  try { const p = await api('/contractor-invoices/pending-commissions' + (sel.value ? '?user_id=' + sel.value : '')); const box = document.querySelector('[data-pend-comm]'); if (box) box.outerHTML = localizeHtml(pendCommHtml(p)); } catch { /* the notice is only informative */ }
+});
 async function invoicesView() {
   const list = await api('/contractor-invoices');
   const owner = S.me.role === 'owner';
   const people = owner ? (await api('/users')).filter(u => u.worker_type === 'consultant') : [];
   const canInvoice = S.me.worker_type === 'consultant' || owner;
+  const pend = canInvoice ? await api('/contractor-invoices/pending-commissions').catch(() => null) : null;
   const F = FL('invoices');
   const shown = list.filter(i => matchQ(F.q, [i.number, i.user?.name]) && (!F.status || i.status === F.status) && (!owner || !F.user_id || i.user_id === Number(F.user_id))
     && (!F.from || i.issued_on >= F.from) && (!F.to || i.issued_on <= F.to));
@@ -496,10 +505,10 @@ async function invoicesView() {
     ${canInvoice ? `<div class="card"><h2>Create an invoice</h2><form data-form="cinv" class="fbar" style="margin:0"><div><label>From</label><input type="date" name="from" value="${addDays(today(), -30)}"></div>
     <div><label>To</label><input type="date" name="to" value="${today()}"></div>
     ${owner ? `<div><label>Consultant</label><select name="user_id"><option value="">Me</option>${people.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>` : ''}
-    <button class="btn pri" type="submit">Create invoice from approved weeks</button></form></div>` : '<div class="card"><p class="muted" style="margin:0">Employees do not create invoices.</p></div>'}
+    <button class="btn pri" type="submit">Create invoice from approved weeks</button></form>${pendCommHtml(pend)}</div>` : '<div class="card"><p class="muted" style="margin:0">Employees do not create invoices.</p></div>'}
     <div class="card"><h2>Invoice history</h2>${exportBar('invoices', activeF('invoices'))}${filterBar('invoices', [{ k: 'q', label: 'Search', ph: 'Number or consultant' }, { k: 'status', label: 'Status', type: 'select', opts: [['', 'All'], ['issued', 'Issued'], ['sent', 'Sent'], ['paid', 'Paid']] }, ...(owner ? [{ k: 'user_id', label: 'Consultant', type: 'select', opts: [['', 'All'], ...people.map(p => [p.id, p.name])] }] : []), { k: 'from', label: 'Issued from', type: 'date' }, { k: 'to', label: 'To', type: 'date' }])}
     <table><tr><th>Number</th><th>Consultant</th><th>Period</th><th class="r">Gross</th><th class="r">Net</th><th>Status</th><th>Accountisi</th><th></th></tr>
-    ${shown.map(i => `<tr><td>${esc(i.number)}</td><td>${esc(i.user?.name)}</td><td>${esc(i.period_from)} to ${esc(i.period_to)}</td><td class="r">${money(i.gross)}</td><td class="r">${money(i.net)}</td>
+    ${shown.map(i => `<tr><td>${esc(i.number)}${i.has_commission ? ` <span class="muted" title="${esc(T('Includes a commission line'))}">★</span>` : ''}</td><td>${esc(i.user?.name)}</td><td>${esc(i.period_from)} to ${esc(i.period_to)}</td><td class="r">${money(i.gross)}</td><td class="r">${money(i.net)}</td>
     <td>${pill(st[i.status] || i.status, { issued: 'blue', sent: 'amber', paid: 'green' }[i.status] || 'gray')}</td><td>${i.accountisi_status ? pill(i.accountisi_status, i.accountisi_status === 'draft' ? 'amber' : 'green') : '—'}</td>
     <td class="r"><button class="btn ghost sm" data-act="pdf" data-id="${i.id}">PDF</button>
     ${owner && i.accountisi_status !== 'draft' ? `<button class="btn ghost sm" data-act="push-bill" data-id="${i.id}">Send to Accountisi</button>` : ''}</td></tr>`).join('')}</table>

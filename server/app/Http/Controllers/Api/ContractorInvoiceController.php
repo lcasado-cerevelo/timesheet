@@ -22,7 +22,23 @@ class ContractorInvoiceController extends Controller
         if (! $u->isOwner()) {
             $q->where('user_id', $u->id);
         }
-        return response()->json($q->limit(100)->get());
+        // Las facturas con comisión lo dicen: la comisión sale en una línea aparte.
+        return response()->json($q->limit(100)->get()->map(fn (ContractorInvoice $i) => $i->toArray()
+            + ['has_commission' => collect($i->lines)->contains(fn ($l) => ($l['kind'] ?? null) === 'commission')])->values());
+    }
+
+    /** Las comisiones liberadas que entrarán en la próxima factura de esta persona (el dueño puede preguntar por un consultor: user_id). */
+    public function pendingCommissions(Request $request)
+    {
+        $u = $request->user();
+        $worker = $u;
+        if ($request->query('user_id') && (int) $request->query('user_id') !== $u->id) {
+            abort_unless($u->isOwner(), 403);
+            $worker = User::where('company_id', $u->company_id)->findOrFail((int) $request->query('user_id'));
+        }
+        $results = $worker->worker_type === 'consultant' ? $this->service->releasedCommissions($worker) : collect();
+        return response()->json(['total' => round((float) $results->sum('total'), 2), 'items' => $results->map(fn ($r) => [
+            'project' => $r->project->code.' · '.$r->project->name, 'task' => $r->task->name, 'total' => (float) $r->total, 'withhold' => (bool) $r->withhold])->values()]);
     }
 
     /** El consultor genera su propia factura; el dueño puede generarla por un consultor (user_id). */

@@ -27,7 +27,13 @@ td{padding:6px;border-bottom:1px solid #ddd}
 <table>
 <tr><th>{{ __('Concepto') }}</th><th class="r">{{ __('Horas') }}</th><th class="r">{{ __('Tarifa') }}</th><th class="r">{{ __('Importe') }}</th></tr>
 @foreach($inv->lines as $l)
-<tr><td>{{ $l['description'] }}</td><td class="r">{{ number_format($l['hours'], 2) }}</td><td class="r">${{ number_format($l['rate'], 2) }}</td><td class="r">${{ number_format($l['amount'], 2) }}</td></tr>
+@php($isCommission = ($l['kind'] ?? null) === 'commission')
+<tr><td>{{ $l['description'] }}</td><td class="r">{{ $isCommission ? '—' : number_format($l['hours'], 2) }}</td><td class="r">{{ $isCommission ? '—' : '$'.number_format($l['rate'], 2) }}</td><td class="r">${{ number_format($l['amount'], 2) }}</td></tr>
+@if($isCommission)
+@foreach($l['details'] ?? [] as $d)
+<tr><td colspan="3" style="color:#777;font-size:10px;border-bottom:0;padding:1px 6px 1px 22px">{{ $d['task'] }} · {{ __('Comisión') }} ${{ number_format($d['commission'], 2) }} · {{ __('Ahorro') }} ${{ number_format($d['savings'], 2) }}@if((float) $d['adjustment'] != 0) · {{ __('Ajuste') }} ${{ number_format($d['adjustment'], 2) }}@endif</td><td class="r" style="color:#777;font-size:10px;border-bottom:0;padding:1px 6px">${{ number_format($d['total'], 2) }}</td></tr>
+@endforeach
+@endif
 @endforeach
 </table>
 <table class="tot" style="margin-top:12px;width:55%;margin-left:45%">
