@@ -47,4 +47,27 @@ class SheetsExportTest extends TestCase
         Sanctum::actingAs($this->worker);
         $this->export('2026-10-19', '2026-10-25')->assertOk()->assertHeader('X-Export-Rows', '2');
     }
+
+    public function test_the_pdf_carries_every_detail_but_csv_and_excel_keep_their_columns(): void
+    {
+        $this->world();
+        $this->entry('2026-10-19', 8, 'Revisé el plano, sin cambios');
+        $ds = app(\App\Services\Tables\Datasets::class);
+        $q = ['from' => '2026-10-19', 'to' => '2026-10-25'];
+
+        $pdf = $ds->build('sheets', $this->owner, $q, 'pdf');
+        $csv = $ds->build('sheets', $this->owner, $q, 'csv');
+        $this->assertContains('Tarea', array_column($pdf['columns'], 'h'));
+        $this->assertNotContains('Tarea', array_column($csv['columns'], 'h'));
+        $this->assertSame(count($pdf['columns']), count($pdf['rows'][0]));
+        $this->assertSame(count($pdf['columns']), count($pdf['total']));
+        $this->assertContains('Revisé el plano, sin cambios', $pdf['rows'][0]);
+
+        // La hoja de la semana en PDF: una fila por entrada con todo el detalle; en CSV sigue la cuadrícula de la pantalla.
+        $week = $ds->build('week', $this->worker, ['date' => '2026-10-20'], 'pdf');
+        $this->assertSame(['Fecha', 'Proyecto', 'Servicio', 'Tarea', 'Desde', 'Hasta', 'Descanso', 'Horas', 'Nota'], array_column($week['columns'], 'h'));
+        $this->assertSame('Revisé el plano, sin cambios', $week['rows'][0][8]);
+        $grid = $ds->build('week', $this->worker, ['date' => '2026-10-20'], 'csv');
+        $this->assertNotContains('Tarea', array_column($grid['columns'], 'h'));
+    }
 }

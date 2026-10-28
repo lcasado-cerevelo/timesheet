@@ -573,7 +573,7 @@ async function projectsView() {
   S.cache.pl = list;
   const F = FL('projects');
   const shown = list.filter(x => matchQ(F.q, [x.code, x.name, x.customer?.name]) && sameFlag(F.active, x.active) && sameFlag(F.billable, x.billable) && (!F.customer_id || x.customer_id === Number(F.customer_id)));
-  return `<div class="pghead"><div><h1>Projects</h1><p class="sub">Only the company owner manages projects. For Consultorio 1500 each patient is a project named “Patient - Health plan - Contract” (if the name has no plan or contract, the plan_medico and numero_contrato fields under “Fields” are used).</p></div><button class="btn pri" type="button" data-act="project-new">New project</button></div>
+  return `<div class="pghead"><div><h1>Projects</h1></div><button class="btn pri" type="button" data-act="project-new">New project</button></div>
     <div class="card">${exportBar('projects', activeF('projects'))}${filterBar('projects', [{ k: 'q', label: 'Search', ph: 'Code, name or client' }, { k: 'customer_id', label: 'Client', type: 'select', opts: [['', 'All'], ...customers.map(c => [c.id, c.name])] }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }, { k: 'billable', label: 'Billable', type: 'select', opts: YN('Billable', 'Non-billable') }])}
     <div class="scroll"><table><tr><th>Code</th><th>Name</th><th>Client</th><th class="r">Rate</th><th>Status</th><th></th></tr>
     ${shown.map(x => `<tr><td>${esc(x.code)}</td><td>${esc(x.name)}${(x.services || []).filter(s => s.active).length > 1 ? ' <span class="muted">· ' + (x.services || []).filter(s => s.active).length + ' ' + T('services') + '</span>' : ''}</td><td>${esc(x.customer?.name || '—')}</td>
@@ -601,7 +601,7 @@ async function customersView() {
   S.cache.cl = list;
   const F = FL('customers');
   const shown = list.filter(c => matchQ(F.q, [c.name, c.email]) && sameFlag(F.active, c.active) && sameFlag(F.linked, c.accountisi_id));
-  return `<div class="pghead"><div><h1>Clients</h1><p class="sub">For Consultorio 1500, each client is an office.</p></div><button class="btn pri" type="button" data-act="customer-new">Add client</button></div>
+  return `<div class="pghead"><div><h1>Clients</h1></div><button class="btn pri" type="button" data-act="customer-new">Add client</button></div>
     <div class="card">${exportBar('customers', activeF('customers'))}${filterBar('customers', [{ k: 'q', label: 'Search', ph: 'Name or email' }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }, { k: 'linked', label: 'Accountisi', type: 'select', opts: YN('Linked', 'Not linked') }])}<div class="scroll"><table><tr><th>Name</th><th>Email</th><th>Accountisi</th><th>Status</th><th></th></tr>${shown.map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.email || '')}</td><td>${c.accountisi_id ? pill('Linked', 'green') + ' <span class="muted">' + esc(c.accountisi_id) + '</span>' : pill('Not linked')}</td><td>${activePill(c.active)}</td><td class="r"><button class="btn ghost sm" data-act="edit-customer" data-id="${c.id}">Edit</button></td></tr>`).join('')}</table></div></div>
 `;
 }
@@ -1358,7 +1358,7 @@ window.addEventListener('hashchange', mdlCloseAll);
 const needErr = (field, msg) => Object.assign(new Error(msg), { errors: { [field]: [msg] } });
 /* Digital signature: the person types the password again. The box gets a different name every time so the browser has nothing to autofill;
    the code finds it by data-sig and sends the value as `signature`. */
-const sigField = () => `<div><label>Password to sign *</label><input type="password" data-sig data-ef="signature" name="sig${Math.random().toString(36).slice(2, 10)}" autocomplete="new-password" required><small class="help">Type your password again: this signs the action digitally.</small></div>`;
+const sigField = () => `<div title="${esc(T('Type your password again: this signs the action digitally.'))}"><label>Password to sign *</label><input type="password" data-sig data-ef="signature" name="sig${Math.random().toString(36).slice(2, 10)}" autocomplete="new-password" required title="${esc(T('Type your password again: this signs the action digitally.'))}"></div>`;
 const sigTake = (form, o) => { const i = form.querySelector('[data-sig]'); if (o && i) delete o[i.name]; return i ? i.value : ''; };
 /* The password typed in the signature box of the page (no window): empty = the person did not sign. */
 const sigPage = () => { const i = document.querySelector('[data-sig]'); const v = i ? i.value : ''; if (!v) throw new Error('Type your password to sign.'); return v; };

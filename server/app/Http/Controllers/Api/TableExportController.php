@@ -25,7 +25,7 @@ class TableExportController extends Controller
         $format = $request->input('format', 'pdf');
         abort_unless(in_array($format, ['csv', 'xlsx', 'pdf'], true), 422, __('Formato no válido: csv, xlsx o pdf.'));
 
-        $table = $this->datasets->build($dataset, $user, $request->except('format'));
+        $table = $this->datasets->build($dataset, $user, $request->except('format'), $format);
         $file = $this->exporter->render($user->company, $table, $format);
         return response($file['body'], 200, [
             'Content-Type' => $file['mime'],

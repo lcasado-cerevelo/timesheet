@@ -30,12 +30,13 @@ class Datasets
         return $a === 'any' || ($a === 'owner' && $user->isOwner());
     }
 
-    public function build(string $dataset, User $user, array $p): array
+    /** En PDF, la hoja de la semana y las hojas de tiempo salen con todo el detalle (servicio, tarea, desde/hasta, descanso y nota de cada línea). */
+    public function build(string $dataset, User $user, array $p, string $format = 'csv'): array
     {
         return match ($dataset) {
             'report' => $this->report($user, $p),
-            'week' => $this->week($user, $p),
-            'sheets' => $this->sheets($user, $p),
+            'week' => $this->week($user, $p, $format === 'pdf'),
+            'sheets' => $this->sheets($user, $p, $format === 'pdf'),
             'invoices' => $this->invoices($user, $p),
             'pending' => $this->pending($user, $p),
             'commissions' => $this->commissions($user, $p),
@@ -118,7 +119,7 @@ class Datasets
      * Tu hoja de la semana tal como se ve en pantalla: una fila por línea (proyecto y servicio), una columna por día, el total y,
      * al final de cada línea, sus notas (con el día de cada una). Incluye todas las partes de la semana.
      */
-    private function week(User $u, array $p): array
+    private function week(User $u, array $p, bool $detail = false): array
     {
         $date = validator($p, ['date' => 'required|date_format:Y-m-d'])->validate()['date'];
         $end = Week::ending($date, $u->company->rules()->weekStart());
@@ -133,6 +134,9 @@ class Datasets
             $days[] = $d->toDateString();
         }
         $short = fn (string $d) => mb_convert_case(rtrim(\Carbon\CarbonImmutable::parse($d)->locale(app()->getLocale())->isoFormat('ddd'), '.'), MB_CASE_TITLE).' '.\Carbon\CarbonImmutable::parse($d)->format('j/n');
+        if ($detail) {
+            return $this->weekDetail($u, $entries, $start, $end, $status, $short);
+        }
         $lines = $entries->groupBy(fn ($e) => $e->project_id.'|'.($e->service_id ?? 0));
         $rows = [];
         $dayTotals = array_fill(0, 7, 0.0);
@@ -163,11 +167,30 @@ class Datasets
         ];
     }
 
+    /** La hoja de la semana en PDF: una fila por entrada, con el servicio, la tarea, las horas desde/hasta, el descanso y la nota completa. */
+    private function weekDetail(User $u, $entries, string $start, string $end, string $status, \Closure $short): array
+    {
+        $rows = [];
+        foreach ($entries as $e) {
+            $rows[] = [$short($e->work_date->toDateString()), $e->project->code.' · '.$e->project->name, (string) ($e->service?->name ?? ''), (string) ($e->task?->name ?? ''),
+                $e->start_time ? substr($e->start_time, 0, 5) : '', $e->end_time ? substr($e->end_time, 0, 5) : '',
+                (int) $e->break_minutes > 0 ? round($e->break_minutes / 60, 2) : '', (float) $e->hours, (string) $e->note];
+        }
+        return [
+            'title' => __('Hoja de la semana'),
+            'subtitle' => __(':name · semana :start a :end · :status', ['name' => $u->name, 'start' => $start, 'end' => $end, 'status' => $status]),
+            'columns' => [['h' => __('Fecha'), 't' => 'text'], ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Servicio'), 't' => 'text'], ['h' => __('Tarea'), 't' => 'text'],
+                ['h' => __('Desde'), 't' => 'text'], ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Descanso'), 't' => 'hours'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Nota'), 't' => 'text']],
+            'rows' => $rows,
+            'total' => [__('Total'), '', '', '', '', '', '', round(array_sum(array_column($rows, 7)), 2), ''],
+        ];
+    }
+
     /**
      * Las hojas del periodo, una fila por día y línea (con su parte, proyecto, servicio y nota). El dueño ve las de toda la compañía,
      * un aprobador con cuenta solo las líneas de sus servicios y cada persona las suyas.
      */
-    private function sheets(User $u, array $p = []): array
+    private function sheets(User $u, array $p = [], bool $detail = false): array
     {
         $f = validator($p, ['from' => 'required|date_format:Y-m-d', 'to' => 'required|date_format:Y-m-d|after_or_equal:from', 'q' => 'nullable|string|max:100',
             'user_id' => 'nullable|integer', 'project_id' => 'nullable|integer', 'status' => 'nullable|in:draft,submitted,approved,returned'])->validate();
@@ -182,6 +205,7 @@ class Datasets
             ->orderBy('week_ending')->orderBy('user_id')->orderBy('part')->orderBy('id');
         $status = ['draft' => __('Borrador'), 'submitted' => __('Enviada'), 'approved' => __('Aprobada'), 'returned' => __('Devuelta')];
         $rows = [];
+        $tasks = [];
         foreach ($q->limit(3000)->get() as $s) {
             if ($approver) {
                 $external->restrictTo($s, $approver);
@@ -201,7 +225,19 @@ class Datasets
                     (int) $e->break_minutes > 0 ? round($e->break_minutes / 60, 2) : '', (float) $e->hours, (string) $e->note, $signed];
                 if ($this->matches($f['q'] ?? null, [$row[0], $row[4], $row[5], $row[11]])) {
                     $rows[] = $row;
+                    $tasks[] = (string) ($e->task?->name ?? '');
                 }
+            }
+        }
+        $columns = [['h' => __('Persona'), 't' => 'text'], ['h' => __('Semana que termina'), 't' => 'date'], ['h' => __('Parte'), 't' => 'text'], ['h' => __('Estado'), 't' => 'text'],
+            ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Servicio'), 't' => 'text'], ['h' => __('Fecha'), 't' => 'date'], ['h' => __('Desde'), 't' => 'text'],
+            ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Descanso'), 't' => 'hours'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Nota'), 't' => 'text'], ['h' => __('Firmas digitales'), 't' => 'text']];
+        $total = [__('Total'), '', '', '', '', '', '', '', '', '', round(array_sum(array_column($rows, 10)), 2), '', ''];
+        if ($detail) {   // en PDF, la tarea de cada línea va justo después del servicio
+            array_splice($columns, 6, 0, [['h' => __('Tarea'), 't' => 'text']]);
+            array_splice($total, 6, 0, ['']);
+            foreach ($rows as $i => $r) {
+                array_splice($rows[$i], 6, 0, [$tasks[$i]]);
             }
         }
         return [
@@ -210,11 +246,9 @@ class Datasets
                 ! empty($f['status']) ? __('estado :status', ['status' => $status[$f['status']]]) : null,
                 $u->isOwner() && ! empty($f['user_id']) ? __('persona :name', ['name' => User::find($f['user_id'])?->name ?? '#'.$f['user_id']]) : null,
                 ! empty($f['project_id']) ? __('proyecto :name', ['name' => Project::find($f['project_id'])?->code ?? '#'.$f['project_id']]) : null]),
-            'columns' => [['h' => __('Persona'), 't' => 'text'], ['h' => __('Semana que termina'), 't' => 'date'], ['h' => __('Parte'), 't' => 'text'], ['h' => __('Estado'), 't' => 'text'],
-                ['h' => __('Proyecto'), 't' => 'text'], ['h' => __('Servicio'), 't' => 'text'], ['h' => __('Fecha'), 't' => 'date'], ['h' => __('Desde'), 't' => 'text'],
-                ['h' => __('Hasta'), 't' => 'text'], ['h' => __('Descanso'), 't' => 'hours'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Nota'), 't' => 'text'], ['h' => __('Firmas digitales'), 't' => 'text']],
+            'columns' => $columns,
             'rows' => $rows,
-            'total' => [__('Total'), '', '', '', '', '', '', '', '', '', round(array_sum(array_column($rows, 10)), 2), '', ''],
+            'total' => $total,
         ];
     }
 

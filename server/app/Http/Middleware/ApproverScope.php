@@ -11,7 +11,7 @@ class ApproverScope
     public function handle(Request $request, Closure $next)
     {
         if ($request->user()?->isApprover()) {
-            $allowed = $request->is('api/me', 'api/me/locale', 'api/password/change', 'api/logout', 'api/approver/*');
+            $allowed = $request->is('api/me', 'api/me/locale', 'api/password/change', 'api/logout', 'api/approver/*', 'api/tables/sheets/export');   // exportar las hojas que le tocan (la tabla ya se limita a sus servicios)
             if (! $allowed) {
                 return response()->json(['message' => __('Esta cuenta solo puede aprobar hojas.'), 'code' => 'approver_only'], 403);
             }
