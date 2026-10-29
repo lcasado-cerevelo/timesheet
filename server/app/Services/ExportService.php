@@ -241,7 +241,7 @@ class ExportService
             ->whereBetween('work_date', [$from, $to])
             ->whereHas('timesheet', fn ($t) => $t->where('status', Timesheet::APPROVED))
             ->whereHas('project', fn ($p) => $p->where('customer_id', $customerId));
-        if (! $actor->isOwner()) {
+        if (! $actor->isStaff()) {
             $q->where('user_id', $actor->id);
         } elseif ($userId) {
             $q->where('user_id', $userId);
@@ -267,7 +267,7 @@ class ExportService
             ->whereBetween('work_date', [$from, $to])->orderBy('work_date')->orderBy('start_time');
 
         // Una persona sin rol de dueño solo exporta sus propias horas.
-        if (! $actor->isOwner()) {
+        if (! $actor->isStaff()) {
             $q->where('user_id', $actor->id);
         } elseif (! empty($opts['user_id'])) {
             $q->where('user_id', $opts['user_id']);

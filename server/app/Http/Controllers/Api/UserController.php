@@ -20,8 +20,11 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
+        // La oficina ve la lista de personas, pero no sus tarifas ni sus condiciones de facturación.
+        $admin = $request->user()->isOwner();
         return response()->json(
-            User::with('terms')->where('company_id', $request->user()->company_id)->where('role', '!=', 'approver')->orderBy('name')->get()->map(fn ($u) => $this->payload($u))
+            User::with('terms')->where('company_id', $request->user()->company_id)->where('role', '!=', 'approver')->orderBy('name')->get()
+                ->map(fn ($u) => $this->payload($u, $admin || $u->id === $request->user()->id))
         );
     }
 
@@ -47,6 +50,10 @@ class UserController extends Controller
             // Las cuentas de aprobador se manejan desde Aprobadores: nombre y correo vienen del aprobador.
             $data['user'] = array_intersect_key($data['user'], ['active' => 1]);
             $data['projects'] = $data['terms'] = null;
+        }
+        // Nadie se cambia su propio rol: así la compañía nunca se queda sin dueño.
+        if ($user->id === $request->user()->id) {
+            unset($data['user']['role']);
         }
         $user->update($data['user']);
         $this->saveRelations($user, $data);
@@ -90,7 +97,7 @@ class UserController extends Controller
         $v = $request->validate([
             'name' => 'required|string|max:120',
             'email' => ['required', 'email', 'max:190', Rule::unique('users', 'email')->ignore($user?->id)],
-            'role' => 'in:owner,member',
+            'role' => 'in:owner,office,member',
             'worker_type' => 'required|in:consultant,employee',
             // Único por compañía cuando no es nulo.
             'employee_number' => ['nullable', 'string', 'max:40', Rule::unique('users', 'employee_number')->where('company_id', $companyId)->ignore($user?->id)],
@@ -134,14 +141,14 @@ class UserController extends Controller
         }
     }
 
-    private function payload(User $u): array
+    private function payload(User $u, bool $withTerms = true): array
     {
         return [
             'id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'role' => $u->role,
             'worker_type' => $u->worker_type, 'capture_mode' => $u->capture_mode,
             'weekly_hours' => $u->weekly_hours, 'employee_number' => $u->employee_number, 'approver_id' => $u->approver_id, 'active' => $u->active,
             'project_ids' => $u->projects()->pluck('projects.id'),
-            'terms' => $u->terms, 'invitation_status' => $u->invitationStatus(),
+            'terms' => $withTerms ? $u->terms : null, 'invitation_status' => $u->invitationStatus(),
         ];
     }
 }

@@ -166,7 +166,7 @@ class SheetController extends Controller
     private function canApprove(Timesheet $s): ?bool
     {
         $u = auth()->user();
-        if (! $u || ! $u->isOwner() || $s->status !== Timesheet::SUBMITTED) {
+        if (! $u || ! $u->isStaff() || $s->status !== Timesheet::SUBMITTED) {
             return null;
         }
         if ($s->stage === Timesheet::STAGE_INTERNAL) {
@@ -191,7 +191,7 @@ class SheetController extends Controller
     private function authorizeView(Request $request, Timesheet $sheet): void
     {
         $u = $request->user();
-        abort_unless($sheet->user_id === $u->id || ($u->isOwner() && $sheet->company_id === $u->company_id), 403);
+        abort_unless($sheet->user_id === $u->id || ($u->isStaff() && $sheet->company_id === $u->company_id), 403);
     }
 
     public function payload(Timesheet $s, bool $withEntries = false): array

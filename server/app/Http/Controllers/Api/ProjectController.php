@@ -15,7 +15,7 @@ class ProjectController extends Controller
     {
         $u = $request->user();
         $q = Project::with('customer.approvers', 'users:id,name', 'services.internalApprovers', 'services.externalApprovers', 'tasks')->where('company_id', $u->company_id)->orderBy('code');
-        if (! $u->isOwner()) {
+        if (! $u->isStaff()) {
             $q->where('active', true)->whereHas('users', fn ($x) => $x->where('users.id', $u->id));
         }
         return response()->json($q->get()->map(fn ($p) => $this->payload($p, $u->isOwner(), $u)));

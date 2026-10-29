@@ -149,14 +149,14 @@ async function download(path, opts, fallbackName) {
 const ROUTES = {
   week: { t: 'Timesheet', f: weekView },
   weeks: { t: 'All weeks', f: weeksView },
-  approvals: { t: 'Approvals', owner: true, f: reviewScreen },
+  approvals: { t: 'Approvals', owner: true, office: true, f: reviewScreen },
   progress: { t: 'Progress', pm: true, f: progressView },
   tasks: { t: 'Tasks', staff: true, f: tasksView },
-  commissions: { t: 'Commissions', owner: true, f: commissionsView },
+  commissions: { t: 'Commissions', owner: true, office: true, f: commissionsView },
   mycommissions: { t: 'My commissions', mine: true, f: myCommissionsView },
   invoices: { t: 'Invoices', f: invoicesView },
   reports: { t: 'Hours report', f: reportsView },
-  clientsheet: { t: 'Client timesheet', owner: true, f: clientSheetView },
+  clientsheet: { t: 'Client timesheet', owner: true, office: true, f: clientSheetView },
   export: { t: 'Export', f: exportView },
   people: { t: 'People', owner: true, f: peopleScreen },
   approvers: { t: 'Approvers', owner: true, f: approversView },
@@ -181,11 +181,12 @@ const GROUPS = [
 ];
 const route = () => (location.hash.replace('#/', '') || 'week').split('?')[0];
 const isAp = () => S.me?.role === 'approver';
+const isStf = () => S.me?.role === 'owner' || S.me?.role === 'office';   // owner or office: the back office
 /* The approver (an outside person with an account) only has Approvals, plus My account to change the password. */
 const isIn = () => !!S.me?.internal_approver && S.me.role !== 'owner' && !isAp();   // an employee who approves hours internally
-const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' || (k === 'progress' && !!S.me.project_manager) : ROUTES[k].pm ? S.me.role === 'owner' : ROUTES[k].mine ? !!S.me.has_commissions : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (k === 'approvals' && isIn()));
+const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' || (k === 'progress' && !!S.me.project_manager) : ROUTES[k].pm ? isStf() : ROUTES[k].mine ? !!S.me.has_commissions : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (ROUTES[k].office && S.me.role === 'office') || (k === 'approvals' && isIn()));
 const home = () => (isAp() ? 'approvals' : 'week');
-const roleLabel = u => (u.role === 'approver' ? 'Approver' : u.role === 'owner' ? 'Owner' : u.worker_type === 'employee' ? 'Employee' : 'Consultant');
+const roleLabel = u => (u.role === 'approver' ? 'Approver' : u.role === 'owner' ? 'Owner' : u.role === 'office' ? 'Office' : u.worker_type === 'employee' ? 'Employee' : 'Consultant');
 const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
 let RID = 0, LAST = null;
 
@@ -541,7 +542,7 @@ async function invoicesView() {
 /* --- Export --- */
 async function exportView() {
   const tpls = await api('/export-templates');
-  const owner = S.me.role === 'owner';
+  const owner = isStf();
   const [people, customers] = owner ? await Promise.all([api('/users'), api('/customers')]) : [[], []];
   S.cache.tpls = tpls;
   const x = S.cache.exp = { template_id: tpls[0]?.id, from: addDays(today(), -30), to: today(), user_id: '', customer_id: '', ...(S.cache.exp || {}) };
@@ -1203,7 +1204,7 @@ async function peopleScreen() {
   const shown = accounts.filter(a => matchQ(F.q, [a.name, a.email]) && (!F.role || a.role === F.role) && (!F.worker_type || a.worker_type === F.worker_type));
   const ids = new Set(shown.map(a => a.user_id));
   const billing = users.filter(x => x.worker_type === 'consultant' && ids.has(x.id));
-  const roleName = { worker: 'Worker', approver: 'Approver', backoffice: 'Back office' };
+  const roleName = { worker: 'Worker', approver: 'Approver', backoffice: 'Owner', office: 'Office' };
   const stPill = { active: pill('Active', 'green'), invited: pill('Invited', 'amber'), disabled: pill('Disabled', 'red') };
   const row = a => {
     const edit = a.role === 'approver' && a.approver_id && a.approver_kind !== 'internal' ?`<button class="btn ghost sm" data-act="pp-edit-approver" data-id="${a.approver_id}">Edit</button>`
@@ -1223,7 +1224,7 @@ async function peopleScreen() {
   return `<div class="pp"><div class="pghead"><div><h1>People &amp; rates</h1><p class="sub">Invite users, set roles, and configure each contractor's billing terms.</p></div><button class="btn pri" type="button" data-act="inv-open">Invite</button></div>
     <div class="card flt">
       <label class="flbl" style="flex:2 1 240px">Search by name or email<input type="search" data-filter="ppl" name="q" placeholder="Start typing" value="${esc(F.q ?? '')}"></label>
-      <label class="flbl" style="flex:1 1 160px">Role<select data-filter="ppl" name="role">${optHtml('', 'All roles', F.role)}${optHtml('worker', 'Worker', F.role)}${optHtml('approver', 'Approver', F.role)}${optHtml('backoffice', 'Back office', F.role)}</select></label>
+      <label class="flbl" style="flex:1 1 160px">Role<select data-filter="ppl" name="role">${optHtml('', 'All roles', F.role)}${optHtml('worker', 'Worker', F.role)}${optHtml('approver', 'Approver', F.role)}${optHtml('backoffice', 'Owner', F.role)}${optHtml('office', 'Office', F.role)}</select></label>
       <label class="flbl" style="flex:1 1 160px">Worker type<select data-filter="ppl" name="worker_type">${optHtml('', 'All types', F.worker_type)}${optHtml('employee', 'Employee', F.worker_type)}${optHtml('consultant', 'Consultant', F.worker_type)}</select></label>
       <div class="note" style="flex:1 1 100%">Showing ${shown.length} of ${accounts.length} users. The search also filters the contractor billing terms below.</div></div>
     <div class="card"><h2 style="font-size:18px;margin-bottom:12px">Users</h2><div class="scrollx"><div style="min-width:1260px">
@@ -1500,7 +1501,7 @@ function openInviteModal() {
     body: `<p class="muted" style="margin:0">You never type a password. The person receives an invitation by email to create their own.</p>
       <div><label>Name</label><input name="name" required maxlength="120" placeholder="Full name" autocomplete="off"></div>
       <div><label>Email</label><input name="email" type="email" required placeholder="name@company.com" autocomplete="off"></div>
-      <div><label>Role</label><select name="role" data-pp-role><option value="worker">Worker</option><option value="approver">Approver</option><option value="backoffice">Back office</option></select></div>
+      <div><label>Role</label><select name="role" data-pp-role><option value="worker">Worker</option><option value="approver">Approver</option><option value="backoffice">Owner</option><option value="office">Office</option></select></div>
       <div data-pp-wt><label>Worker type</label><select name="worker_type"><option value="employee">Employee</option><option value="consultant">Consultant</option></select></div>`,
     async onSubmit(m) {
       const o = formObj(m.form); const body = { name: String(o.name || '').trim(), email: o.email, role: o.role || 'worker' };
@@ -1516,6 +1517,7 @@ async function openPersonModal(id) {
   const pm = modalOpen({ title: 'Edit person', sub: u.name, size: 'lg',
     body: `<div class="grid"><div><label>Name</label><input name="name" required value="${esc(u.name)}"></div><div><label>Email</label><input name="email" type="email" required value="${esc(u.email)}"></div>
       <div><label>ID number</label><input name="employee_number" maxlength="40" value="${esc(u.employee_number)}"></div>
+      ${u.role === 'approver' ? '' : `<div><label>Role</label><select name="role" ${u.id === S.me.id ? 'disabled' : ''}><option value="member" ${u.role === 'member' ? 'selected' : ''}>Worker</option><option value="office" ${u.role === 'office' ? 'selected' : ''}>Office</option><option value="owner" ${u.role === 'owner' ? 'selected' : ''}>Owner</option></select><small class="help">${u.id === S.me.id ? 'You cannot change your own role.' : 'Office sees everything and approves as an internal approver, but cannot change rules, people or rates.'}</small></div>`}
       <div><label>Worker type</label><select name="worker_type"><option value="consultant" ${u.worker_type !== 'employee' ? 'selected' : ''}>Consultant (invoices)</option><option value="employee" ${u.worker_type === 'employee' ? 'selected' : ''}>Employee (no invoices)</option></select></div>
       <div><label>Entry preference</label><select name="capture_mode"><option value="from_to" ${u.capture_mode !== 'full_day' ? 'selected' : ''}>From / to (detail)</option><option value="full_day" ${u.capture_mode === 'full_day' ? 'selected' : ''}>Total hours per day</option></select><small class="help">Used when a service allows both.</small></div>
       <div><label>Hours per week</label><input name="weekly_hours" type="number" step="0.5" value="${esc(u.weekly_hours || '')}" placeholder="40"><small class="help">Employees only.</small></div>

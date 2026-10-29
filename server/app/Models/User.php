@@ -90,6 +90,18 @@ class User extends Authenticatable
         return $this->role === 'owner';
     }
 
+    /** Oficina: hace el trabajo del back office (ver todo, aprobar como interno, facturas, reportes) pero no administra la compañía. */
+    public function isOffice(): bool
+    {
+        return $this->role === 'office';
+    }
+
+    /** Back office en sentido amplio: dueño u oficina. Lo que solo es del dueño usa isOwner(). */
+    public function isStaff(): bool
+    {
+        return $this->role === 'owner' || $this->role === 'office';
+    }
+
     public function isApprover(): bool
     {
         return $this->role === 'approver';

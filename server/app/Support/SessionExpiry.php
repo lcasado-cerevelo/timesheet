@@ -28,7 +28,7 @@ class SessionExpiry
     public static function capDays(?\App\Models\User $user): int
     {
         $rules = $user?->company?->rules();
-        return $rules ? (int) $rules->get($user->isOwner() ? 'session_max_days_office' : 'session_max_days') : 0;
+        return $rules ? (int) $rules->get($user->isStaff() ? 'session_max_days_office' : 'session_max_days') : 0;
     }
 
     public static function check(PersonalAccessToken $token, bool $valid): bool

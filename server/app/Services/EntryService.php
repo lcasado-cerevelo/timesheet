@@ -31,7 +31,7 @@ class EntryService
 
             $project = Project::where('company_id', $user->company_id)->where('active', true)
                 ->find($data['project_id'] ?? null);
-            if (! $project || (! $user->isOwner() && ! $user->projects()->whereKey($project->id)->exists())) {
+            if (! $project || (! $user->isStaff() && ! $user->projects()->whereKey($project->id)->exists())) {
                 $this->fail('project_id', __('Ese proyecto no existe o no está asignado a esta persona.'));
             }
 
