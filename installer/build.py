@@ -1,5 +1,7 @@
 """
-Builds dist/hosting/: instalar.php + timesheet-app.zip (what the user uploads to a shared hosting).
+Builds dist/hosting/: instalar.php + timesheet-app.zip (what the installer uploads to a shared hosting)
++ timesheet-server.zip (the same files without the "app/" wrapper: it is extracted straight inside timesheet/server/ to update).
+Every file is stored with its Unix permissions (0644): without them the cPanel extractor leaves the files at 0600 and Apache answers 403.
 Needs dist/_v/vendor (composer install --no-dev, see README of the installer).
 Run: python installer/build.py
 """
@@ -44,14 +46,19 @@ def data_of(path, rel):
 
 
 zpath = os.path.join(OUT, 'timesheet-app.zip')
+spath = os.path.join(OUT, 'timesheet-server.zip')
 count = 0
-with zipfile.ZipFile(zpath, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-    def add(arc, data):
-        global count
+with zipfile.ZipFile(zpath, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z, zipfile.ZipFile(spath, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zs:
+    def put(zf, arc, data):
         info = zipfile.ZipInfo(arc)
         info.compress_type = zipfile.ZIP_DEFLATED
-        info.external_attr = 0o644 << 16
-        z.writestr(info, data)
+        info.external_attr = 0o644 << 16   # permisos de Unix: sin esto el extractor de cPanel deja 0600 y Apache da 403
+        zf.writestr(info, data)
+
+    def add(arc, data):
+        global count
+        put(z, arc, data)
+        put(zs, arc[4:] if arc.startswith('app/') else arc, data)   # el zip del servidor no lleva la carpeta "app/"
         count += 1
 
     for dp, dns, fns in os.walk(SRV):
@@ -84,3 +91,6 @@ print('files:', count, '| zip MB:', round(os.path.getsize(zpath) / 1e6, 1))
 for n in ('app/artisan', 'app/vendor/autoload.php', 'app/bootstrap/app.php', 'public/.htaccess', 'public/app/index.html'):
     print(n, n in names)
 print('no .env:', 'app/.env' not in names, '| no tests:', not any('/tests/' in n for n in names), '| public/index.php excluded:', 'public/index.php' not in names)
+sz = zipfile.ZipFile(spath)
+modes = {(i.external_attr >> 16) & 0o777 for i in sz.infolist()}
+print('timesheet-server.zip MB:', round(os.path.getsize(spath) / 1e6, 1), '| files:', len(sz.namelist()), '| artisan at the root:', 'artisan' in sz.namelist(), '| permissions in the zip:', [oct(m) for m in modes])
