@@ -12,6 +12,7 @@ class Timesheet extends Model
     public const SUBMITTED = 'submitted';
     public const APPROVED = 'approved';
     public const RETURNED = 'returned';
+    public const VOID = 'void';
 
     /** Etapa mientras status = submitted. */
     public const STAGE_INTERNAL = 'internal';
@@ -27,6 +28,10 @@ class Timesheet extends Model
             'period_end' => 'date:Y-m-d',
             'total_hours' => 'decimal:2',
             'late' => 'boolean',
+            'invoiced_snapshot' => 'array',
+            'closed_by_company' => 'boolean',
+            'hold_until' => 'date:Y-m-d',
+            'voided_at' => 'datetime',
             'submitted_at' => 'datetime',
             'decided_at' => 'datetime',
             'change_notice_due_at' => 'datetime',
@@ -39,6 +44,24 @@ class Timesheet extends Model
     public function scopeReleasedToExternal($q)
     {
         return $q->where(fn ($x) => $x->whereNull('stage')->orWhere('stage', '!=', self::STAGE_INTERNAL));
+    }
+
+    /**
+     * Hojas cuyas horas ya cuentan para una comisión: las aprobadas por completo y, de los consultores con la opción de facturar con la
+     * aprobación interna, las que ya tienen esa aprobación y esperan al cliente. Estas últimas NO liberan comisión hasta que el cliente apruebe
+     * o el dueño cierre la hoja (ver CommissionService::awaitingClient).
+     */
+    public function scopeCountsForCommission($q)
+    {
+        return $q->where(fn ($x) => $x->where('status', self::APPROVED)
+            ->orWhere(fn ($y) => $y->where('status', self::SUBMITTED)->where('stage', self::STAGE_EXTERNAL)->whereHas('internalApprovals')
+                ->whereHas('user.terms', fn ($t) => $t->where('bill_on_internal_approval', true))));
+    }
+
+    /** ¿Está en pausa (el dueño la puso en espera hasta una fecha)? */
+    public function isOnHold(): bool
+    {
+        return $this->hold_until !== null && $this->hold_until->toDateString() >= now()->toDateString();
     }
 
     public function user(): BelongsTo
@@ -151,7 +174,7 @@ class Timesheet extends Model
         $w = [];
         $user = $this->user;
         // El límite es de la semana: cuentan todas las partes de la semana, no solo esta hoja.
-        $week = (float) self::where('user_id', $this->user_id)->where('week_ending', $this->week_ending->toDateString())->sum('total_hours');
+        $week = (float) self::where('user_id', $this->user_id)->where('week_ending', $this->week_ending->toDateString())->where('status', '!=', self::VOID)->sum('total_hours');
         $week = max($week, (float) $this->total_hours);
         if ($user && $user->isEmployee() && $user->weekly_hours !== null && $week > (float) $user->weekly_hours) {
             $w[] = ['code' => 'over_weekly_hours', 'message' => __(

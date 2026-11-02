@@ -162,6 +162,39 @@ class SheetController extends Controller
         return response()->json($this->payload($sheet, true));
     }
 
+    /** El dueño cierra una hoja que espera al cliente: aprobada por la compañía, no se factura al cliente. Firma con su contraseña. */
+    public function closeByCompany(Request $request, Timesheet $sheet)
+    {
+        abort_unless($sheet->company_id === $request->user()->company_id, 404);
+        $v = $request->validate(['comment' => 'required|string|min:3|max:1000']);
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $request->user());
+        $sheet = $this->sheets->closeByCompany($sheet, $request->user(), $v['comment']);
+        $sig->record($request, $request->user(), 'sheet.close', $sheet, ['version' => (int) $sheet->version, 'comment' => $v['comment']]);
+        return response()->json($this->payload($sheet, true));
+    }
+
+    /** El dueño anula una hoja cuyas horas no valen (sin facturar). Firma con su contraseña. */
+    public function voidSheet(Request $request, Timesheet $sheet)
+    {
+        abort_unless($sheet->company_id === $request->user()->company_id, 404);
+        $v = $request->validate(['comment' => 'required|string|min:3|max:1000']);
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $request->user());
+        $sheet = $this->sheets->voidSheet($sheet, $request->user(), $v['comment']);
+        $sig->record($request, $request->user(), 'sheet.void', $sheet, ['comment' => $v['comment']]);
+        return response()->json($this->payload($sheet));
+    }
+
+    /** El dueño pone la hoja en pausa hasta una fecha (until) o la quita (sin until). */
+    public function hold(Request $request, Timesheet $sheet)
+    {
+        abort_unless($sheet->company_id === $request->user()->company_id, 404);
+        $v = $request->validate(['until' => 'nullable|date_format:Y-m-d', 'comment' => 'nullable|string|max:500']);
+        $sheet = $this->sheets->hold($sheet, $request->user(), $v['until'] ?? null, (string) ($v['comment'] ?? ''));
+        return response()->json($this->payload($sheet));
+    }
+
     /** ¿Puede quien mira (si es el dueño) aprobar esta hoja ahora? Solo si le toca la etapa interna; la del cliente no la sustituye nadie. */
     private function canApprove(Timesheet $s): ?bool
     {
@@ -218,6 +251,10 @@ class SheetController extends Controller
             'decided_at' => $s->decided_at,
             'approved_by' => $s->status === Timesheet::APPROVED ? ($s->decidedByApprover?->name ?? $s->decidedByUser?->name) : null,
             'invoice_number' => $s->invoice?->number,
+            'closed_by_company' => (bool) $s->closed_by_company,
+            'hold_until' => $s->hold_until?->toDateString(),
+            'hold_reason' => $s->hold_reason,
+            'void_reason' => $s->status === Timesheet::VOID ? $s->void_reason : null,
             'return_by' => $s->status === Timesheet::RETURNED ? ($s->decidedByApprover?->name ?? $s->decidedByUser?->name) : null,
             'warnings' => $s->warnings(),
             'can_approve' => $this->canApprove($s),

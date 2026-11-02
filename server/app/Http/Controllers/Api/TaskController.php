@@ -59,7 +59,7 @@ class TaskController extends Controller
         abort_if($projectIds === [], 403);
         $q = Task::with('project:id,code,name,active')->where('company_id', $u->company_id)
             ->withSum('entries as used_hours', 'hours')->withCount('entries')
-            ->withSum(['entries as approved_hours' => fn ($e) => $e->whereHas('timesheet', fn ($t) => $t->where('status', Timesheet::APPROVED))], 'hours')
+            ->withSum(['entries as approved_hours' => fn ($e) => $e->whereHas('timesheet', fn ($t) => $t->countsForCommission())], 'hours')
             ->when($projectIds !== ['*'], fn ($x) => $x->whereIn('project_id', $projectIds))
             ->when($request->query('status') === 'open', fn ($x) => $x->where('active', true))
             ->when($request->query('status') === 'completed', fn ($x) => $x->where('active', false))
@@ -123,7 +123,12 @@ class TaskController extends Controller
                 $this->refuse(__('Hay :h h de esta tarea sin aprobar: apruébalas antes de completarla, porque la comisión se calcula con horas aprobadas.', ['h' => rtrim(rtrim(number_format($eval['pending_hours'], 2, '.', ''), '0'), '.')]),
                     'pending_hours', $this->commissionPreview($task, $on, $user));
             }
-            if ($svc->payable($eval) && $user->isOwner()) {
+            if ($svc->payable($eval) && $user->isOwner() && $svc->awaitingClient($task)) {
+                // Hay horas con aprobación interna esperando al cliente: la comisión se calcula y queda pendiente; se libera cuando el cliente apruebe o la hoja se cierre.
+                if (($data['release'] ?? null) === true) {
+                    $this->refuse(__('Hay horas de esta tarea esperando la aprobación del cliente: la comisión queda pendiente y se libera cuando el cliente apruebe o cierres esas hojas.'), 'awaiting_client', $this->commissionPreview($task, $on, $user));
+                }
+            } elseif ($svc->payable($eval) && $user->isOwner()) {
                 if (($data['release'] ?? null) !== true) {
                     $this->refuse(__('Esta tarea genera comisión: decide si la liberas, o revísala antes de completar la tarea.'), 'commission_decision_required', $this->commissionPreview($task, $on, $user));
                 }
@@ -174,7 +179,7 @@ class TaskController extends Controller
         $tz = $task->company->timezone;
         $today = now($tz)->toDateString();
         $total = (float) $task->entries()->sum('hours');
-        $approved = (float) $task->entries()->whereHas('timesheet', fn ($t) => $t->where('status', Timesheet::APPROVED))->sum('hours');
+        $approved = (float) $task->entries()->whereHas('timesheet', fn ($t) => $t->countsForCommission())->sum('hours');
         $last = $task->entries()->max('work_date');
         $last = $last ? substr((string) $last, 0, 10) : null;
         return [

@@ -442,5 +442,17 @@
     "Esta hoja ya se facturó: no se puede reabrir.": "This timesheet was already invoiced: it cannot be reopened.",
     "Esta hoja tiene horas de una tarea con comisión calculada: reabre primero esa tarea.": "This timesheet has hours of a task with a calculated commission: reopen that task first.",
     "Esta hoja ya se envió y no se puede cambiar.": "This timesheet was already sent and cannot be changed.",
-    "Esta hoja espera la aprobación del cliente: nadie la aprueba por él.": "This timesheet is waiting for the client approval: nobody approves it for them."
+    "Esta hoja espera la aprobación del cliente: nadie la aprueba por él.": "This timesheet is waiting for the client approval: nobody approves it for them.",
+    "Hay horas de esta tarea esperando la aprobación del cliente: no se libera hasta que el cliente apruebe o cierres esas hojas.": "There are hours on this task waiting for the client approval: it cannot be released until the client approves or you close those timesheets.",
+    "Hay horas de esta tarea esperando la aprobación del cliente: la comisión queda pendiente y se libera cuando el cliente apruebe o cierres esas hojas.": "There are hours on this task waiting for the client approval: the commission stays pending and is released when the client approves or you close those timesheets.",
+    "semana": "week",
+    "Escribe el motivo para cerrar la hoja.": "Write the reason to close the timesheet.",
+    "Solo se cierra una hoja que espera la aprobación del cliente.": "Only a timesheet that is waiting for the client approval can be closed.",
+    "Escribe el motivo para anular la hoja.": "Write the reason to void the timesheet.",
+    "Esta hoja ya está anulada.": "This timesheet is already voided.",
+    "Un borrador no se anula: sus horas se borran desde la semana.": "A draft is not voided: its hours are deleted from the week.",
+    "Esta hoja ya se facturó: no se puede anular.": "This timesheet was already invoiced: it cannot be voided.",
+    "Solo se pone en pausa una hoja enviada que espera una aprobación.": "Only a sent timesheet that is waiting for an approval can be put on hold.",
+    "La fecha de la pausa no puede ser pasada.": "The hold date cannot be in the past.",
+    "Escribe el motivo de la pausa.": "Write the reason for the hold."
 }

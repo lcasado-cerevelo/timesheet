@@ -17,6 +17,7 @@ class ContractorTerms extends Model
             'retention_pct' => 'decimal:2',
             'ivu_pct' => 'decimal:2',
             'ivu_agent' => 'boolean',
+            'bill_on_internal_approval' => 'boolean',
         ];
     }
 }

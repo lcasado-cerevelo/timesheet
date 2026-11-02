@@ -43,10 +43,17 @@ class ContractorInvoiceService
         }
 
         $company = $worker->company;
-        $sheets = Timesheet::with('entries.project.services', 'entries.service', 'entries.user.terms')->where('user_id', $worker->id)->where('status', Timesheet::APPROVED)
+        $billOnInternal = (bool) $terms->bill_on_internal_approval;
+        $sheets = Timesheet::with('entries.project.services', 'entries.service', 'entries.user.terms')->where('user_id', $worker->id)
+            ->where(fn ($q) => $q->where('status', Timesheet::APPROVED)
+                // Con la opción del consultor basta la aprobación interna: la hoja sigue en la etapa del cliente pero la compañía ya la aprobó
+                // (o la omitió porque no había otro aprobador interno: quien envía nunca aprueba lo suyo).
+                ->when($billOnInternal, fn ($q) => $q->orWhere(fn ($x) => $x->where('status', Timesheet::SUBMITTED)->where('stage', Timesheet::STAGE_EXTERNAL)
+                    ->whereHas('internalApprovals'))))
             ->whereNull('contractor_invoice_id')->whereBetween('week_ending', [$from, $to])->orderBy('week_ending')->get();
         $commissions = $this->releasedCommissions($worker);
-        if ($sheets->isEmpty() && $commissions->isEmpty()) {
+        [$adjustmentLines, $adjustedSnapshots] = $this->adjustments($worker);
+        if ($sheets->isEmpty() && $commissions->isEmpty() && ! $adjustmentLines) {
             throw ValidationException::withMessages(['from' => __('No hay semanas aprobadas sin facturar en ese período.')]);
         }
 
@@ -58,6 +65,7 @@ class ContractorInvoiceService
             $title = $e->project->code.' · '.$e->project->name.($e->project->services->count() > 1 && $e->service ? ' · '.$e->service->name : '');
             return ['description' => $title, 'hours' => $hours, 'rate' => $rate, 'amount' => round($hours * $rate, 2)];
         })->values()->all();
+        $hourLines = array_merge($hourLines, $adjustmentLines);
         $commissionLines = $this->commissionLines($commissions);
         if (! $hourLines && ! $commissionLines) {
             throw ValidationException::withMessages(['from' => __('Las horas de ese período no son facturables.')]);
@@ -73,7 +81,7 @@ class ContractorInvoiceService
         $ivu = $terms->ivu_agent ? round($ivuBase * (float) $terms->ivu_pct / 100, 2) : 0.0;
         $issued = now($company->timezone)->toDateString();
 
-        $invoice = \Illuminate\Support\Facades\DB::transaction(function () use ($company, $worker, $from, $to, $issued, $terms, $lines, $gross, $retention, $ivu, $sheets, $commissions, $signer, $request) {
+        $invoice = \Illuminate\Support\Facades\DB::transaction(function () use ($company, $worker, $from, $to, $issued, $terms, $lines, $gross, $retention, $ivu, $sheets, $commissions, $adjustedSnapshots, $signer, $request) {
             $seq = ContractorInvoice::where('company_id', $company->id)->whereYear('issued_on', substr($issued, 0, 4))->count() + 1;
             $inv = ContractorInvoice::create([
                 'company_id' => $company->id, 'user_id' => $worker->id,
@@ -83,7 +91,12 @@ class ContractorInvoiceService
                 'gross' => $gross, 'retention' => $retention, 'ivu' => $ivu, 'net' => round($gross - $retention - $ivu, 2),
                 'lines' => $lines, 'status' => 'issued',
             ]);
-            Timesheet::whereIn('id', $sheets->pluck('id'))->update(['contractor_invoice_id' => $inv->id]);
+            foreach ($sheets as $sheet) {
+                $sheet->update(['contractor_invoice_id' => $inv->id, 'invoiced_snapshot' => $this->billableGroups($sheet)]);
+            }
+            foreach ($adjustedSnapshots as $sheetId => $snapshot) {
+                Timesheet::whereKey($sheetId)->update(['invoiced_snapshot' => $snapshot]);
+            }
             CommissionResult::whereIn('id', $commissions->pluck('id'))->update(['status' => 'invoiced', 'contractor_invoice_id' => $inv->id]);
             if ($signer && $request) {
                 app(SignatureService::class)->record($request, $signer, 'invoice.create', $inv, ['number' => $inv->number, 'gross' => (float) $inv->gross, 'net' => (float) $inv->net,
@@ -96,6 +109,47 @@ class ContractorInvoiceService
         $this->emailOwners($invoice);
         $this->pushToAccountisi($invoice);
         return $invoice->refresh();
+    }
+
+    /** Horas facturables de una hoja por proyecto|servicio|tarifa (lo que se guarda al facturarla y contra lo que se compara después). */
+    private function billableGroups(Timesheet $sheet): array
+    {
+        $sheet->loadMissing('entries.project.services', 'entries.service', 'entries.user.terms');
+        return $sheet->entries->where('billable', true)->groupBy(fn ($e) => $e->project_id.'|'.$e->service_id.'|'.number_format($e->payRate(), 2, '.', ''))->map(function ($rows) {
+            $e = $rows->first();
+            return ['title' => $e->project->code.' · '.$e->project->name.($e->project->services->count() > 1 && $e->service ? ' · '.$e->service->name : ''),
+                'rate' => $e->payRate(), 'hours' => round((float) $rows->sum('hours'), 2)];
+        })->all();
+    }
+
+    /**
+     * Ajustes en positivo: una hoja ya facturada que terminó aprobada con MÁS horas facturables de las que se cobraron (el cliente resolvió por
+     * más) saca la diferencia en la próxima factura, a la tarifa de esas horas. Nunca hay ajustes en negativo: si el cliente reduce horas, la
+     * factura ya emitida no se toca. No depende del período de la factura.
+     * @return array{0: array, 1: array<int, array>} líneas de ajuste y la foto nueva de cada hoja ajustada
+     */
+    private function adjustments(User $worker): array
+    {
+        $lines = [];
+        $snapshots = [];
+        $sheets = Timesheet::where('user_id', $worker->id)->where('status', Timesheet::APPROVED)->whereNotNull('contractor_invoice_id')->whereNotNull('invoiced_snapshot')->orderBy('week_ending')->get();
+        foreach ($sheets as $sheet) {
+            $now = $this->billableGroups($sheet);
+            $was = $sheet->invoiced_snapshot;
+            $merged = $was;
+            foreach ($now as $key => $g) {
+                $diff = round($g['hours'] - (float) ($was[$key]['hours'] ?? 0), 2);
+                if ($diff > 0) {
+                    $lines[] = ['description' => __('Ajuste').' · '.$g['title'].' · '.__('semana').' '.$sheet->week_ending->toDateString(), 'hours' => $diff, 'rate' => $g['rate'],
+                        'amount' => round($diff * $g['rate'], 2), 'kind' => 'adjustment'];
+                    $merged[$key] = $g;
+                }
+            }
+            if ($merged !== $was) {
+                $snapshots[$sheet->id] = $merged;
+            }
+        }
+        return [$lines, $snapshots];
     }
 
     /** Comisiones liberadas de esta persona que todavía no salen en ninguna factura. */

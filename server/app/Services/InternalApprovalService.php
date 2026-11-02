@@ -356,7 +356,7 @@ class InternalApprovalService
         Timesheet::where('status', Timesheet::SUBMITTED)->where('stage', Timesheet::STAGE_INTERNAL)->with('company', 'user')->get()
             ->each(function (Timesheet $sheet) use (&$byUser, &$dueSheets) {
                 $rules = $sheet->company->rules();
-                $due = $sheet->submitted_at && $sheet->submitted_at->lte(now()->subDays((int) $rules->get('approval_remind_days')))
+                $due = ! $sheet->isOnHold() && $sheet->submitted_at && $sheet->submitted_at->lte(now()->subDays((int) $rules->get('approval_remind_days')))
                     && (! $sheet->internal_reminded_at || $sheet->internal_reminded_at->lte(now()->subDays((int) $rules->get('remind_every_days'))));
                 $parts = $this->pendingParts($sheet);
                 foreach ($parts->flatMap(fn ($p) => $this->waitingOnPart($p))->unique('id') as $u) {

@@ -105,6 +105,7 @@ class UserController extends Controller
             'terms.rate' => 'nullable|numeric|min:0',
             'terms.retention_pct' => 'nullable|numeric|between:0,100',
             'terms.ivu_agent' => 'nullable|boolean',
+            'terms.bill_on_internal_approval' => 'nullable|boolean',
             'terms.ivu_pct' => 'nullable|numeric|between:0,100',
             'terms.terms_days' => 'nullable|integer|between:0,365',
             'terms.accountisi_vendor_id' => 'nullable|string|max:40',

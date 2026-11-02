@@ -42,9 +42,8 @@ class CommissionService
     /** Horas aprobadas por persona y servicio de la tarea, y lo que sigue sin aprobar. */
     public function hours(Task $task): array
     {
-        $approved = fn ($t) => $t->where('status', Timesheet::APPROVED);
-        $rows = TimeEntry::where('task_id', $task->id)->whereHas('timesheet', $approved)->get(['user_id', 'service_id', 'hours', 'pay_rate']);
-        $pending = (float) TimeEntry::where('task_id', $task->id)->whereHas('timesheet', fn ($t) => $t->where('status', '!=', Timesheet::APPROVED))->sum('hours');
+        $rows = TimeEntry::where('task_id', $task->id)->whereHas('timesheet', fn ($t) => $t->countsForCommission())->get(['user_id', 'service_id', 'hours', 'pay_rate']);
+        $pending = (float) TimeEntry::where('task_id', $task->id)->whereHas('timesheet', fn ($t) => $t->where('status', '!=', Timesheet::VOID)->whereNot(fn ($x) => $x->countsForCommission()))->sum('hours');
         return ['entries' => $rows, 'total' => round((float) $rows->sum('hours'), 2), 'pending' => round($pending, 2)];
     }
 
@@ -128,6 +127,15 @@ class CommissionService
         }
     }
 
+    /**
+     * ¿Hay horas de la tarea que cuentan para la comisión pero siguen esperando al cliente (hoja con aprobación interna de un consultor con
+     * la opción)? Mientras sea así, la comisión se calcula pero no se puede liberar: el cliente aprueba o el dueño cierra la hoja.
+     */
+    public function awaitingClient(Task $task): bool
+    {
+        return TimeEntry::where('task_id', $task->id)->whereHas('timesheet', fn ($t) => $t->where('status', Timesheet::SUBMITTED)->countsForCommission())->exists();
+    }
+
     /** ¿Alguna comisión de la tarea ya se facturó o se pagó? Entonces la tarea no se puede reabrir. */
     public function hasLockedResults(Task $task): bool
     {
@@ -200,7 +208,7 @@ class CommissionService
         $eval = $this->evaluate($task, $today, collect([$c]));
         $r = $eval['rows'][0];
         $mine = (float) TimeEntry::where('task_id', $task->id)->where('user_id', $c->user_id)
-            ->whereHas('timesheet', fn ($t) => $t->where('status', '!=', Timesheet::APPROVED))->sum('hours');
+            ->whereHas('timesheet', fn ($t) => $t->where('status', '!=', Timesheet::VOID)->whereNot(fn ($x) => $x->countsForCommission()))->sum('hours');
         return [
             'status' => 'open', 'task' => $this->taskBrief($task, $today),
             'team' => ['total_hours' => $r['total_hours'], 'goal_hours' => $r['goal_hours'], 'pending_hours' => $eval['pending_hours']],

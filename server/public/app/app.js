@@ -43,7 +43,7 @@ const LOC = () => (LANG() === 'es' ? 'es-US' : 'en-US');
 const dayLabel = s => dow(parse(s).getDay()) + ' ' + s.slice(5);
 const nice = s => parse(s).toLocaleDateString(LOC(), { month: 'short', day: 'numeric', year: 'numeric' });
 const longDay = s => parse(s).toLocaleDateString(LOC(), { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
-const STATUS = { draft: 'Draft', submitted: 'Submitted', approved: 'Approved', returned: 'Returned' };
+const STATUS = { draft: 'Draft', submitted: 'Submitted', approved: 'Approved', returned: 'Returned', void: 'Voided' };
 /* Status pills in tables, like the mockup: gray, amber, green, red, blue. */
 const pill = (text, color = 'gray') => `<span class="bd ${color}">${esc(text)}</span>`;
 const accountPill = s => ({ pending: pill('Invited', 'amber'), active: pill('Active', 'green'), disabled: pill('Disabled', 'red') }[s] || pill('None'));
@@ -1044,6 +1044,30 @@ const actions = {
     await api(`/sheets/${el.dataset.id}/reopen`, { method: 'POST', body: { comment: reason, signature: sigPage() } });
     flash('Timesheet reopened and returned to the person.'); render();
   },
+  async 'sheet-close'(el) {
+    const reason = (document.getElementById('ap-own-reason')?.value || '').trim();
+    if (reason.length < 3) throw new Error('Write the reason.');
+    await api(`/sheets/${el.dataset.id}/close`, { method: 'POST', body: { comment: reason, signature: sigPage() } });
+    flash('Timesheet closed. It counts as approved and is not billed to the client.'); render();
+  },
+  async 'sheet-void'(el) {
+    const reason = (document.getElementById('ap-own-reason')?.value || '').trim();
+    if (reason.length < 3) throw new Error('Write the reason.');
+    await api(`/sheets/${el.dataset.id}/void`, { method: 'POST', body: { comment: reason, signature: sigPage() } });
+    flash('Timesheet voided.'); render();
+  },
+  async 'sheet-hold'(el) {
+    const until = document.getElementById('ap-hold')?.value || '';
+    const reason = (document.getElementById('ap-own-reason')?.value || '').trim();
+    if (!until) throw new Error('Pick the date to hold it until.');
+    if (reason.length < 3) throw new Error('Write the reason.');
+    await api(`/sheets/${el.dataset.id}/hold`, { method: 'POST', body: { until, comment: reason } });
+    flash('Timesheet on hold: no reminders until that date.'); render();
+  },
+  async 'sheet-unhold'(el) {
+    await api(`/sheets/${el.dataset.id}/hold`, { method: 'POST', body: {} });
+    flash('Hold lifted.'); render();
+  },
   async 'apr-approve'(el) { await aprDecide(el, 'approve'); },
   async 'apr-return'(el) { await aprDecide(el, 'return'); },
   async 'int-approve'(el) { await aprDecide(el, 'approve', '/internal/sheets/'); },
@@ -1284,7 +1308,10 @@ async function reviewScreen() {
         <label class="lbl" style="max-width:200px">6-digit code<input id="ap-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="${esc(dr.code)}" style="letter-spacing:.2em"></label></div>` : ''}
       ${sigField()}
       <div class="decided">${(!ap && !inn && (d?.can_approve ?? sel.can_approve) === false) ? '' : `<button class="btn" data-act="${A[0]}" data-id="${sel.id}" data-v="${sel.version}" ${dr.comment.trim() ? 'disabled title="' + esc(T('Clear the comment to approve, or use Return for correction.')) + '"' : ''}>Approve</button>`}<button class="btn danger" data-act="${A[1]}" data-id="${sel.id}" data-v="${sel.version}">Return for correction</button></div></div>`
-      : withClient ? `<p class="note" style="margin:0">${T('This timesheet is with the client; the external approver decides now.')}</p>`
+      : withClient ? `<p class="note" style="margin:0">${T('This timesheet is with the client; the external approver decides now.')}${sel.hold_until ? ' ' + esc(T('On hold until')) + ' ' + esc(sel.hold_until) + (sel.hold_reason ? ' — ' + esc(sel.hold_reason) : '') + '.' : ''}</p>${S.me.role === 'owner' ? `<div style="display:flex;flex-direction:column;gap:10px;margin-top:8px"><b>${T('The client is not approving?')}</b>
+        <label class="lbl">${T('Reason')}<textarea id="ap-own-reason" placeholder="${esc(T('Example: the client will not approve these hours.'))}"></textarea></label>
+        <label class="lbl" style="max-width:200px">${T('Hold until')}<input type="date" id="ap-hold" value="${esc(sel.hold_until || '')}"></label>${sigField()}
+        <div class="decided"><button class="btn" data-act="sheet-close" data-id="${sel.id}" title="${esc(T('It counts as approved, it is invoiced to the consultant and it is not billed to the client.'))}">${T('Close without client approval')}</button><button class="btn ghost" data-act="sheet-hold" data-id="${sel.id}">${T('Put on hold')}</button>${sel.hold_until ? `<button class="btn ghost" data-act="sheet-unhold" data-id="${sel.id}">${T('Lift the hold')}</button>` : ''}<button class="btn danger" data-act="sheet-void" data-id="${sel.id}" title="${esc(T('For hours that are not valid. Its entries are deleted. It cannot be undone.'))}">${T('Void timesheet')}</button></div></div>` : ''}`
       : sel.status === 'approved' && !ap && !inn && !sel.invoice_number ? `<div style="display:flex;flex-direction:column;gap:10px;margin-top:6px"><b>${T('Approved by mistake?')}</b><label class="lbl">${T('Reason to reopen it')}<textarea id="ap-reopen" placeholder="${esc(T('Example: I approved it by mistake; please review it.'))}"></textarea></label>${sigField()}
         <div class="decided"><button class="btn danger" data-act="sheet-reopen" data-id="${sel.id}">${T('Reopen (return to the person)')}</button></div></div>`
       : (sel.decided_at ? `<p class="muted" style="margin:0">Decided on ${esc(String(sel.decided_at).slice(0, 10))}.</p>` : '');
@@ -1424,9 +1451,9 @@ function signedAction(title, save, intro, run) {
   });
 }
 /* "Submitted and signed digitally by Ana on Oct 21 · Approved digitally by Jorge (email code) on Oct 22" */
-const SIG_ACTIONS = { 'sheet.submit': 'Submitted and signed digitally by', 'sheet.approve': 'Approved digitally by', 'sheet.return': 'Returned digitally by', 'sheet.reopen': 'Reopened digitally by' };
+const SIG_ACTIONS = { 'sheet.submit': 'Submitted and signed digitally by', 'sheet.approve': 'Approved digitally by', 'sheet.return': 'Returned digitally by', 'sheet.reopen': 'Reopened digitally by', 'sheet.close': 'Closed digitally by', 'sheet.void': 'Voided digitally by' };
 /* What happened to a sheet (kept forever): sent, approved, returned with its reason. The server filters it by who is looking. */
-const HIST_ACTIONS = { submitted: 'Sent', resubmitted: 'Sent again', internal_approved: 'Approved (internal)', external_approved: 'Approved (external)', approved: 'Approved', self_approved: 'Approved by the owner', auto_approved: 'Approved automatically', returned: 'Returned', reopened: 'Reopened' };
+const HIST_ACTIONS = { submitted: 'Sent', resubmitted: 'Sent again', internal_approved: 'Approved (internal)', external_approved: 'Approved (external)', approved: 'Approved', self_approved: 'Approved by the owner', auto_approved: 'Approved automatically', returned: 'Returned', reopened: 'Reopened', closed_by_company: 'Closed by the company', voided: 'Voided', held: 'Put on hold', unheld: 'Hold lifted' };
 const histLines = list => (list || []).length
   ? `<div class="hist"><b>${T('History')}</b>${list.map(x => `<div class="hl ${x.type === 'returned' ? 'ret' : ''}"><span class="muted mono">${esc(nice(String(x.at).slice(0, 10)))}</span> ${T(HIST_ACTIONS[x.type] || x.type)}${x.by ? ' · <b>' + esc(x.by) + '</b>' : ''}${x.type === 'returned' && x.stage ? ' <span class="muted">(' + T(x.stage === 'internal' ? 'internal stage' : 'external stage') + ')</span>' : ''}${x.comment ? `<div class="hc">${esc(x.comment)}</div>` : ''}</div>`).join('')}</div>`
   : '';
@@ -1526,13 +1553,14 @@ async function openPersonModal(id) {
       <div><label>IVU / sales tax (%)</label><input name="t_ivu_pct" type="number" step="0.01" min="0" max="100" value="${esc(t.ivu_pct)}"></div>
       <div><label>Payment terms (days)</label><input name="t_terms_days" type="number" min="0" max="365" value="${esc(t.terms_days ?? 30)}"></div>
       <div><label>Accountisi vendor id</label><input name="t_accountisi_vendor_id" value="${esc(t.accountisi_vendor_id)}"></div></div>
-      <p class="row" style="margin:12px 0 0"><label class="chk"><input type="checkbox" name="t_ivu_agent" ${t.ivu_agent ? 'checked' : ''}> IVU withholding agent</label></p></div>
+      <p class="row" style="margin:12px 0 0"><label class="chk"><input type="checkbox" name="t_ivu_agent" ${t.ivu_agent ? 'checked' : ''}> IVU withholding agent</label></p>
+      <p class="row" style="margin:8px 0 0"><label class="chk" title="${T('Weeks approved internally can be invoiced without waiting for the client approver. Commissions are not affected: they are released only after the client approves.')}"><input type="checkbox" name="t_bill_on_internal_approval" ${t.bill_on_internal_approval ? 'checked' : ''}> Invoice with internal approval</label></p></div>
       <div class="mdl-sec"><h3>Assigned projects</h3>${msel({ name: 'project_ids', ef: 'project_ids', label: 'Assigned projects', placeholder: 'Search by code or name', empty: 'There are no projects yet.', selected: u.project_ids, options: projects.filter(p => p.active || u.project_ids?.includes(p.id)).map(p => ({ id: p.id, label: p.code, sub: p.name })) })}</div>
       ${comms ? `<div class="mdl-sec" data-comm-box>${commBox(u, comms, projects)}</div>` : ''}
       <label class="chk"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}> Active</label>`,
     async onSubmit(m) {
       const o = formObj(m.form);
-      const terms = { rate: o.t_rate ?? 0, retention_pct: o.t_retention_pct ?? 0, ivu_pct: o.t_ivu_pct ?? 0, terms_days: o.t_terms_days ?? 30, ivu_agent: o.t_ivu_agent, accountisi_vendor_id: o.t_accountisi_vendor_id };
+      const terms = { rate: o.t_rate ?? 0, retention_pct: o.t_retention_pct ?? 0, ivu_pct: o.t_ivu_pct ?? 0, terms_days: o.t_terms_days ?? 30, ivu_agent: o.t_ivu_agent, bill_on_internal_approval: o.t_bill_on_internal_approval, accountisi_vendor_id: o.t_accountisi_vendor_id };
       for (const k of Object.keys(o)) if (k.startsWith('t_')) delete o[k];
       o.project_ids = o.project_ids || []; if (o.approver_id != null) o.approver_id = Number(o.approver_id);
       if (o.worker_type === 'consultant') o.terms = terms;

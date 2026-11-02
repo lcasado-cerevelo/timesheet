@@ -30,7 +30,7 @@ class SheetService
     /** Las hojas (partes) de la semana que termina ese domingo, en orden. */
     public function weekSheets(User $user, string $weekEnding): Collection
     {
-        return Timesheet::where('user_id', $user->id)->where('week_ending', $weekEnding)->orderBy('part')->get();
+        return Timesheet::where('user_id', $user->id)->where('week_ending', $weekEnding)->where('status', '!=', Timesheet::VOID)->orderBy('part')->get();
     }
 
     /**
@@ -557,6 +557,93 @@ class SheetService
         $this->log($sheet, 'reopened', $owner->name, 'app', ['comment' => $comment, 'stage' => 'internal']);
         $this->approvals->notifyWorkerDecision($sheet, 'returned', $owner->name);
         return $sheet->refresh();
+    }
+
+    /**
+     * El cliente no aprueba y no va a aprobar, pero las horas son reales y la compañía las aprobó: el dueño cierra la hoja. Queda aprobada
+     * por la compañía (cuenta para facturar al consultor y para la comisión) y NO se factura al cliente. Con motivo; firma el controlador.
+     */
+    public function closeByCompany(Timesheet $sheet, User $owner, string $reason): Timesheet
+    {
+        $reason = $this->reason($reason, __('Escribe el motivo para cerrar la hoja.'));
+        $sheet->refresh();
+        if ($sheet->status !== Timesheet::SUBMITTED || $sheet->stage !== Timesheet::STAGE_EXTERNAL) {
+            throw ValidationException::withMessages(['status' => __('Solo se cierra una hoja que espera la aprobación del cliente.')]);
+        }
+        $this->freezeRates($sheet);
+        $sheet->fill([
+            'status' => Timesheet::APPROVED, 'stage' => null, 'decided_at' => now(), 'decided_by_approver_id' => null, 'decided_by_user_id' => $owner->id,
+            'decided_via' => 'company_close', 'closed_by_company' => true, 'hold_until' => null, 'hold_reason' => null, 'change_notice_due_at' => null,
+        ])->save();
+        ApprovalToken::where('timesheet_id', $sheet->id)->whereNull('used_at')->update(['used_at' => now()]);
+        $this->log($sheet, 'closed_by_company', $owner->name, 'app', ['comment' => $reason, 'version' => $sheet->version]);
+        $this->approvals->notifyWorkerDecision($sheet, 'approved', $owner->name);
+        return $sheet->refresh();
+    }
+
+    /**
+     * Anula una hoja cuyas horas no valen (duplicadas, mal entradas, de otra persona): sus entradas se borran y la hoja queda como anulada,
+     * con lo que tenía en el historial. No se anula lo que ya se facturó ni lo que cuenta en una comisión calculada.
+     */
+    public function voidSheet(Timesheet $sheet, User $owner, string $reason): Timesheet
+    {
+        $reason = $this->reason($reason, __('Escribe el motivo para anular la hoja.'));
+        $sheet->refresh();
+        if ($sheet->status === Timesheet::VOID) {
+            throw ValidationException::withMessages(['status' => __('Esta hoja ya está anulada.')]);
+        }
+        if ($sheet->status === Timesheet::DRAFT) {
+            throw ValidationException::withMessages(['status' => __('Un borrador no se anula: sus horas se borran desde la semana.')]);
+        }
+        $entries = $sheet->entries()->with('project:id,code')->get();
+        if ($sheet->contractor_invoice_id || $entries->whereNotNull('sales_sync_id')->isNotEmpty()) {
+            throw ValidationException::withMessages(['status' => __('Esta hoja ya se facturó: no se puede anular.')]);
+        }
+        if (\App\Models\CommissionResult::whereIn('task_id', $entries->pluck('task_id')->filter()->unique())->exists()) {
+            throw ValidationException::withMessages(['status' => __('Esta hoja tiene horas de una tarea con comisión calculada: reabre primero esa tarea.')]);
+        }
+        $was = $entries->map(fn ($e) => ['date' => $e->work_date->toDateString(), 'project' => $e->project?->code, 'hours' => (float) $e->hours])->values()->all();
+        DB::transaction(function () use ($sheet, $owner, $reason, $entries, $was) {
+            TimeEntry::whereIn('id', $entries->pluck('id'))->delete();
+            $sheet->fill([
+                'status' => Timesheet::VOID, 'stage' => null, 'total_hours' => 0, 'voided_at' => now(), 'void_reason' => $reason, 'decided_at' => now(),
+                'decided_by_approver_id' => null, 'decided_by_user_id' => $owner->id, 'decided_via' => 'void', 'hold_until' => null, 'hold_reason' => null,
+                'change_notice_due_at' => null,
+            ])->save();
+            ApprovalToken::where('timesheet_id', $sheet->id)->whereNull('used_at')->update(['used_at' => now()]);
+            $this->log($sheet, 'voided', $owner->name, 'app', ['comment' => $reason, 'hours' => round(array_sum(array_column($was, 'hours')), 2), 'entries' => $was]);
+        });
+        return $sheet->refresh();
+    }
+
+    /** Pone la hoja en pausa hasta una fecha (o la quita con $until null): solo detiene los recordatorios; las fechas de las horas no se tocan. */
+    public function hold(Timesheet $sheet, User $owner, ?string $until, string $reason = ''): Timesheet
+    {
+        $sheet->refresh();
+        if ($sheet->status !== Timesheet::SUBMITTED) {
+            throw ValidationException::withMessages(['status' => __('Solo se pone en pausa una hoja enviada que espera una aprobación.')]);
+        }
+        if ($until === null) {
+            $sheet->fill(['hold_until' => null, 'hold_reason' => null])->save();
+            $this->log($sheet, 'unheld', $owner->name, 'app', []);
+            return $sheet->refresh();
+        }
+        if ($until < CarbonImmutable::now($sheet->company->timezone)->toDateString()) {
+            throw ValidationException::withMessages(['until' => __('La fecha de la pausa no puede ser pasada.')]);
+        }
+        $reason = $this->reason($reason, __('Escribe el motivo de la pausa.'));
+        $sheet->fill(['hold_until' => $until, 'hold_reason' => mb_substr($reason, 0, 500)])->save();
+        $this->log($sheet, 'held', $owner->name, 'app', ['comment' => $reason, 'until' => $until]);
+        return $sheet->refresh();
+    }
+
+    private function reason(string $text, string $message): string
+    {
+        $text = trim($text);
+        if (mb_strlen($text) < 3) {
+            throw ValidationException::withMessages(['comment' => $message]);
+        }
+        return mb_substr($text, 0, 1000);
     }
 
     /**

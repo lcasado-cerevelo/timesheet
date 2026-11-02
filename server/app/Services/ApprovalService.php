@@ -191,7 +191,7 @@ class ApprovalService
             $days = (int) $rules->get('approval_remind_days');
             $every = (int) $rules->get('remind_every_days');
             $pending = $external->pendingSheetsFor($a);
-            $stale = $pending->filter(fn (Timesheet $s) => $s->submitted_at && $s->submitted_at->lte(now()->subDays($days))
+            $stale = $pending->filter(fn (Timesheet $s) => ! $s->isOnHold() && $s->submitted_at && $s->submitted_at->lte(now()->subDays($days))
                 && (! $s->last_reminded_at || $s->last_reminded_at->lte(now()->subDays($every))));
             if ($stale->isEmpty()) {
                 return;

@@ -154,6 +154,9 @@ class CommissionController extends Controller
             abort(422, __('Esta comisión no está pendiente de liberar.'));
         }
         $user = $request->user();
+        if ($result->task && app(CommissionService::class)->awaitingClient($result->task)) {
+            abort(422, __('Hay horas de esta tarea esperando la aprobación del cliente: no se libera hasta que el cliente apruebe o cierres esas hojas.'));
+        }
         DB::transaction(function () use ($request, $user, $result) {
             app(SignatureService::class)->sign($request, $user, 'commission.release', $result, ['total' => (float) $result->total, 'user_id' => $result->user_id]);
             $result->update(['status' => 'released', 'released_at' => now(), 'released_by' => $user->id]);

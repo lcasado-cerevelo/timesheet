@@ -34,7 +34,7 @@ class SalesInvoiceService
             ->whereNull('sales_sync_id')->whereBetween('work_date', [$from, $to])
             ->whereHas('project', fn ($p) => $p->where('customer_id', $customer->id)->where('billable', true)
                 ->when($projectIds, fn ($q) => $q->whereIn('id', $projectIds)))
-            ->whereHas('timesheet', fn ($t) => $t->where('status', Timesheet::APPROVED))
+            ->whereHas('timesheet', fn ($t) => $t->where('status', Timesheet::APPROVED)->where('closed_by_company', false))
             ->orderBy('work_date')->orderBy('start_time')->get();
 
         $lines = [];
