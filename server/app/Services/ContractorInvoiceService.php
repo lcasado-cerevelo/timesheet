@@ -43,14 +43,7 @@ class ContractorInvoiceService
         }
 
         $company = $worker->company;
-        $billOnInternal = (bool) $terms->bill_on_internal_approval;
-        $sheets = Timesheet::with('entries.project.services', 'entries.service', 'entries.user.terms')->where('user_id', $worker->id)
-            ->where(fn ($q) => $q->where('status', Timesheet::APPROVED)
-                // Con la opción del consultor basta la aprobación interna: la hoja sigue en la etapa del cliente pero la compañía ya la aprobó
-                // (o la omitió porque no había otro aprobador interno: quien envía nunca aprueba lo suyo).
-                ->when($billOnInternal, fn ($q) => $q->orWhere(fn ($x) => $x->where('status', Timesheet::SUBMITTED)->where('stage', Timesheet::STAGE_EXTERNAL)
-                    ->whereHas('internalApprovals'))))
-            ->whereNull('contractor_invoice_id')->whereBetween('week_ending', [$from, $to])->orderBy('week_ending')->get();
+        $sheets = $this->invoiceableSheets($worker, $from, $to);
         $commissions = $this->releasedCommissions($worker);
         [$adjustmentLines, $adjustedSnapshots] = $this->adjustments($worker);
         if ($sheets->isEmpty() && $commissions->isEmpty() && ! $adjustmentLines) {
@@ -109,6 +102,45 @@ class ContractorInvoiceService
         $this->emailOwners($invoice);
         $this->pushToAccountisi($invoice);
         return $invoice->refresh();
+    }
+
+    /**
+     * Hojas que entran en una factura: las aprobadas sin facturar y, con la opción del consultor, las que ya tienen la aprobación interna y
+     * siguen en la etapa del cliente (o la omitieron porque no había otro aprobador interno: quien envía nunca aprueba lo suyo).
+     * Sin $from/$to son todas las pendientes de facturar.
+     */
+    private function invoiceableSheets(User $worker, ?string $from = null, ?string $to = null): \Illuminate\Support\Collection
+    {
+        $billOnInternal = (bool) $worker->terms?->bill_on_internal_approval;
+        return Timesheet::with('entries.project.services', 'entries.service', 'entries.user.terms')->where('user_id', $worker->id)
+            ->where(fn ($q) => $q->where('status', Timesheet::APPROVED)
+                ->when($billOnInternal, fn ($q) => $q->orWhere(fn ($x) => $x->where('status', Timesheet::SUBMITTED)->where('stage', Timesheet::STAGE_EXTERNAL)
+                    ->whereHas('internalApprovals'))))
+            ->whereNull('contractor_invoice_id')->when($from && $to, fn ($q) => $q->whereBetween('week_ending', [$from, $to]))->orderBy('week_ending')->get();
+    }
+
+    /**
+     * Lo que ve quien factura antes de crear la factura: si puede, por qué no, las semanas listas (con horas y monto) y las que
+     * todavía esperan una aprobación.
+     * @return array{can_invoice:bool, reason:?string, weeks:array, waiting:array}
+     */
+    public function status(User $worker): array
+    {
+        $reason = null;
+        if ($worker->worker_type !== 'consultant') {
+            $reason = 'not_consultant';
+        } elseif (! $worker->terms || (float) $worker->terms->rate <= 0) {
+            $reason = 'no_rate';
+        }
+        $weeks = $this->invoiceableSheets($worker)->map(function (Timesheet $s) {
+            $groups = collect($this->billableGroups($s));
+            return ['week_ending' => $s->week_ending->toDateString(), 'hours' => round((float) $groups->sum('hours'), 2),
+                'amount' => round((float) $groups->sum(fn ($g) => $g['hours'] * $g['rate']), 2), 'awaiting_client' => $s->status === Timesheet::SUBMITTED];
+        })->values()->all();
+        $waiting = Timesheet::where('user_id', $worker->id)->where('status', Timesheet::SUBMITTED)->whereNull('contractor_invoice_id')
+            ->whereNotIn('id', $this->invoiceableSheets($worker)->pluck('id'))->orderBy('week_ending')->get()
+            ->map(fn (Timesheet $s) => ['week_ending' => $s->week_ending->toDateString(), 'hours' => round((float) $s->total_hours, 2)])->values()->all();
+        return ['can_invoice' => $reason === null, 'reason' => $reason, 'weeks' => $weeks, 'waiting' => $waiting];
     }
 
     /** Horas facturables de una hoja por proyecto|servicio|tarifa (lo que se guarda al facturarla y contra lo que se compara después). */

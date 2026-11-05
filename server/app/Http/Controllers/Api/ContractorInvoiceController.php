@@ -42,6 +42,18 @@ class ContractorInvoiceController extends Controller
             'project' => $r->project->code.' · '.$r->project->name, 'task' => $r->task->name, 'total' => (float) $r->total, 'withhold' => (bool) $r->withhold])->values()]);
     }
 
+    /** Qué puede facturar esta persona ahora (semanas listas y semanas que esperan). El dueño puede preguntar por un consultor: user_id. */
+    public function status(Request $request)
+    {
+        $u = $request->user();
+        $worker = $u;
+        if ($request->query('user_id') && (int) $request->query('user_id') !== $u->id) {
+            abort_unless($u->isOwner(), 403);
+            $worker = User::where('company_id', $u->company_id)->findOrFail((int) $request->query('user_id'));
+        }
+        return response()->json($this->service->status($worker->loadMissing('terms')));
+    }
+
     /** El consultor genera su propia factura; el dueño puede generarla por un consultor (user_id). */
     public function store(Request $request)
     {

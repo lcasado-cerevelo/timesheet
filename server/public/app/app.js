@@ -513,18 +513,30 @@ document.addEventListener('change', async e => {
   const sel = e.target.closest?.('form[data-form=cinv] select[name=user_id]'); if (!sel) return;
   try { const p = await api('/contractor-invoices/pending-commissions' + (sel.value ? '?user_id=' + sel.value : '')); const box = document.querySelector('[data-pend-comm]'); if (box) box.outerHTML = localizeHtml(pendCommHtml(p)); } catch { /* the notice is only informative */ }
 });
+/* What the person can bill right now: weeks ready, weeks still waiting, or why nothing can be billed. */
+function invoiceReadyHtml(r) {
+  if (!r) return '';
+  const why = { not_consultant: 'Your profile is not set as Consultant. In People, open your profile and set the worker type to Consultant to invoice your own hours.', no_rate: 'Your hourly rate is missing. In People, open your profile and enter it under Consultant billing terms.' };
+  if (!r.can_invoice) return `<p class="note" style="margin:0">${esc(T(why[r.reason] || why.no_rate))}</p>`;
+  const rows = r.weeks.map(w => `<tr><td>${esc(w.week_ending)}</td><td class="r">${w.hours}</td><td class="r">${money(w.amount)}</td><td>${w.awaiting_client ? pill(T('Waiting for the client'), 'amber') : pill(T('Approved'), 'green')}</td></tr>`).join('');
+  const wait = r.waiting.map(w => `<tr><td>${esc(w.week_ending)}</td><td class="r">${w.hours}</td></tr>`).join('');
+  return `${r.weeks.length ? `<table><tr><th>${T('Week ending')}</th><th class="r">${T('Hours')}</th><th class="r">${T('Amount')}</th><th></th></tr>${rows}</table>` : `<p class="muted" style="margin:0">${T('Nothing to invoice yet: your weeks are still waiting for approval.')}</p>`}
+    ${r.waiting.length ? `<p class="note" style="margin:10px 0 4px">${T('Waiting for approval (cannot be invoiced yet)')}</p><table><tr><th>${T('Week ending')}</th><th class="r">${T('Hours')}</th></tr>${wait}</table>` : ''}`;
+}
 async function invoicesView() {
   const list = await api('/contractor-invoices');
   const owner = S.me.role === 'owner';
   const people = owner ? (await api('/users')).filter(u => u.worker_type === 'consultant') : [];
-  const canInvoice = S.me.worker_type === 'consultant' || owner;
+  const canInvoice = S.me.worker_type === 'consultant' || isStf();
   const pend = canInvoice ? await api('/contractor-invoices/pending-commissions').catch(() => null) : null;
+  const ready = canInvoice ? await api('/contractor-invoices/status').catch(() => null) : null;
   const F = FL('invoices');
   const shown = list.filter(i => matchQ(F.q, [i.number, i.user?.name]) && (!F.status || i.status === F.status) && (!owner || !F.user_id || i.user_id === Number(F.user_id))
     && (!F.from || i.issued_on >= F.from) && (!F.to || i.issued_on <= F.to));
   const st = { issued: 'Issued', sent: 'Sent', paid: 'Paid' };
   return `<h1>Invoices</h1><p class="sub">Pick the approved weeks to bill. Rate, deductions and totals are calculated for you.</p>
     <div style="text-align:right;margin-bottom:8px">${exportBar('invoices', activeF('invoices'))}</div>
+    ${canInvoice ? `<div class="card"><h2>Your weeks</h2>${invoiceReadyHtml(ready)}</div>` : ''}
     ${canInvoice ? `<div class="card"><h2>Create an invoice</h2><form data-form="cinv" class="fbar" style="margin:0"><div><label>From</label><input type="date" name="from" value="${addDays(today(), -30)}"></div>
     <div><label>To</label><input type="date" name="to" value="${today()}"></div>
     ${owner ? `<div><label>Consultant</label><select name="user_id"><option value="">Me</option>${people.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>` : ''}

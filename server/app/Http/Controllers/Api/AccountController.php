@@ -114,7 +114,7 @@ class AccountController extends Controller
             'role' => $role,
             'user_role' => $real === 'approver' ? null : $real,
             'approver_kind' => $kind,
-            'worker_type' => $real === 'worker' ? $u->worker_type : null,
+            'worker_type' => $real === 'approver' ? null : $u->worker_type,
             'employee_number' => $u->employee_number,
             'two_step' => $real === 'approver',
             'status' => ! $u->active ? 'disabled' : ($u->must_set_password ? 'invited' : 'active'),
