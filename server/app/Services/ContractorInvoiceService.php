@@ -51,7 +51,7 @@ class ContractorInvoiceService
         }
 
         // Cada entrada trae la tarifa que tenía al crearse; un cambio de tarifa posterior no toca horas ya registradas.
-        $hourLines = $sheets->flatMap->entries->where('billable', true)->groupBy(fn ($e) => $e->project_id.'|'.$e->service_id.'|'.number_format($e->payRate(), 2, '.', ''))->map(function ($rows) {
+        $hourLines = $sheets->flatMap->entries->groupBy(fn ($e) => $e->project_id.'|'.$e->service_id.'|'.number_format($e->payRate(), 2, '.', ''))->map(function ($rows) {
             $e = $rows->first();
             $rate = $e->payRate();
             $hours = round((float) $rows->sum('hours'), 2);
@@ -85,7 +85,7 @@ class ContractorInvoiceService
                 'lines' => $lines, 'status' => 'issued',
             ]);
             foreach ($sheets as $sheet) {
-                $sheet->update(['contractor_invoice_id' => $inv->id, 'invoiced_snapshot' => $this->billableGroups($sheet)]);
+                $sheet->update(['contractor_invoice_id' => $inv->id, 'invoiced_snapshot' => $this->paidGroups($sheet)]);
             }
             foreach ($adjustedSnapshots as $sheetId => $snapshot) {
                 Timesheet::whereKey($sheetId)->update(['invoiced_snapshot' => $snapshot]);
@@ -133,7 +133,7 @@ class ContractorInvoiceService
             $reason = 'no_rate';
         }
         $weeks = $this->invoiceableSheets($worker)->map(function (Timesheet $s) {
-            $groups = collect($this->billableGroups($s));
+            $groups = collect($this->paidGroups($s));
             return ['week_ending' => $s->week_ending->toDateString(), 'hours' => round((float) $groups->sum('hours'), 2),
                 'amount' => round((float) $groups->sum(fn ($g) => $g['hours'] * $g['rate']), 2), 'awaiting_client' => $s->status === Timesheet::SUBMITTED];
         })->values()->all();
@@ -143,11 +143,11 @@ class ContractorInvoiceService
         return ['can_invoice' => $reason === null, 'reason' => $reason, 'weeks' => $weeks, 'waiting' => $waiting];
     }
 
-    /** Horas facturables de una hoja por proyecto|servicio|tarifa (lo que se guarda al facturarla y contra lo que se compara después). */
-    private function billableGroups(Timesheet $sheet): array
+    /** Todas las horas de trabajo de una hoja por proyecto|servicio|tarifa, cobren o no al cliente (lo que se guarda al facturarla y contra lo que se compara después). */
+    private function paidGroups(Timesheet $sheet): array
     {
         $sheet->loadMissing('entries.project.services', 'entries.service', 'entries.user.terms');
-        return $sheet->entries->where('billable', true)->groupBy(fn ($e) => $e->project_id.'|'.$e->service_id.'|'.number_format($e->payRate(), 2, '.', ''))->map(function ($rows) {
+        return $sheet->entries->groupBy(fn ($e) => $e->project_id.'|'.$e->service_id.'|'.number_format($e->payRate(), 2, '.', ''))->map(function ($rows) {
             $e = $rows->first();
             return ['title' => $e->project->code.' · '.$e->project->name.($e->project->services->count() > 1 && $e->service ? ' · '.$e->service->name : ''),
                 'rate' => $e->payRate(), 'hours' => round((float) $rows->sum('hours'), 2)];
@@ -166,7 +166,7 @@ class ContractorInvoiceService
         $snapshots = [];
         $sheets = Timesheet::where('user_id', $worker->id)->where('status', Timesheet::APPROVED)->whereNotNull('contractor_invoice_id')->whereNotNull('invoiced_snapshot')->orderBy('week_ending')->get();
         foreach ($sheets as $sheet) {
-            $now = $this->billableGroups($sheet);
+            $now = $this->paidGroups($sheet);
             $was = $sheet->invoiced_snapshot;
             $merged = $was;
             foreach ($now as $key => $g) {
@@ -251,7 +251,7 @@ class ContractorInvoiceService
     public function hoursDetail(ContractorInvoice $inv): array
     {
         $entries = Timesheet::with('entries.project.services', 'entries.service')->where('contractor_invoice_id', $inv->id)->get()
-            ->flatMap->entries->where('billable', true)->sortBy(fn ($e) => $e->work_date->toDateString().'|'.$e->start_time.'|'.str_pad((string) $e->id, 10, '0', STR_PAD_LEFT));
+            ->flatMap->entries->sortBy(fn ($e) => $e->work_date->toDateString().'|'.$e->start_time.'|'.str_pad((string) $e->id, 10, '0', STR_PAD_LEFT));
         $out = [];
         foreach ($entries->groupBy('project_id')->sortBy(fn ($rows) => $rows->first()->project->code) as $rows) {
             $p = $rows->first()->project;
