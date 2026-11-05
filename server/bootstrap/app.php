@@ -28,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'approver.scope' => \App\Http\Middleware\ApproverScope::class,
             'approver' => \App\Http\Middleware\ApproverOnly::class,
+            'staff' => \App\Http\Middleware\StaffOnly::class,
             'owner' => \App\Http\Middleware\OwnerOnly::class,
             'internal' => \App\Http\Middleware\InternalOnly::class,
             'public.page' => \App\Http\Middleware\PublicPageHeaders::class,

@@ -20,7 +20,7 @@ class ContractorInvoiceController extends Controller
     {
         $u = $request->user();
         $q = ContractorInvoice::with('user:id,name')->where('company_id', $u->company_id)->orderByDesc('id');
-        if (! $u->isOwner()) {
+        if (! $u->isStaff()) {
             $q->where('user_id', $u->id);
         }
         // Las facturas con comisión lo dicen: la comisión sale en una línea aparte.
@@ -74,6 +74,6 @@ class ContractorInvoiceController extends Controller
     private function authorizeView(Request $request, ContractorInvoice $invoice): void
     {
         $u = $request->user();
-        abort_unless($invoice->company_id === $u->company_id && ($u->isOwner() || $invoice->user_id === $u->id), 403);
+        abort_unless($invoice->company_id === $u->company_id && ($u->isStaff() || $invoice->user_id === $u->id), 403);
     }
 }

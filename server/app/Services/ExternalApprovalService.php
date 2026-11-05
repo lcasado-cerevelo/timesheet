@@ -133,7 +133,7 @@ class ExternalApprovalService
     public function assertResolvable(Timesheet $sheet): void
     {
         $sheet->loadMissing('user');
-        if ($sheet->user->isOwner()) {
+        if ($sheet->user->isStaff()) {
             return;
         }
         if ($this->parts($sheet)->contains(fn ($p) => $p['eligible']->isEmpty())) {
@@ -158,7 +158,7 @@ class ExternalApprovalService
         $cleared = $sheet->externalApprovals()->whereNotNull('approved_by_approver_id')->count();
         $sheet->externalApprovals()->delete();
         $parts = $this->parts($sheet);
-        if ($sheet->user->isOwner()) {
+        if ($sheet->user->isStaff()) {
             foreach ($parts->filter(fn ($p) => $p['eligible']->isEmpty()) as $p) {
                 TimesheetExternalApproval::create(['timesheet_id' => $sheet->id, 'service_id' => $p['key'] ?: null,
                     'version' => $sheet->version, 'approved_by_approver_id' => null, 'approved_at' => now()]);

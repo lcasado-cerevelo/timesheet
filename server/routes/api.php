@@ -105,6 +105,26 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
     Route::post('/contractor-invoices', [ContractorInvoiceController::class, 'store']);
     Route::get('/contractor-invoices/{invoice}/pdf', [ContractorInvoiceController::class, 'pdf']);
 
+    // Dueño u oficina (la oficina no administra: sin reglas, marca, personas, tarifas ni reabrir)
+    Route::middleware('staff')->group(function () {
+        Route::get('/users', [UserController::class, 'index']);
+        Route::get('/progress', [\App\Http\Controllers\Api\ProjectProgressController::class, 'index']);
+        Route::get('/progress/{project}', [\App\Http\Controllers\Api\ProjectProgressController::class, 'show']);
+        Route::get('/progress/{project}/export', [\App\Http\Controllers\Api\ProjectProgressController::class, 'export']);
+        Route::get('/approvers', [SimpleCrudController::class, 'approvers']);
+        Route::get('/customers', [SimpleCrudController::class, 'customers']);
+        Route::post('/contractor-invoices/{invoice}/push-accountisi', [ContractorInvoiceController::class, 'pushAccountisi']);
+        Route::match(['get', 'post'], '/client-timesheet/preview', [ClientTimesheetController::class, 'preview']);
+        Route::match(['get', 'post'], '/client-timesheet/download', [ClientTimesheetController::class, 'download']);
+        Route::post('/client-timesheet/email', [ClientTimesheetController::class, 'email']);
+        Route::post('/commission-results/{result}/paid', [CommissionController::class, 'paid'])->middleware('throttle:20,1');
+        Route::get('/commission-results', [CommissionController::class, 'results']);
+        Route::get('/sheets-pending', [SheetController::class, 'pending']);
+        Route::get('/review/sheets', [SheetController::class, 'review']);
+        Route::post('/sheets/{sheet}/approve', [SheetController::class, 'approve']);
+        Route::post('/sheets/{sheet}/return', [SheetController::class, 'return']);
+    });
+
     // Solo el dueño de la compañía
     Route::middleware('owner')->group(function () {
         // Avance de cualquier proyecto (solo lectura), como el del gerente de proyecto pero sin límite de cliente
@@ -112,25 +132,19 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::post('/sheets/{sheet}/close', [SheetController::class, 'closeByCompany']);
         Route::post('/sheets/{sheet}/void', [SheetController::class, 'voidSheet']);
         Route::post('/sheets/{sheet}/hold', [SheetController::class, 'hold']);
-        Route::get('/progress', [\App\Http\Controllers\Api\ProjectProgressController::class, 'index']);
-        Route::get('/progress/{project}', [\App\Http\Controllers\Api\ProjectProgressController::class, 'show']);
-        Route::get('/progress/{project}/export', [\App\Http\Controllers\Api\ProjectProgressController::class, 'export']);
         Route::post('/projects', [ProjectController::class, 'store']);
         Route::put('/projects/{project}', [ProjectController::class, 'update']);
         Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
         Route::get('/projects/{project}/approver-options', [ProjectController::class, 'approverOptions']);
 
-        Route::get('/users', [UserController::class, 'index']);
         Route::post('/users', [UserController::class, 'store']);
         Route::put('/users/{user}', [UserController::class, 'update']);
         Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword']);
         Route::post('/users/{user}/resend-invitation', [UserController::class, 'resendInvitation']);
         Route::delete('/users/{user}', [UserController::class, 'destroy']);
 
-        Route::get('/approvers', [SimpleCrudController::class, 'approvers']);
         Route::post('/approvers', [SimpleCrudController::class, 'saveApprover']);
         Route::put('/approvers/{approver}', [SimpleCrudController::class, 'saveApprover']);
-        Route::get('/customers', [SimpleCrudController::class, 'customers']);
         Route::post('/customers', [SimpleCrudController::class, 'saveCustomer']);
         Route::put('/customers/{customer}', [SimpleCrudController::class, 'saveCustomer']);
 
@@ -138,7 +152,6 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::put('/export-templates/{template}', [ExportController::class, 'save']);
         Route::delete('/export-templates/{template}', [ExportController::class, 'destroy']);
 
-        Route::post('/contractor-invoices/{invoice}/push-accountisi', [ContractorInvoiceController::class, 'pushAccountisi']);
 
         Route::get('/integrations/accountisi', [IntegrationController::class, 'show']);
         Route::put('/integrations/accountisi', [IntegrationController::class, 'save']);
@@ -148,9 +161,6 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::post('/integrations/accountisi/sales-preview', [IntegrationController::class, 'salesPreview']);
         Route::post('/integrations/accountisi/sales-invoice', [IntegrationController::class, 'salesCreate']);
 
-        Route::match(['get', 'post'], '/client-timesheet/preview', [ClientTimesheetController::class, 'preview']);
-        Route::match(['get', 'post'], '/client-timesheet/download', [ClientTimesheetController::class, 'download']);
-        Route::post('/client-timesheet/email', [ClientTimesheetController::class, 'email']);
 
         Route::get('/company', [CompanyController::class, 'show']);
         Route::put('/company', [CompanyController::class, 'update']);
@@ -168,18 +178,12 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::post('/commissions', [CommissionController::class, 'store']);
         Route::put('/commissions/{commission}', [CommissionController::class, 'update']);
         Route::delete('/commissions/{commission}', [CommissionController::class, 'destroy']);
-        Route::get('/commission-results', [CommissionController::class, 'results']);
         Route::post('/commission-results/{result}/release', [CommissionController::class, 'release'])->middleware('throttle:20,1');
         Route::put('/commission-results/{result}', [CommissionController::class, 'adjust'])->middleware('throttle:20,1');
-        Route::post('/commission-results/{result}/paid', [CommissionController::class, 'paid'])->middleware('throttle:20,1');
         Route::post('/tasks/{task}/reopen', [TaskController::class, 'reopen'])->middleware('throttle:20,1');
 
-        Route::get('/sheets-pending', [SheetController::class, 'pending']);
-        Route::get('/review/sheets', [SheetController::class, 'review']);
 
         Route::get('/accounts', [AccountController::class, 'index']);
         Route::post('/invitations', [AccountController::class, 'invite']);
-        Route::post('/sheets/{sheet}/approve', [SheetController::class, 'approve']);
-        Route::post('/sheets/{sheet}/return', [SheetController::class, 'return']);
     });
 });

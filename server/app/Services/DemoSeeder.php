@@ -272,7 +272,7 @@ class DemoSeeder
         $this->approver('yolanda', 'Yolanda Reyes', 'yolanda.reyes@amsi.demo', ['AMSI'], false);
 
         $this->user('owner', 'Marisol Vega', 'dueno@demo.cerevelo.com', ['role' => 'owner', 'capture_mode' => 'full_day']);
-        $this->user('office', 'Carlos Rivera', 'oficina@demo.cerevelo.com', ['role' => 'owner', 'capture_mode' => 'full_day']);
+        $this->user('office', 'Carlos Rivera', 'oficina@demo.cerevelo.com', ['role' => 'office', 'capture_mode' => 'full_day']);
         $this->user('ana', 'Ana Torres', 'ana.torres@demo.cerevelo.com', ['weekly_hours' => 40, 'employee_number' => 'E-101', 'capture_mode' => 'full_day']);
         $this->user('jorge', 'Jorge Medina', 'jorge.medina@demo.cerevelo.com', ['weekly_hours' => 40, 'employee_number' => 'E-102']);
         $this->user('lucia', 'Lucía Ortiz', 'lucia.ortiz@demo.cerevelo.com', ['weekly_hours' => 32, 'employee_number' => 'E-103', 'capture_mode' => 'full_day']);

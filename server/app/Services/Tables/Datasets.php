@@ -18,16 +18,16 @@ use Illuminate\Validation\ValidationException;
  */
 class Datasets
 {
-    /** Quién puede pedir cada tabla: 'any' o 'owner'. */
+    /** Quién puede pedir cada tabla: 'any', 'staff' (dueño u oficina) o 'owner' (solo el dueño). */
     public const ACCESS = [
         'report' => 'any', 'week' => 'any', 'invoices' => 'any', 'sheets' => 'any',
-        'pending' => 'owner', 'commissions' => 'owner', 'projects' => 'owner', 'people' => 'owner', 'approvers' => 'owner', 'customers' => 'owner',
+        'pending' => 'staff', 'commissions' => 'staff', 'approvers' => 'staff', 'customers' => 'staff', 'projects' => 'owner', 'people' => 'owner',
     ];
 
     public function allowed(string $dataset, User $user): bool
     {
         $a = self::ACCESS[$dataset] ?? null;
-        return $a === 'any' || ($a === 'owner' && $user->isOwner());
+        return $a === 'any' || ($a === 'staff' && $user->isStaff()) || ($a === 'owner' && $user->isOwner());
     }
 
     /** En PDF, la hoja de la semana y las hojas de tiempo salen con todo el detalle (servicio, tarea, desde/hasta, descanso y nota de cada línea). */
@@ -201,8 +201,8 @@ class Datasets
         $approver = $u->isApprover() ? \App\Models\Approver::find($u->approver_profile_id) : null;
         $q = Timesheet::with('user:id,name')->where('company_id', $u->company_id)
             ->when($u->isApprover(), fn ($x) => $x->whereIn('id', $approver ? $external->sheetIdsFor($approver) : []))
-            ->when(! $u->isApprover() && ! $u->isOwner(), fn ($x) => $x->where('user_id', $u->id))
-            ->when($u->isOwner() && ! empty($f['user_id']), fn ($x) => $x->where('user_id', $f['user_id']))
+            ->when(! $u->isApprover() && ! $u->isStaff(), fn ($x) => $x->where('user_id', $u->id))
+            ->when($u->isStaff() && ! empty($f['user_id']), fn ($x) => $x->where('user_id', $f['user_id']))
             ->when(! empty($f['status']), fn ($x) => $x->where('status', $f['status']))
             ->where('week_ending', '>=', $f['from'])->where('week_ending', '<=', \Carbon\CarbonImmutable::parse($f['to'])->addDays(6)->toDateString())
             ->orderBy('week_ending')->orderBy('user_id')->orderBy('part')->orderBy('id');
@@ -250,7 +250,7 @@ class Datasets
             'title' => __('Hojas de tiempo'),
             'subtitle' => __(':count línea(s) · del :from al :to', ['count' => count($rows), 'from' => $f['from'], 'to' => $f['to']]).$this->describe([$this->txt($f),
                 ! empty($f['status']) ? __('estado :status', ['status' => $status[$f['status']]]) : null,
-                $u->isOwner() && ! empty($f['user_id']) ? __('persona :name', ['name' => User::find($f['user_id'])?->name ?? '#'.$f['user_id']]) : null,
+                $u->isStaff() && ! empty($f['user_id']) ? __('persona :name', ['name' => User::find($f['user_id'])?->name ?? '#'.$f['user_id']]) : null,
                 ! empty($f['project_id']) ? __('proyecto :name', ['name' => Project::find($f['project_id'])?->code ?? '#'.$f['project_id']]) : null]),
             'columns' => $columns,
             'rows' => $rows,
@@ -269,21 +269,21 @@ class Datasets
     private function invoices(User $u, array $p = []): array
     {
         $q = ContractorInvoice::with('user:id,name')->where('company_id', $u->company_id)->orderByDesc('id');
-        if (! $u->isOwner()) {
+        if (! $u->isStaff()) {
             $q->where('user_id', $u->id);
         }
         $f = validator($p, ['q' => 'nullable|string|max:100', 'status' => 'nullable|string|max:20', 'user_id' => 'nullable|integer',
             'from' => 'nullable|date_format:Y-m-d', 'to' => 'nullable|date_format:Y-m-d'])->validate();
         $q->when(! empty($f['status']), fn ($x) => $x->where('status', $f['status']))
-            ->when($u->isOwner() && ! empty($f['user_id']), fn ($x) => $x->where('user_id', $f['user_id']))
+            ->when($u->isStaff() && ! empty($f['user_id']), fn ($x) => $x->where('user_id', $f['user_id']))
             ->when(! empty($f['from']), fn ($x) => $x->where('issued_on', '>=', $f['from']))
             ->when(! empty($f['to']), fn ($x) => $x->where('issued_on', '<=', $f['to']));
         $list = $q->limit(2000)->get()->filter(fn ($i) => $this->matches($f['q'] ?? null, [$i->number, $i->user->name]))->values();
         return [
             'title' => __('Facturas de consultores'),
-            'subtitle' => ($u->isOwner() ? __('Todas las facturas de la compañía') : $u->name).$this->describe([
+            'subtitle' => ($u->isStaff() ? __('Todas las facturas de la compañía') : $u->name).$this->describe([
                 $this->txt($f), ! empty($f['status']) ? __('estado :status', ['status' => $f['status']]) : null,
-                $u->isOwner() && ! empty($f['user_id']) ? __('consultor :name', ['name' => User::find($f['user_id'])?->name ?? '#'.$f['user_id']]) : null,
+                $u->isStaff() && ! empty($f['user_id']) ? __('consultor :name', ['name' => User::find($f['user_id'])?->name ?? '#'.$f['user_id']]) : null,
                 ! empty($f['from']) ? __('emitidas desde :date', ['date' => $f['from']]) : null, ! empty($f['to']) ? __('hasta :date', ['date' => $f['to']]) : null]),
             'columns' => [['h' => __('Número'), 't' => 'text'], ['h' => __('Consultor'), 't' => 'text'], ['h' => __('Desde'), 't' => 'date'], ['h' => __('Hasta'), 't' => 'date'], ['h' => __('Bruto'), 't' => 'money'],
                 ['h' => __('Retención'), 't' => 'money'], ['h' => __('IVU'), 't' => 'money'], ['h' => __('Neto'), 't' => 'money'], ['h' => __('Estado'), 't' => 'text'], ['h' => 'Accountisi', 't' => 'text']],

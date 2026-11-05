@@ -23,7 +23,7 @@ class AccountController extends Controller
     {
         $f = $request->validate([
             'q' => 'nullable|string|max:100',
-            'role' => 'nullable|in:worker,approver,backoffice',
+            'role' => 'nullable|in:worker,approver,backoffice,office',
             'worker_type' => 'nullable|in:employee,consultant',
         ]);
         $cid = $request->user()->company_id;
@@ -52,7 +52,7 @@ class AccountController extends Controller
         $v = $request->validate([
             'name' => 'required|string|max:120',
             'email' => ['required', 'email', 'max:190'],
-            'role' => 'required|in:worker,approver,backoffice',
+            'role' => 'required|in:worker,approver,backoffice,office',
             'worker_type' => ['nullable', 'required_if:role,worker', 'in:employee,consultant'],
             'employee_number' => ['nullable', 'string', 'max:40', Rule::unique('users', 'employee_number')->where('company_id', $cid)],
         ]);
@@ -75,7 +75,7 @@ class AccountController extends Controller
                 'company_id' => $cid,
                 'name' => $v['name'],
                 'email' => $v['email'],
-                'role' => $worker ? 'member' : 'owner',
+                'role' => $worker ? 'member' : ($v['role'] === 'office' ? 'office' : 'owner'),
                 'worker_type' => $worker ? $v['worker_type'] : ($v['worker_type'] ?? 'employee'),
                 'capture_mode' => $worker && $v['worker_type'] === 'employee' ? 'full_day' : 'from_to',
                 'weekly_hours' => $worker && $v['worker_type'] === 'employee' ? 40 : null,
@@ -99,6 +99,7 @@ class AccountController extends Controller
     {
         $real = match ($u->role) {
             'owner' => 'backoffice',
+            'office' => 'office',
             'approver' => 'approver',
             default => 'worker',
         };
