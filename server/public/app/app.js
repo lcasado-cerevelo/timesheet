@@ -592,9 +592,9 @@ async function projectsView() {
   const [list, customers, approvers, users] = await Promise.all([api('/projects'), api('/customers'), api('/approvers'), api('/users')]);
   S.cache.pl = list;
   const F = FL('projects');
-  const shown = list.filter(x => matchQ(F.q, [x.code, x.name, x.customer?.name]) && sameFlag(F.active, x.active) && sameFlag(F.billable, x.billable) && (!F.customer_id || x.customer_id === Number(F.customer_id)));
+  const shown = list.filter(x => matchQ(F.q, [x.code, x.name, x.customer?.name]) && sameFlag(F.active, x.active) && sameFlag(F.billable, x.billable) && (!F.customer_id || (F.customer_id === 'none' ? !x.customer_id : x.customer_id === Number(F.customer_id))));
   return `<div class="pghead"><div><h1>Projects</h1><p class="sub">Only the company owner manages projects.</p></div><button class="btn pri" type="button" data-act="project-new">New project</button></div>
-    <div class="card">${exportBar('projects', activeF('projects'))}${filterBar('projects', [{ k: 'q', label: 'Search', ph: 'Code, name or client' }, { k: 'customer_id', label: 'Client', type: 'select', opts: [['', 'All'], ...customers.map(c => [c.id, c.name])] }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }, { k: 'billable', label: 'Billable', type: 'select', opts: YN('Billable', 'Non-billable') }])}
+    <div class="card">${exportBar('projects', activeF('projects'))}${filterBar('projects', [{ k: 'q', label: 'Search', ph: 'Code, name or client' }, { k: 'customer_id', label: 'Client', type: 'select', opts: [['', 'All'], ['none', 'No client (internal)'], ...customers.map(c => [c.id, c.name])] }, { k: 'active', label: 'Status', type: 'select', opts: YN('Active', 'Inactive') }, { k: 'billable', label: 'Billable', type: 'select', opts: YN('Billable', 'Non-billable') }])}
     <div class="scroll"><table><tr><th>Code</th><th>Name</th><th>Client</th><th class="r">Rate</th><th>Status</th><th></th></tr>
     ${shown.map(x => `<tr><td>${esc(x.code)}</td><td>${esc(x.name)}${(x.services || []).filter(s => s.active).length > 1 ? ' <span class="muted">· ' + (x.services || []).filter(s => s.active).length + ' ' + T('services') + '</span>' : ''}</td><td>${esc(x.customer?.name || '—')}</td>
     <td class="r">${x.bill_rate ? money(x.bill_rate) : '—'}</td>
@@ -1273,13 +1273,14 @@ async function peopleScreen() {
 }
 /* Approvals (owner and approver see the same screen): status pills with counts, filters, list on the left, the selected timesheet on the right. */
 function rvState() {
-  const R = (S.cache.rv ??= { status: 'pending', q: '', type: '', period: '4w', from: '', to: '', proj: [], svc: [], task: [] });
+  const R = (S.cache.rv ??= { status: 'pending', q: '', type: '', client: '', period: '4w', from: '', to: '', proj: [], svc: [], task: [] });
   R.proj ??= []; R.svc ??= []; R.task ??= [];
   if (R.period === '4w') { R.from = addDays(today(), -28); R.to = ''; } else if (R.period === '3m') { R.from = addDays(today(), -91); R.to = ''; } else if (R.period === 'all') { R.from = ''; R.to = ''; }
   return R;
 }
 async function reviewScreen() {
   const ap = isAp(), inn = isIn(); const R = rvState(); const pend = R.status === 'pending';
+  if (R.status === 'progress' && isStf()) return progressScreen(R);
   const qs = new URLSearchParams({ status: R.status });
   if (R.q.trim()) qs.set('q', R.q.trim());
   if (R.type) qs.set('type', R.type);
@@ -1336,12 +1337,12 @@ async function reviewScreen() {
       <div class="tot"><span>Total hours</span><span class="mono">${h1(sel.total_hours)}</span></div></div></div>
       ${aprNotes(d?.entries, d || sel)}${acts}</div>`;
   }
-  const pillBtn = ([k, l]) => `<button type="button" class="pill ${k === R.status ? 'on' : ''}" aria-pressed="${k === R.status}" data-act="rv-status" data-s="${k}">${l} (${cnt[k] ?? 0})</button>`;
+  const pillBtn = ([k, l]) => `<button type="button" class="pill ${k === R.status ? 'on' : ''}" aria-pressed="${k === R.status}" data-act="rv-status" data-s="${k}">${l}${k === 'progress' ? '' : ` (${cnt[k] ?? 0})`}</button>`;
   const per = ([k, l]) => `<button type="button" class="pill ${R.period === k ? 'on' : ''}" data-act="rv-period" data-p="${k}" ${pend ? 'disabled' : ''}>${l}</button>`;
   const rows = sheets.map(s => `<button type="button" class="rowbtn cols-rev ${sel && s.id === sel.id ? 'sel' : ''}" data-act="rv-pick" data-id="${s.id}"><span><span style="font-weight:500">${esc(nameOf(s))}</span>${s.late ? ' <span class="bd amber">Late</span>' : ''}</span>
     <span>${wkWeekCell(s)}</span><span>${typeName(s)}</span><span>${esc(projOf(s))}</span><span class="mono" style="text-align:right">${h1(s.total_hours)}</span><span>${pill(stOf(s), stColor[s.status] || 'gray')}${s.status === 'returned' && s.return_comment ? ` <span class="cmt" role="button" tabindex="0" data-act="rv-reason" data-id="${s.id}" title="${esc(T('See the reason'))}" aria-label="${esc(T('See the reason'))}">💬</span>` : ''}</span></button>`).join('');
   return `<div class="pp"><div><h1>Approvals</h1><p class="sub">${inn ? 'These are hours waiting for your approval. After you approve, they go to the external approver.' : 'Approving replaces the manager signature. Weeks filled in after the deadline are flagged as late.'}</p></div>
-    <div class="twin"><div class="card l"><div class="pillrow" style="margin-bottom:12px">${[['pending', 'Pending'], ['approved', 'Approved'], ['returned', 'Returned'], ['all', 'All']].map(pillBtn).join('')}</div>
+    <div class="twin"><div class="card l"><div class="pillrow" style="margin-bottom:12px">${[['pending', 'Pending'], ['approved', 'Approved'], ['returned', 'Returned'], ['all', 'All'], ...(isStf() ? [['progress', 'In progress']] : [])].map(pillBtn).join('')}</div>
       <div class="fpanel"><label class="flbl" style="flex:1 1 160px">Search person<input type="search" data-rv="q" placeholder="Name" value="${esc(R.q)}"></label>
       <label class="flbl" style="flex:1 1 140px">Type<select data-rv="type">${optHtml('', 'All types', R.type)}${optHtml('employee', 'Employees', R.type)}${optHtml('consultant', 'Contractors', R.type)}</select></label>
       <label class="flbl" style="flex:1 1 150px">Week ending from<input type="date" data-rv="from" ${pend ? 'disabled' : ''} value="${esc(R.from)}"></label>
@@ -1359,6 +1360,34 @@ document.addEventListener('input', e => {
   const b = e.target.closest('.card')?.querySelector('.decided .btn:not(.danger)'); if (!b) return;
   const typed = e.target.value.trim() !== ''; b.disabled = typed; b.title = typed ? T('Clear the comment to approve, or use Return for correction.') : '';
 });
+/* Owner / office only: the hours people are working on and have not sent yet (read-only). */
+async function progressScreen(R) {
+  const qs = new URLSearchParams();
+  if (R.q.trim()) qs.set('q', R.q.trim());
+  if (R.type) qs.set('type', R.type);
+  if (R.client) qs.set('customer_id', R.client);
+  if (R.from) qs.set('from', R.from);
+  if (R.to) qs.set('to', R.to);
+  const [res, customers] = await Promise.all([api('/in-progress?' + qs.toString()), api('/customers')]);
+  const pillBtn = ([k, l]) => `<button type="button" class="pill ${k === R.status ? 'on' : ''}" aria-pressed="${k === R.status}" data-act="rv-status" data-s="${k}">${l}</button>`;
+  const per = ([k, l]) => `<button type="button" class="pill ${R.period === k ? 'on' : ''}" data-act="rv-period" data-p="${k}">${l}</button>`;
+  const typeName = s => (s === 'consultant' ? 'Contractor' : 'Employee');
+  const blocks = res.sheets.map(s => `<div class="card" style="margin-top:12px"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center">
+      <div><h2 style="font-size:17px">${esc(s.user.name)}</h2><p style="margin:0">${typeName(s.user.worker_type)} · ${T('Week ending').toLowerCase()} ${nice(s.week_ending)}${s.running ? ' · <span class="bd amber">' + T('Timer running') + '</span>' : ''}</p></div>
+      <div class="mono"><b>${h1(s.total_hours)} h</b></div></div>
+      <div class="scrollx"><table style="min-width:420px"><tr><th>${T('Date')}</th><th>${T('Project')}</th><th>${T('Service')}</th><th class="r">${T('Hours')}</th></tr>
+      ${s.lines.map(l => `<tr><td>${nice(l.date)}</td><td>${esc(l.project)}</td><td>${esc(l.service || '')}</td><td class="r">${l.running ? T('running') : h1(l.hours)}</td></tr>`).join('')}</table></div></div>`).join('');
+  return `<div class="pp"><div><h1>Approvals</h1><p class="sub">${T('Hours people are working on and have not sent yet. Read-only: nothing here can be approved until it is sent.')}</p></div>
+    <div class="card"><div class="pillrow" style="margin-bottom:12px">${[['pending', 'Pending'], ['approved', 'Approved'], ['returned', 'Returned'], ['all', 'All'], ['progress', 'In progress']].map(pillBtn).join('')}</div>
+      <div class="fpanel"><label class="flbl" style="flex:1 1 160px">Search person<input type="search" data-rv="q" placeholder="Name" value="${esc(R.q)}"></label>
+      <label class="flbl" style="flex:1 1 140px">Type<select data-rv="type">${optHtml('', 'All types', R.type)}${optHtml('employee', 'Employees', R.type)}${optHtml('consultant', 'Contractors', R.type)}</select></label>
+      <label class="flbl" style="flex:1 1 180px">Client<select data-rv="client">${optHtml('', 'All', R.client)}${optHtml('none', 'No client (internal)', R.client)}${customers.map(c => optHtml(String(c.id), c.name, R.client)).join('')}</select></label>
+      <label class="flbl" style="flex:1 1 150px">Week ending from<input type="date" data-rv="from" value="${esc(R.from)}"></label>
+      <label class="flbl" style="flex:1 1 150px">to<input type="date" data-rv="to" value="${esc(R.to)}"></label>
+      <div class="pillrow" style="flex:1 1 100%"><span class="note">Quick period:</span>${[['4w', 'Last 4 weeks'], ['3m', 'Last 3 months'], ['all', 'All time']].map(per).join('')}</div></div>
+      <p class="note" style="margin:0">${res.people} ${T('people')} · ${h1(res.hours)} h</p></div>
+    ${blocks || `<div class="card" style="margin-top:12px"><div class="empty">${T('Nobody has hours in progress that match the filter.')}</div></div>`}</div>`;
+}
 let rvTimer = 0;
 /* picking in the project / service / task filters: wait a moment so several can be picked, then reload the list */
 document.addEventListener('mselchange', e => {
@@ -1371,7 +1400,7 @@ Object.assign(actions, {
   'rv-pick'(el) { S.cache.apSel = Number(el.dataset.id); render(); },
   'rv-reason'(el) {
     const x = (S.cache.rvSheets || []).find(r => r.id === Number(el.dataset.id)); if (!x) return;
-    modalOpen({ title: 'Returned for correction', sub: `${x.user?.name ?? x.name ?? ''} · ${T('week ending')} ${nice(x.week_ending)}`, size: 'sm', save: 'Close',
+    modalOpen({ title: 'Returned for correction', sub: `${x.user?.name ?? x.name ?? ''} · ${T('Week ending').toLowerCase()} ${nice(x.week_ending)}`, size: 'sm', save: 'Close',
       body: `<div class="msg err" style="white-space:pre-wrap">${esc(x.return_comment || '')}</div>${x.return_by ? `<p class="muted" style="margin:8px 0 0">${T('Returned by')} ${esc(x.return_by)}</p>` : ''}`, async onSubmit(mm) { mm.close(true); } });
   },
   'rv-period'(el) { if (el.disabled) return; rvState().period = el.dataset.p; render(); },

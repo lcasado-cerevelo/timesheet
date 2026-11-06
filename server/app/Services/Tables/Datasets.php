@@ -314,19 +314,19 @@ class Datasets
 
     private function projects(User $u, array $p = []): array
     {
-        $f = validator($p, ['q' => 'nullable|string|max:100', 'active' => 'nullable', 'billable' => 'nullable', 'customer_id' => 'nullable|integer'])->validate();
+        $f = validator($p, ['q' => 'nullable|string|max:100', 'active' => 'nullable', 'billable' => 'nullable', 'customer_id' => ['nullable', 'regex:/^(\d+|none)$/']])->validate();
         $active = $this->flag($f, 'active');
         $billable = $this->flag($f, 'billable');
         $list = Project::with('customer:id,name', 'approver:id,name')->where('company_id', $u->company_id)
             ->when($active !== null, fn ($x) => $x->where('active', $active))
             ->when($billable !== null, fn ($x) => $x->where('billable', $billable))
-            ->when(! empty($f['customer_id']), fn ($x) => $x->where('customer_id', $f['customer_id']))
+            ->when(! empty($f['customer_id']), fn ($x) => $f['customer_id'] === 'none' ? $x->whereNull('customer_id') : $x->where('customer_id', $f['customer_id']))
             ->orderBy('code')->get()
             ->filter(fn ($x) => $this->matches($f['q'] ?? null, [$x->code, $x->name, $x->customer?->name]))->values();
         return [
             'title' => __('Proyectos'), 'subtitle' => __(':count proyecto(s)', ['count' => $list->count()]).$this->describe([$this->txt($f),
                 $active === null ? null : ($active ? __('solo activos') : __('solo inactivos')), $billable === null ? null : ($billable ? __('solo facturables') : __('solo no facturables')),
-                ! empty($f['customer_id']) ? __('cliente :name', ['name' => Customer::find($f['customer_id'])?->name ?? '#'.$f['customer_id']]) : null]),
+                ! empty($f['customer_id']) ? ($f['customer_id'] === 'none' ? __('sin cliente (interno)') : __('cliente :name', ['name' => Customer::find($f['customer_id'])?->name ?? '#'.$f['customer_id']])) : null]),
             'columns' => [['h' => __('Código'), 't' => 'text'], ['h' => __('Nombre'), 't' => 'text'], ['h' => __('Cliente'), 't' => 'text'], ['h' => __('Facturable'), 't' => 'bool'], ['h' => __('Activo'), 't' => 'bool'],
                 ['h' => __('Tarifa'), 't' => 'money'], ['h' => __('Horas presupuestadas'), 't' => 'hours'], ['h' => __('Aprobador'), 't' => 'text']],
             'rows' => $list->map(fn ($p) => [$p->code, $p->name, $p->customer?->name ?? '', (bool) $p->billable, (bool) $p->active,

@@ -122,6 +122,7 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::get('/commission-results', [CommissionController::class, 'results']);
         Route::get('/sheets-pending', [SheetController::class, 'pending']);
         Route::get('/review/sheets', [SheetController::class, 'review']);
+        Route::get('/in-progress', [\App\Http\Controllers\Api\InProgressController::class, 'index']);
         Route::post('/sheets/{sheet}/approve', [SheetController::class, 'approve']);
         Route::post('/sheets/{sheet}/return', [SheetController::class, 'return']);
     });

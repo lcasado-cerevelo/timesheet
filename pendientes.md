@@ -160,3 +160,16 @@ Contexto: hoy la factura del consultor sale de hojas APROBADAS del todo (tambié
 - Dueño y oficina facturan sus horas igual que un consultor: tipo Consultant + tarifa en sus condiciones de facturación. Decisión: NO se separa "quién factura" del tipo; el tipo del dueño ahora sale en la lista de Personas.
 - La pantalla Invoices muestra "Tus semanas": listas para facturar (con horas y monto), las que esperan aprobación y, si no puede facturar, el motivo (no es consultor / falta la tarifa). `GET /api/contractor-invoices/status`.
 - Falta: correr la suite completa en un entorno con PHP 8.4 (nuevas: OfficeRoleTest, OwnerInvoiceTest).
+
+## Enlace con Employee Tracker (Luis, 2026-11-03) — SOLO ANOTADO, nada construido
+Luis quiere que Timesheet y Employee Tracker (`F:\Visual Studio 2022\Projects\EmpTrac`) se enlacen o sincronicen de alguna manera. Lo que se ve razonable, por decidir con él:
+- **Turno → horas.** Employee Tracker registra el inicio y fin de turno de cada empleado (`Sessions`) y el resumen escrito al terminar (`ShiftSummaries`). Timesheet podría crear o proponer la entrada del día (modo `total` o `detail` con desde/hasta) a partir del turno, con la nota del resumen, para que el empleado solo confirme. Nunca se enviaría sola: la hoja la envía y firma la persona.
+- **Horas → verificación.** Al revés: el aprobador interno podría ver, junto a cada día de la hoja, si Employee Tracker registró turno ese día y cuántas horas, como dato de apoyo (no como bloqueo).
+- **Cómo.** Employee Tracker no tiene API de lectura hoy (solo escritura desde el cliente y los endpoints de admin). Haría falta un endpoint `GET /api/sessions?employee&from&to` con JWT de servicio, y en Timesheet una integración como la de Accountisi (URL + credencial cifrada, pantalla Integration), con un emparejamiento empleado ↔ usuario por correo.
+- **Dependencia.** Employee Tracker tiene su propia lista de pendientes prometidos (`docs/PENDIENTES-PROMETIDO.md` en ese proyecto): panel web, reportes, exportación. El enlace va después de eso.
+
+## Proyectos internos, horas en curso y filtro sin cliente (Luis, 2026-11-05)
+- **Hecho.** La factura del consultor paga todas sus horas aprobadas, se cobren o no al cliente (proyectos internos como Cepas, sin cliente y no facturables).
+- **Hecho.** Pestaña "En curso" en Aprobaciones (dueño y oficina, solo lectura): horas de borradores aún sin enviar, por persona y semana. Endpoint `GET /api/in-progress`.
+- **Hecho.** Opción "Sin cliente (interno)" (`customer_id=none`) en el filtro de cliente de En curso, la lista de Proyectos y su exportación. Los otros filtros de cliente (hoja del cliente, facturas de venta, Consultorio 1500) necesitan un cliente real y no la llevan.
+- **Sin hacer.** Ver las pantallas nuevas en el navegador; anular desde la interfaz una hoja ya aprobada; aviso al consultor cuando se anula una hoja; campo de descanso en el móvil.

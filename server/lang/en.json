@@ -455,5 +455,6 @@
     "Solo se pone en pausa una hoja enviada que espera una aprobación.": "Only a sent timesheet that is waiting for an approval can be put on hold.",
     "La fecha de la pausa no puede ser pasada.": "The hold date cannot be in the past.",
     "Escribe el motivo de la pausa.": "Write the reason for the hold.",
-    "Solo el personal de la oficina puede hacer esto.": "Only office staff can do this."
+    "Solo el personal de la oficina puede hacer esto.": "Only office staff can do this.",
+    "sin cliente (interno)": "no client (internal)"
 }

@@ -41,6 +41,7 @@ class OwnerInvoiceTest extends TestCase
         $this->getJson('/api/contractor-invoices/status')->assertJsonPath('reason', 'no_rate');
 
         ContractorTerms::create(['user_id' => $this->owner->id, 'rate' => 50, 'terms_days' => 30]);
+        $this->owner->unsetRelation('terms');   // la misma instancia hace de usuario en cada llamada: sin esto se queda con la tarifa vieja
         $this->approvedSheetOf($this->owner);
         $this->getJson('/api/contractor-invoices/status')->assertJsonPath('can_invoice', true)->assertJsonPath('weeks.0.hours', 8)
             ->assertJsonPath('weeks.0.amount', 400);
