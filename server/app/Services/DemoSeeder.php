@@ -321,24 +321,24 @@ class DemoSeeder
         $this->project('AMSI-PORT', 'Portal de pacientes', 'AMSI', 85, 500, ['ricardo', 'sofia', 'ana', 'patricia']);
         $first = fn (string $code) => $this->p[$code]->services()->first();
         $this->service($this->p['AMSI-PORT'], 'Desarrollo', 'detail', 'both', 85, ['patricia'], ['elena'], true, true, $first('AMSI-PORT'));
-        $this->service($this->p['AMSI-PORT'], 'Soporte', 'total', 'external', 60, [], ['elena']);
-        $this->service($this->p['AMSI-PORT'], 'Gestión', 'detail', 'internal', 70, ['raul']);
+        $this->service($this->p['AMSI-PORT'], 'Soporte', 'total', 'both', 60, ['patricia'], ['elena']);
+        $this->service($this->p['AMSI-PORT'], 'Gestión', 'detail', 'both', 70, ['raul'], ['elena']);
 
         $this->project('AMSI-MIG', 'Migración de datos', 'AMSI', 80, 300, ['sofia', 'jorge', 'raul'], true);
         $this->service($this->p['AMSI-MIG'], 'Análisis', 'detail', 'both', 80, ['raul'], ['elena'], true, false, $first('AMSI-MIG'));
-        $this->service($this->p['AMSI-MIG'], 'Pruebas', 'detail', 'external', 70, [], ['yolanda']);
-        $this->service($this->p['AMSI-MIG'], 'Garantía', 'detail', 'external', null, [], ['yolanda'], false);
+        $this->service($this->p['AMSI-MIG'], 'Pruebas', 'detail', 'both', 70, ['raul'], ['yolanda']);
+        $this->service($this->p['AMSI-MIG'], 'Garantía', 'detail', 'both', null, ['raul'], ['yolanda'], false);
 
         $this->project('CAR-LOG', 'Rastreo de flota', 'CARIBE', 75, 400, ['hector', 'jorge', 'patricia', 'raul']);
-        $this->service($this->p['CAR-LOG'], 'Desarrollo', 'detail', 'internal', 75, ['patricia', 'raul'], [], true, false, $first('CAR-LOG'));
-        $this->service($this->p['CAR-LOG'], 'Mantenimiento', 'total', 'external', 55, [], ['nelson']);
+        $this->service($this->p['CAR-LOG'], 'Desarrollo', 'detail', 'both', 75, ['patricia', 'raul'], ['nelson'], true, false, $first('CAR-LOG'));
+        $this->service($this->p['CAR-LOG'], 'Mantenimiento', 'total', 'both', 55, ['patricia', 'raul'], ['nelson']);
 
         $this->project('CAR-WEB', 'Sitio web corporativo', 'CARIBE', 60, 150, ['ricardo']);
-        $this->service($this->p['CAR-WEB'], 'General', 'total', 'external', null, [], ['nelson'], true, false, $first('CAR-WEB'));
+        $this->service($this->p['CAR-WEB'], 'General', 'total', 'both', null, ['patricia'], ['nelson'], true, false, $first('CAR-WEB'));
 
         $this->project('BOR-ERP', 'Implementación ERP', 'BORINQUEN', 90, 700, ['valeria', 'lucia', 'raul']);
         $this->service($this->p['BOR-ERP'], 'Consultoría', 'detail', 'both', 90, ['raul'], ['gloria'], true, false, $first('BOR-ERP'));
-        $this->service($this->p['BOR-ERP'], 'Capacitación', 'total', 'external', 65, [], ['gloria']);
+        $this->service($this->p['BOR-ERP'], 'Capacitación', 'total', 'both', 65, ['raul'], ['gloria']);
 
         $this->project('INT-ADM', 'Administración interna', null, null, null, ['ana', 'jorge', 'lucia', 'patricia', 'raul'], false, false);
         $this->service($this->p['INT-ADM'], 'General', 'total', 'none', null, [], [], false, false, $first('INT-ADM'));
@@ -596,10 +596,11 @@ class DemoSeeder
     private function scenario(string $who, int $k): array
     {
         $special = [
+            // La semana pasada (la primera del mes en curso): todo enviado y sin aprobar, cada quien en una etapa distinta.
             1 => ['ricardo' => ['client_pending'], 'sofia' => ['internal_pending'], 'hector' => ['parts'], 'valeria' => ['returned_external', 'Falta el detalle de lo que se hizo el miércoles; por favor añade una nota a esas horas.'],
-                'ana' => ['draft'], 'jorge' => ['client_pending'], 'lucia' => ['approved']],
-            2 => ['sofia' => ['late'], 'valeria' => ['late_pending'], 'ricardo' => ['returned_internal', 'Las horas del jueves no coinciden con el parte del proyecto. Revísalas y vuelve a enviar.'],
-                'jorge' => ['returned_external', 'Las horas de pruebas del viernes no están en el reporte de defectos; por favor confirma.'], 'lucia' => ['approved']],
+                'ana' => ['client_pending'], 'jorge' => ['client_pending'], 'lucia' => ['client_pending'], 'patricia' => ['draft'], 'raul' => ['draft']],
+            // El mes anterior queda cerrado: todo aprobado por completo (aprobación interna y del cliente); solo se ven un par de envíos tardíos.
+            2 => ['sofia' => ['late'], 'valeria' => ['late']],
         ];
         return $special[$k][$who] ?? ($k === 0 ? ['draft'] : ['approved']);
     }

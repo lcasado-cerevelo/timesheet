@@ -57,7 +57,8 @@ class DemoSeedTest extends TestCase
         $this->assertTrue(\App\Models\Service::where('company_id', $co->id)->where('capture_mode', 'detail')->exists());
         $this->assertTrue(\App\Models\Service::where('company_id', $co->id)->where('capture_mode', 'total')->exists());
         $this->assertTrue(\App\Models\Service::where('company_id', $co->id)->whereIn('approval_mode', ['internal', 'both'])->exists());
-        $this->assertTrue(\App\Models\Service::where('company_id', $co->id)->where('approval_mode', 'external')->exists());
+        $this->assertTrue(\App\Models\Service::where('company_id', $co->id)->where('approval_mode', 'both')->exists());
+        $this->assertTrue(\App\Models\Service::where('company_id', $co->id)->where('approval_mode', 'none')->exists());
         $this->assertTrue(Task::where('company_id', $co->id)->where('active', true)->exists());
         $this->assertTrue(Task::where('company_id', $co->id)->where('active', false)->whereNotNull('completed_on')->exists());
         $this->assertTrue(Task::where('company_id', $co->id)->where('commissionable', true)->exists());
