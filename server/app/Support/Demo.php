@@ -16,9 +16,9 @@ class Demo
 
     /** key => [nombre, correo, etiqueta (es), etiqueta (en)] de las cuentas de ejemplo (las tres personas de la demo). */
     public const LOGIN_ACCOUNTS = [
-        'owner' => ['Luis Casado', 'dueno@demo.cerevelo.com', 'Dueño', 'Owner'],
-        'consultant' => ['Jarvis Rodriguez', 'jarvis.rodriguez@demo.cerevelo.com', 'Consultor', 'Consultant'],
-        'manager' => ['Ketsy Figueroa', 'ketsy.figueroa@demo.cerevelo.com', 'Aprobadora y gerente de proyecto del cliente', 'Approver and client project manager'],
+        'owner' => ['Luis Casado', 'lcasado@cerevelo.com', 'Dueño', 'Owner'],
+        'consultant' => ['Jarvis Rodriguez', 'jrodriguez@cerevelo.com', 'Consultor', 'Consultant'],
+        'manager' => ['Ketsy Figueroa', 'kfigueroa@amsipr.com', 'Aprobadora y gerente de proyecto del cliente', 'Approver and client project manager'],
     ];
 
     /** La contraseña de las tres cuentas: la de DEMO_PASSWORD en el .env, o la de ejemplo si no se puso ninguna. */
@@ -28,10 +28,10 @@ class Demo
         return $custom !== '' ? $custom : self::PASSWORD;
     }
 
-    /** ¿Es una cuenta de ejemplo? (todo lo que termina en el dominio de ejemplo) */
+    /** ¿Es una cuenta de ejemplo? (una de las tres personas de la demo) */
     public static function isExample(?string $email): bool
     {
-        return $email !== null && str_ends_with(strtolower($email), '@demo.cerevelo.com');
+        return $email !== null && in_array(strtolower($email), array_map('strtolower', array_column(self::LOGIN_ACCOUNTS, 1)), true);
     }
 
     /** La pantalla de entrada ya no trae botones de acceso rápido: cada persona entra con su correo y la contraseña que se le dio. */

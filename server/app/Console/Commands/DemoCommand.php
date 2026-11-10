@@ -33,6 +33,11 @@ class DemoCommand extends Command
         foreach ($counts as $name => $n) {
             $this->line(sprintf('  %-20s %d', $name, $n));
         }
+        $this->line('');
+        $this->line('  '.__('Hojas por semana (semana que termina, estado, horas):'));
+        foreach (\App\Models\Timesheet::whereHas('user', fn ($q) => $q->where('email', \App\Support\Demo::LOGIN_ACCOUNTS['consultant'][1]))->orderBy('week_ending')->get() as $sheet) {
+            $this->line(sprintf('  %s  %-10s %-9s %s h', $sheet->week_ending->toDateString(), $sheet->status, $sheet->stage ?? '-', $sheet->total_hours));
+        }
         foreach ($seeder->notes as $note) {
             $this->warn('  · '.$note);
         }

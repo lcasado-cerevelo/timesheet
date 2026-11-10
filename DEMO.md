@@ -58,9 +58,9 @@ Son tres, y **las tres entran con la misma contraseña**. No hay botones «Entra
 
 | Persona | Cuenta |
 |---|---|
-| Dueño (aprueba por dentro) | `dueno@demo.cerevelo.com` (Luis Casado) |
-| Consultor | `jarvis.rodriguez@demo.cerevelo.com` (Jarvis Rodriguez, $15/h, retención 10 %) |
-| Aprobadora del cliente y gerente de proyecto | `ketsy.figueroa@demo.cerevelo.com` (Ketsy Figueroa: aprueba y ve «Avance») |
+| Dueño (aprueba por dentro) | `lcasado@cerevelo.com` (Luis Casado) |
+| Consultor | `jrodriguez@cerevelo.com` (Jarvis Rodriguez, $15/h, retención 10 %) |
+| Aprobadora del cliente y gerente de proyecto | `kfigueroa@amsipr.com` (Ketsy Figueroa: aprueba y ve «Avance») |
 
 ## Qué datos trae
 - Un cliente (AMSI) y un proyecto, **AMSI PITS Upgrade**, con cinco servicios (General, Testing, Design, Development, Implementation) a $125 por total de horas del día, con **aprobación interna (Luis) y del cliente (Ketsy)**, y cuatro tareas con presupuesto y fecha estimada.

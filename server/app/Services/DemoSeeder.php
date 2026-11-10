@@ -270,9 +270,9 @@ class DemoSeeder
         $cid = $this->company->id;
         $this->customers['AMSI'] = Customer::create(['company_id' => $cid, 'name' => 'AMSI', 'email' => 'amsi@cliente.demo']);
         // Solo estas tres personas: la aprobadora del cliente (gerente de proyecto), el dueño (que aprueba por dentro) y el consultor.
-        $this->approver('elena', 'Ketsy Figueroa', 'ketsy.figueroa@demo.cerevelo.com', ['AMSI'], true, true);
-        $this->user('owner', 'Luis Casado', 'dueno@demo.cerevelo.com', ['role' => 'owner', 'capture_mode' => 'full_day']);
-        $u = $this->user('ricardo', 'Jarvis Rodriguez', 'jarvis.rodriguez@demo.cerevelo.com', ['worker_type' => 'consultant', 'capture_mode' => 'full_day']);
+        $this->approver('elena', 'Ketsy Figueroa', 'kfigueroa@amsipr.com', ['AMSI'], true, true);
+        $this->user('owner', 'Luis Casado', 'lcasado@cerevelo.com', ['role' => 'owner', 'capture_mode' => 'full_day']);
+        $u = $this->user('ricardo', 'Jarvis Rodriguez', 'jrodriguez@cerevelo.com', ['worker_type' => 'consultant', 'capture_mode' => 'full_day']);
         ContractorTerms::create(['user_id' => $u->id, 'rate' => 15, 'retention_pct' => 10, 'ivu_agent' => false, 'ivu_pct' => 0, 'terms_days' => 30]);
         // Las cuentas se crearon hace un tiempo, antes de la primera semana de la demo.
         User::where('company_id', $cid)->update(['created_at' => $this->weekStart(self::WEEKS + 1)]);

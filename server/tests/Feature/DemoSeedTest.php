@@ -81,7 +81,7 @@ class DemoSeedTest extends TestCase
     {
         config(['app.demo' => true]);
         Artisan::call('tiempo:demo', ['--fresh' => true]);
-        $manager = User::where('email', 'ketsy.figueroa@demo.cerevelo.com')->firstOrFail();
+        $manager = User::where('email', 'kfigueroa@amsipr.com')->firstOrFail();
         Sanctum::actingAs($manager);
         $list = $this->getJson('/api/approver/progress')->assertOk()->json();
         $this->assertCount(1, $list);
@@ -89,7 +89,7 @@ class DemoSeedTest extends TestCase
         $this->assertGreaterThan(0, $d['hours']);
         $this->get('/api/approver/progress/'.$list[0]['id'].'/export?format=pdf')->assertOk();
 
-        Sanctum::actingAs(User::where('email', 'dueno@demo.cerevelo.com')->firstOrFail());
+        Sanctum::actingAs(User::where('email', 'lcasado@cerevelo.com')->firstOrFail());
         $range = 'from='.now()->subWeeks(9)->toDateString().'&to='.now()->toDateString();
         foreach (['csv', 'xlsx', 'pdf'] as $f) {
             $r = $this->get('/api/tables/sheets/export?format='.$f.'&'.$range)->assertOk();

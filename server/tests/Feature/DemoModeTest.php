@@ -94,7 +94,7 @@ class DemoModeTest extends TestCase
     public function test_public_config_lists_the_example_accounts_only_in_demo(): void
     {
         $this->world();
-        User::create(['company_id' => $this->company->id, 'name' => 'Marisol Vega', 'email' => 'dueno@demo.cerevelo.com', 'password' => Demo::PASSWORD, 'role' => 'owner']);
+        User::create(['company_id' => $this->company->id, 'name' => 'Marisol Vega', 'email' => 'lcasado@cerevelo.com', 'password' => Demo::PASSWORD, 'role' => 'owner']);
         $off = $this->getJson('/api/public-config')->assertOk()->json();
         $this->assertFalse($off['demo']);
         $this->assertSame([], $off['demo_accounts']);
@@ -110,7 +110,7 @@ class DemoModeTest extends TestCase
     public function test_the_example_accounts_cannot_change_their_password_in_demo(): void
     {
         $this->world();
-        $demo = User::create(['company_id' => $this->company->id, 'name' => 'Marisol Vega', 'email' => 'dueno@demo.cerevelo.com', 'password' => Demo::PASSWORD, 'role' => 'owner']);
+        $demo = User::create(['company_id' => $this->company->id, 'name' => 'Marisol Vega', 'email' => 'lcasado@cerevelo.com', 'password' => Demo::PASSWORD, 'role' => 'owner']);
         $new = 'Otra-Clave-Distinta-77!';
         config(['app.demo' => true]);
         Sanctum::actingAs($demo);
