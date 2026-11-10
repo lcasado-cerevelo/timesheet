@@ -266,19 +266,19 @@ class DemoSeeder
             $this->customers[$k] = Customer::create(['company_id' => $cid, 'name' => ['AMSI' => 'AMSI', 'CARIBE' => 'Caribe Logística', 'BORINQUEN' => 'Grupo Borinquen'][$k], 'email' => $mail]);
         }
         // Externos: tres con cuenta (uno es el gerente de proyecto del cliente) y uno que solo decide por el enlace del correo.
-        $this->approver('elena', 'Elena Robles', 'elena.robles@demo.cerevelo.com', ['AMSI'], true, true);
-        $this->approver('nelson', 'Nelson Báez', 'nelson.baez@demo.cerevelo.com', ['CARIBE'], true);
+        $this->approver('elena', 'Ketsy Figueroa', 'ketsy.figueroa@demo.cerevelo.com', ['AMSI'], true, true);
+        $this->approver('nelson', 'Jackeline Robles', 'jackeline.robles@demo.cerevelo.com', ['CARIBE'], true);
         $this->approver('gloria', 'Gloria Pagán', 'gloria.pagan@demo.cerevelo.com', ['BORINQUEN'], true);
         $this->approver('yolanda', 'Yolanda Reyes', 'yolanda.reyes@amsi.demo', ['AMSI'], false);
 
-        $this->user('owner', 'Marisol Vega', 'dueno@demo.cerevelo.com', ['role' => 'owner', 'capture_mode' => 'full_day']);
+        $this->user('owner', 'Luis Casado', 'dueno@demo.cerevelo.com', ['role' => 'owner', 'capture_mode' => 'full_day']);
         $this->user('office', 'Carlos Rivera', 'oficina@demo.cerevelo.com', ['role' => 'office', 'capture_mode' => 'full_day']);
         $this->user('ana', 'Ana Torres', 'ana.torres@demo.cerevelo.com', ['weekly_hours' => 40, 'employee_number' => 'E-101', 'capture_mode' => 'full_day']);
         $this->user('jorge', 'Jorge Medina', 'jorge.medina@demo.cerevelo.com', ['weekly_hours' => 40, 'employee_number' => 'E-102']);
         $this->user('lucia', 'Lucía Ortiz', 'lucia.ortiz@demo.cerevelo.com', ['weekly_hours' => 32, 'employee_number' => 'E-103', 'capture_mode' => 'full_day']);
         $this->user('patricia', 'Patricia Colón', 'patricia.colon@demo.cerevelo.com', ['weekly_hours' => 40, 'employee_number' => 'E-201', 'capture_mode' => 'full_day']);
         $this->user('raul', 'Raúl Acosta', 'raul.acosta@demo.cerevelo.com', ['weekly_hours' => 40, 'employee_number' => 'E-202', 'capture_mode' => 'full_day']);
-        foreach ([['ricardo', 'Ricardo Cruz', 45, 10, false], ['sofia', 'Sofía Méndez', 60, 10, true], ['hector', 'Héctor Rosario', 38, 7, false], ['valeria', 'Valeria Núñez', 75, 10, true]] as [$k, $n, $rate, $ret, $ivu]) {
+        foreach ([['ricardo', 'Jarvis Rodriguez', 45, 10, false], ['sofia', 'Sofía Méndez', 60, 10, true], ['hector', 'Héctor Rosario', 38, 7, false], ['valeria', 'Valeria Núñez', 75, 10, true]] as [$k, $n, $rate, $ret, $ivu]) {
             $mail = str_replace(' ', '.', strtolower(\Illuminate\Support\Str::ascii($n))).'@demo.cerevelo.com';
             $u = $this->user($k, $n, $mail, ['worker_type' => 'consultant']);
             ContractorTerms::create(['user_id' => $u->id, 'rate' => $rate, 'retention_pct' => $ret, 'ivu_agent' => $ivu, 'ivu_pct' => $ivu ? 4 : 0, 'terms_days' => 30]);

@@ -57,12 +57,12 @@ La contraseña de todas es **`Demo-Timesheet#2026`** (también sale en la pantal
 
 | Rol | Cuenta |
 |---|---|
-| Dueña | `dueno@demo.cerevelo.com` (Marisol Vega) |
+| Dueña | `dueno@demo.cerevelo.com` (Luis Casado) |
 | Oficina | `oficina@demo.cerevelo.com` (Carlos Rivera) |
 | Empleados | `ana.torres@…` (40 h), `jorge.medina@…` (40 h), `lucia.ortiz@…` (32 h por semana) |
-| Consultores (tarifas distintas) | `ricardo.cruz@…` ($45), `sofia.mendez@…` ($60), `hector.rosario@…` ($38), `valeria.nunez@…` ($75) |
+| Consultores (tarifas distintas) | `jarvis.rodriguez@…` ($45), `sofia.mendez@…` ($60), `hector.rosario@…` ($38), `valeria.nunez@…` ($75) |
 | Aprobadores internos | `patricia.colon@…`, `raul.acosta@…` |
-| Aprobadores externos con cuenta | `elena.robles@…` (**gerente de proyecto** de AMSI: ve «Avance»), `nelson.baez@…` (Caribe Logística), `gloria.pagan@…` (Grupo Borinquen) |
+| Aprobadores externos con cuenta | `ketsy.figueroa@…` (**gerente de proyecto** de AMSI: ve «Avance»), `jackeline.robles@…` (Caribe Logística), `gloria.pagan@…` (Grupo Borinquen) |
 | Aprobador externo sin cuenta | Yolanda Reyes: solo decide por el enlace del correo (en la demo, sin código) |
 
 ## Qué datos trae

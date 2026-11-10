@@ -107,7 +107,7 @@ class DemoSeedTest extends TestCase
     {
         config(['app.demo' => true]);
         Artisan::call('tiempo:demo', ['--fresh' => true]);
-        $manager = User::where('email', 'elena.robles@demo.cerevelo.com')->firstOrFail();
+        $manager = User::where('email', 'ketsy.figueroa@demo.cerevelo.com')->firstOrFail();
         Sanctum::actingAs($manager);
         $list = $this->getJson('/api/approver/progress')->assertOk()->json();
         $this->assertGreaterThanOrEqual(2, count($list));

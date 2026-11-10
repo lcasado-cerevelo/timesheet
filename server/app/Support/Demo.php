@@ -16,13 +16,13 @@ class Demo
 
     /** key => [nombre, correo, etiqueta del botón (es), etiqueta (en)] de las cuentas que salen en la pantalla de entrada. */
     public const LOGIN_ACCOUNTS = [
-        'owner' => ['Marisol Vega', 'dueno@demo.cerevelo.com', 'Dueña', 'Owner'],
+        'owner' => ['Luis Casado', 'dueno@demo.cerevelo.com', 'Dueña', 'Owner'],
         'office' => ['Carlos Rivera', 'oficina@demo.cerevelo.com', 'Oficina', 'Office'],
         'employee' => ['Ana Torres', 'ana.torres@demo.cerevelo.com', 'Empleada', 'Employee'],
-        'consultant' => ['Ricardo Cruz', 'ricardo.cruz@demo.cerevelo.com', 'Consultor', 'Consultant'],
+        'consultant' => ['Jarvis Rodriguez', 'jarvis.rodriguez@demo.cerevelo.com', 'Consultor', 'Consultant'],
         'internal' => ['Patricia Colón', 'patricia.colon@demo.cerevelo.com', 'Aprobadora interna', 'Internal approver'],
-        'external' => ['Nelson Báez', 'nelson.baez@demo.cerevelo.com', 'Aprobador externo', 'External approver'],
-        'manager' => ['Elena Robles', 'elena.robles@demo.cerevelo.com', 'Gerente de proyecto del cliente', 'Client project manager'],
+        'external' => ['Jackeline Robles', 'jackeline.robles@demo.cerevelo.com', 'Aprobador externo', 'External approver'],
+        'manager' => ['Ketsy Figueroa', 'ketsy.figueroa@demo.cerevelo.com', 'Gerente de proyecto del cliente', 'Client project manager'],
     ];
 
     /** ¿Es una cuenta de ejemplo? (todo lo que termina en el dominio de ejemplo) */
