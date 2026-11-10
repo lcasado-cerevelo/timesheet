@@ -36,7 +36,11 @@ class DemoCommand extends Command
         foreach ($seeder->notes as $note) {
             $this->warn('  · '.$note);
         }
-        $this->info(__('Listo. Contraseña de las cuentas de ejemplo: :password', ['password' => \App\Support\Demo::PASSWORD]));
+        $this->info(__('Listo. Cuentas de ejemplo (la misma contraseña para todas):'));
+        foreach (\App\Support\Demo::LOGIN_ACCOUNTS as [$name, $email]) {
+            $this->line(sprintf('  %-20s %s', $name, $email));
+        }
+        $this->line('  '.__('Contraseña: :password', ['password' => \App\Support\Demo::password()]));
         return self::SUCCESS;
     }
 }

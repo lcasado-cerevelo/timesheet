@@ -60,6 +60,9 @@ return [
     */
     'demo' => (bool) env('DEMO_MODE', false),
 
+    // Contraseña de las tres cuentas de ejemplo (DEMO_PASSWORD en el .env del sitio de demostración); vacía = la de ejemplo.
+    'demo_password' => env('DEMO_PASSWORD'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

@@ -103,9 +103,8 @@ class DemoModeTest extends TestCase
         config(['app.demo' => true]);
         $on = $this->getJson('/api/public-config')->assertOk()->json();
         $this->assertTrue($on['demo']);
-        $this->assertSame('dueno@demo.cerevelo.com', $on['demo_accounts'][0]['email']);
-        $this->assertSame(Demo::PASSWORD, $on['demo_accounts'][0]['password']);
-        $this->assertSame('Dueña', $on['demo_accounts'][0]['label_es']);
+        $this->assertSame([], $on['demo_accounts'], 'sin botones de acceso rápido ni contraseñas a la vista');
+        $this->assertStringNotContainsString(Demo::password(), json_encode($on));
     }
 
     public function test_the_example_accounts_cannot_change_their_password_in_demo(): void
@@ -133,7 +132,7 @@ class DemoModeTest extends TestCase
     public function test_the_example_password_is_strong_enough_for_the_policy(): void
     {
         foreach (array_column(Demo::LOGIN_ACCOUNTS, 1) as $email) {
-            PasswordPolicy::assert(Demo::PASSWORD, $email);
+            PasswordPolicy::assert(Demo::password(), $email);
         }
         $this->assertGreaterThanOrEqual(10, strlen(Demo::PASSWORD));
     }

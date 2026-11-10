@@ -243,7 +243,7 @@ class DemoSeeder
     private function user(string $key, string $name, string $email, array $over = []): User
     {
         $u = User::create($over + [
-            'company_id' => $this->company->id, 'name' => $name, 'email' => $email, 'password' => Demo::PASSWORD, 'must_set_password' => false,
+            'company_id' => $this->company->id, 'name' => $name, 'email' => $email, 'password' => Demo::password(), 'must_set_password' => false,
             'role' => 'member', 'worker_type' => 'employee', 'capture_mode' => 'from_to', 'active' => true,
         ]);
         return $this->u[$key] = $u;
@@ -257,7 +257,7 @@ class DemoSeeder
         $a->customers()->sync(array_map(fn ($c) => $this->customers[$c]->id, $customers));
         if ($account) {
             User::create(['company_id' => $this->company->id, 'name' => $name, 'email' => $email, 'role' => 'approver', 'worker_type' => 'employee', 'capture_mode' => 'full_day',
-                'password' => Demo::PASSWORD, 'must_set_password' => false, 'approver_profile_id' => $a->id, 'active' => true]);
+                'password' => Demo::password(), 'must_set_password' => false, 'approver_profile_id' => $a->id, 'active' => true]);
         }
         return $a;
     }
@@ -268,27 +268,12 @@ class DemoSeeder
     private function people(): void
     {
         $cid = $this->company->id;
-        foreach (['AMSI' => 'amsi@cliente.demo', 'CARIBE' => 'contabilidad@caribelogistica.demo', 'BORINQUEN' => 'compras@grupoborinquen.demo'] as $k => $mail) {
-            $this->customers[$k] = Customer::create(['company_id' => $cid, 'name' => ['AMSI' => 'AMSI', 'CARIBE' => 'Caribe Logística', 'BORINQUEN' => 'Grupo Borinquen'][$k], 'email' => $mail]);
-        }
-        // Externos: tres con cuenta (uno es el gerente de proyecto del cliente) y uno que solo decide por el enlace del correo.
+        $this->customers['AMSI'] = Customer::create(['company_id' => $cid, 'name' => 'AMSI', 'email' => 'amsi@cliente.demo']);
+        // Solo estas tres personas: la aprobadora del cliente (gerente de proyecto), el dueño (que aprueba por dentro) y el consultor.
         $this->approver('elena', 'Ketsy Figueroa', 'ketsy.figueroa@demo.cerevelo.com', ['AMSI'], true, true);
-        $this->approver('nelson', 'Jackeline Robles', 'jackeline.robles@demo.cerevelo.com', ['CARIBE'], true);
-        $this->approver('gloria', 'Gloria Pagán', 'gloria.pagan@demo.cerevelo.com', ['BORINQUEN'], true);
-        $this->approver('yolanda', 'Yolanda Reyes', 'yolanda.reyes@amsi.demo', ['AMSI'], false);
-
         $this->user('owner', 'Luis Casado', 'dueno@demo.cerevelo.com', ['role' => 'owner', 'capture_mode' => 'full_day']);
-        $this->user('office', 'Carlos Rivera', 'oficina@demo.cerevelo.com', ['role' => 'office', 'capture_mode' => 'full_day']);
-        $this->user('ana', 'Ana Torres', 'ana.torres@demo.cerevelo.com', ['weekly_hours' => 40, 'employee_number' => 'E-101', 'capture_mode' => 'full_day']);
-        $this->user('jorge', 'Jorge Medina', 'jorge.medina@demo.cerevelo.com', ['weekly_hours' => 40, 'employee_number' => 'E-102']);
-        $this->user('lucia', 'Lucía Ortiz', 'lucia.ortiz@demo.cerevelo.com', ['weekly_hours' => 32, 'employee_number' => 'E-103', 'capture_mode' => 'full_day']);
-        $this->user('patricia', 'Patricia Colón', 'patricia.colon@demo.cerevelo.com', ['weekly_hours' => 40, 'employee_number' => 'E-201', 'capture_mode' => 'full_day']);
-        $this->user('raul', 'Raúl Acosta', 'raul.acosta@demo.cerevelo.com', ['weekly_hours' => 40, 'employee_number' => 'E-202', 'capture_mode' => 'full_day']);
-        foreach ([['ricardo', 'Jarvis Rodriguez', 45, 10, false], ['sofia', 'Sofía Méndez', 60, 10, true], ['hector', 'Héctor Rosario', 38, 7, false], ['valeria', 'Valeria Núñez', 75, 10, true]] as [$k, $n, $rate, $ret, $ivu]) {
-            $mail = str_replace(' ', '.', strtolower(\Illuminate\Support\Str::ascii($n))).'@demo.cerevelo.com';
-            $u = $this->user($k, $n, $mail, ['worker_type' => 'consultant']);
-            ContractorTerms::create(['user_id' => $u->id, 'rate' => $rate, 'retention_pct' => $ret, 'ivu_agent' => $ivu, 'ivu_pct' => $ivu ? 4 : 0, 'terms_days' => 30]);
-        }
+        $u = $this->user('ricardo', 'Jarvis Rodriguez', 'jarvis.rodriguez@demo.cerevelo.com', ['worker_type' => 'consultant', 'capture_mode' => 'full_day']);
+        ContractorTerms::create(['user_id' => $u->id, 'rate' => 15, 'retention_pct' => 10, 'ivu_agent' => false, 'ivu_pct' => 0, 'terms_days' => 30]);
         // Las cuentas se crearon hace un tiempo, antes de la primera semana de la demo.
         User::where('company_id', $cid)->update(['created_at' => $this->weekStart(self::WEEKS + 1)]);
     }
@@ -324,50 +309,17 @@ class DemoSeeder
 
     private function projects(): void
     {
-        $this->project('AMSI-PORT', 'Portal de pacientes', 'AMSI', 85, 500, ['ricardo', 'sofia', 'ana', 'patricia']);
-        $first = fn (string $code) => $this->p[$code]->services()->first();
-        $this->service($this->p['AMSI-PORT'], 'Desarrollo', 'detail', 'both', 85, ['patricia'], ['elena'], true, true, $first('AMSI-PORT'));
-        $this->service($this->p['AMSI-PORT'], 'Soporte', 'total', 'both', 60, ['patricia'], ['elena']);
-        $this->service($this->p['AMSI-PORT'], 'Gestión', 'detail', 'both', 70, ['raul'], ['elena']);
-
-        $this->project('AMSI-MIG', 'Migración de datos', 'AMSI', 80, 300, ['sofia', 'jorge', 'raul'], true);
-        $this->service($this->p['AMSI-MIG'], 'Análisis', 'detail', 'both', 80, ['raul'], ['elena'], true, false, $first('AMSI-MIG'));
-        $this->service($this->p['AMSI-MIG'], 'Pruebas', 'detail', 'both', 70, ['raul'], ['yolanda']);
-        $this->service($this->p['AMSI-MIG'], 'Garantía', 'detail', 'both', null, ['raul'], ['yolanda'], false);
-
-        $this->project('CAR-LOG', 'Rastreo de flota', 'CARIBE', 75, 400, ['hector', 'jorge', 'patricia', 'raul']);
-        $this->service($this->p['CAR-LOG'], 'Desarrollo', 'detail', 'both', 75, ['patricia', 'raul'], ['nelson'], true, false, $first('CAR-LOG'));
-        $this->service($this->p['CAR-LOG'], 'Mantenimiento', 'total', 'both', 55, ['patricia', 'raul'], ['nelson']);
-
-        $this->project('CAR-WEB', 'Sitio web corporativo', 'CARIBE', 60, 150, ['ricardo']);
-        $this->service($this->p['CAR-WEB'], 'General', 'total', 'both', null, ['patricia'], ['nelson'], true, false, $first('CAR-WEB'));
-
-        $this->project('BOR-ERP', 'Implementación ERP', 'BORINQUEN', 90, 700, ['valeria', 'lucia', 'raul']);
-        $this->service($this->p['BOR-ERP'], 'Consultoría', 'detail', 'both', 90, ['raul'], ['gloria'], true, false, $first('BOR-ERP'));
-        $this->service($this->p['BOR-ERP'], 'Capacitación', 'total', 'both', 65, ['raul'], ['gloria']);
-
-        $this->project('INT-ADM', 'Administración interna', null, null, null, ['ana', 'jorge', 'lucia', 'patricia', 'raul'], false, false);
-        $this->service($this->p['INT-ADM'], 'General', 'total', 'none', null, [], [], false, false, $first('INT-ADM'));
-
-        // Tareas: unas permanentes (reciben el trabajo normal), otras con guion (comisiones, completadas) y metas de ahorro.
-        $this->task('AMSI-PORT', 'Módulo de citas', 120, 14, 15, false, true);
-        $this->task('AMSI-PORT', 'Integración con laboratorio', 60, 21, 20, true, true);
-        $this->task('AMSI-PORT', 'Migración de usuarios', 40, $this->weekStart(4)->addDays(6)->toDateString(), 20, true);
-        $this->task('AMSI-PORT', 'Reportes clínicos', 80, $this->weekStart(3)->subDay()->toDateString(), 10, true);
-        $this->task('AMSI-MIG', 'Mapeo de datos', 60, 12, 10, false, true);
-        $this->task('AMSI-MIG', 'Carga inicial', 50, 20, null, false, true);
-        $this->task('CAR-LOG', 'App de choferes', 90, 25, 10, false, true);
-        $this->task('BOR-ERP', 'Módulo de facturación', 140, 20, 15, true, true);
-        $this->task('BOR-ERP', 'Capacitación de usuarios', 48, 28, null, false, true);
-        $this->task('BOR-ERP', 'Módulo de inventario', 100, $this->weekStart(2)->addDays(6)->toDateString(), 15, true);
-        $this->task('BOR-ERP', 'Auditoría inicial', 30, $this->weekStart(5)->addDays(6)->toDateString(), null, false);
-
-        // Comisiones: una por persona y proyecto.
-        $this->commission('ricardo', 'AMSI-PORT', ['Migración de usuarios', 'Reportes clínicos', 'Integración con laboratorio'], 40, 5, 'fixed', 50, 10, 0);
-        $this->commission('sofia', 'AMSI-PORT', ['Migración de usuarios', 'Reportes clínicos', 'Integración con laboratorio'], 30, 4, 'assigned', 0, 10, 0, 'assigned');
-        $this->commission('ana', 'AMSI-PORT', ['Migración de usuarios'], 10, 3, 'actual', 0, 10, 0);
-        $this->commission('valeria', 'BOR-ERP', ['Módulo de inventario', 'Módulo de facturación'], 50, 6, 'fixed', 60, 12, 2);
-        $this->commission('lucia', 'BOR-ERP', ['Módulo de inventario'], 20, 3, 'assigned', 0, 12, 0);
+        $this->project('AMSIPITS', 'AMSI PITS Upgrade', 'AMSI', 125, 120, ['ricardo']);
+        $first = $this->p['AMSIPITS']->services()->first();
+        $this->service($this->p['AMSIPITS'], 'General', 'total', 'both', 125, ['owner'], ['elena'], true, false, $first);
+        foreach (['Testing', 'Design', 'Development', 'Implementation'] as $name) {
+            $this->service($this->p['AMSIPITS'], $name, 'total', 'both', 125, ['owner'], ['elena']);
+        }
+        // Las cuatro tareas del proyecto (comisionables, con presupuesto); todas abiertas y reciben el trabajo normal.
+        $this->task('AMSIPITS', 'Evaluación técnica, seguridad, integridad de datos y medición de lentitud', 20, -6, 10, true, true);
+        $this->task('AMSIPITS', 'Fundaciones: repositorio en Git, ambientes dev y staging, secretos fuera del código', 12, -6, 10, true, true);
+        $this->task('AMSIPITS', 'Gestion - Estabilizar, migrar y cumplir', 20, 12, 10, true, true);
+        $this->task('AMSIPITS', 'Reuniones con AMSI y diseño funcional y técnico de las tres entregas', 10, 42, 10, true, true);
     }
 
     private function commission(string $user, string $project, array $tasks, float $minPct, float $extra, string $mode, float $share, float $perHour, float $tolerance, string $basis = 'worked'): void
@@ -384,14 +336,8 @@ class DemoSeeder
     private function slots(string $who): array
     {
         return match ($who) {
-            'ricardo' => [['AMSI-PORT', 'Desarrollo', [1, 2, 3, 4], 6, '08:00'], ['CAR-WEB', 'General', [5], 7, null]],
-            'sofia' => [['AMSI-PORT', 'Desarrollo', [1, 2, 3], 5, '09:00'], ['AMSI-MIG', 'Análisis', [4], 6, '08:00'], ['AMSI-MIG', 'Pruebas', [5], 4, '13:00'], ['AMSI-MIG', 'Garantía', [5], 2, '17:30']],
-            'hector' => [['CAR-LOG', 'Desarrollo', [1, 2, 3], 6, '08:00'], ['CAR-LOG', 'Mantenimiento', [4, 5], 4, null]],
-            'valeria' => [['BOR-ERP', 'Consultoría', [1, 2, 3, 4], 7, '08:00'], ['BOR-ERP', 'Capacitación', [5], 6, null]],
-            'ana' => [['AMSI-PORT', 'Soporte', [1, 2, 3, 4, 5], 6, null], ['INT-ADM', 'General', [1, 3], 2, null]],
-            'jorge' => [['CAR-LOG', 'Mantenimiento', [1, 2, 3], 8, null], ['AMSI-MIG', 'Pruebas', [4, 5], 8, '08:00']],
-            'lucia' => [['BOR-ERP', 'Capacitación', [1, 2, 3, 4], 8, null]],
-            'patricia', 'raul' => [['INT-ADM', 'General', [1, 2, 3, 4, 5], 8, null]],
+            'ricardo' => [['AMSIPITS', 'Development', [1], 4, null], ['AMSIPITS', 'Design', [2], 2, null], ['AMSIPITS', 'Testing', [4], 2, null],
+                ['AMSIPITS', 'Implementation', [5], 2, null], ['AMSIPITS', 'General', [1], 1, null]],
             default => [],
         };
     }
@@ -399,34 +345,13 @@ class DemoSeeder
     /** Trabajo con guion (tareas con comisión): [semana k, persona, día, proyecto, servicio, tarea, inicio, horas]. */
     private function scripted(): array
     {
-        $mig = ['AMSI-PORT', 'Desarrollo', 'Migración de usuarios'];
-        $rep = ['AMSI-PORT', 'Desarrollo', 'Reportes clínicos'];
-        $lab = ['AMSI-PORT', 'Desarrollo', 'Integración con laboratorio'];
-        $inv = ['BOR-ERP', 'Consultoría', 'Módulo de inventario'];
-        $aud = ['BOR-ERP', 'Consultoría', 'Auditoría inicial'];
-        return [
-            // Migración de usuarios (meta 32 h): el equipo hace 28 h, ahorra 4 y cobra bono. Se completa en la semana 5.
-            [7, 'ricardo', 6, ...$mig, '14:00', 4], [6, 'ricardo', 6, ...$mig, '14:00', 10], [7, 'sofia', 0, ...$mig, '15:00', 3], [6, 'sofia', 0, ...$mig, '15:00', 7],
-            [6, 'ana', 6, ...$mig, '10:00', 4],
-            // Reportes clínicos (meta 72 h): el equipo hace 80 h, se pasa de la meta y nadie cobra. Se completa en la semana 4.
-            [8, 'ricardo', 6, ...$rep, '10:00', 12], [7, 'ricardo', 0, ...$rep, '14:00', 8], [6, 'ricardo', 0, ...$rep, '14:00', 6], [5, 'ricardo', 6, ...$rep, '10:00', 12],
-            [8, 'sofia', 6, ...$rep, '08:00', 14], [7, 'sofia', 6, ...$rep, '08:00', 12], [6, 'sofia', 6, ...$rep, '08:00', 8], [5, 'sofia', 6, ...$rep, '08:00', 8],
-            // Módulo de inventario (meta 85 h): el equipo hace 76 h y cobra. Se completa en la semana 3.
-            [7, 'valeria', 6, ...$inv, '08:00', 14], [6, 'valeria', 6, ...$inv, '08:00', 14], [5, 'valeria', 6, ...$inv, '08:00', 14], [4, 'valeria', 6, ...$inv, '08:00', 14],
-            [6, 'lucia', 6, 'BOR-ERP', 'Capacitación', 'Módulo de inventario', null, 8], [5, 'lucia', 6, 'BOR-ERP', 'Capacitación', 'Módulo de inventario', null, 8],
-            [4, 'lucia', 6, 'BOR-ERP', 'Capacitación', 'Módulo de inventario', null, 4],
-            // Auditoría inicial (sin comisión): completada en la semana 6.
-            [8, 'valeria', 6, ...$aud, '08:00', 10], [8, 'valeria', 0, ...$aud, '08:00', 8], [7, 'valeria', 0, ...$aud, '08:00', 8],
-            // Integración con laboratorio (comisión abierta): se ve el avance en "Mis comisiones".
-            [3, 'ricardo', 6, ...$lab, '10:00', 6], [2, 'ricardo', 6, ...$lab, '10:00', 6], [2, 'sofia', 6, ...$lab, '10:00', 5], [1, 'sofia', 6, ...$lab, '10:00', 4],
-        ];
+        return [];
     }
 
-    /** Horas especiales de empleados: [semana k, persona, día, tipo, horas, nota]. Van a Administración interna. */
+    /** Horas especiales de empleados: [semana k, persona, día, tipo, horas, nota]. */
     private function specials(): array
     {
-        return [[5, 'ana', 5, 'vac', 8, 'Vacaciones'], [5, 'ana', 4, 'vac', 8, 'Vacaciones'], [4, 'lucia', 1, 'hol', 8, 'Feriado'], [3, 'jorge', 3, 'sick', 8, 'Cita médica'],
-            [6, 'ana', 2, 'ot', 3, 'Tiempo extra por cierre de mes']];
+        return [];
     }
 
     private const NOTES = [
@@ -497,8 +422,9 @@ class DemoSeeder
     private function logHours(string $who, array $specs): void
     {
         $now = Carbon::now()->toDateString();
+        $from = $this->real->startOfMonth()->subMonth()->toDateString();   // el mes anterior completo y lo que va de este
         foreach ($specs as $data) {
-            if ($data['work_date'] > $now) {
+            if ($data['work_date'] > $now || $data['work_date'] < $from) {
                 continue;
             }
             try {
@@ -601,25 +527,24 @@ class DemoSeeder
     /** @return array<string,array{0:string,1?:string}> qué pasa con la hoja de cada persona en la semana k */
     private function scenario(string $who, int $k): array
     {
-        $special = [
-            // La semana pasada (la primera del mes en curso): todo enviado y sin aprobar, cada quien en una etapa distinta.
-            1 => ['ricardo' => ['client_pending'], 'sofia' => ['internal_pending'], 'hector' => ['parts'], 'valeria' => ['returned_external', 'Falta el detalle de lo que se hizo el miércoles; por favor añade una nota a esas horas.'],
-                'ana' => ['client_pending'], 'jorge' => ['client_pending'], 'lucia' => ['client_pending'], 'patricia' => ['draft'], 'raul' => ['draft']],
-            // El mes anterior queda cerrado: todo aprobado por completo (aprobación interna y del cliente); solo se ven un par de envíos tardíos.
-            2 => ['sofia' => ['late'], 'valeria' => ['late']],
-        ];
-        return $special[$k][$who] ?? ($k === 0 ? ['draft'] : ['approved']);
+        // La semana pasada (la primera del mes en curso): enviada y sin aprobar (los internos ya aprobaron, falta el cliente).
+        // El mes anterior: todo aprobado por completo (aprobación interna y del cliente); un envío tardío para mostrar la marca.
+        return match (true) {
+            $k === 1 => ['client_pending'],
+            $k === 2 => ['late'],
+            default => ['approved'],
+        };
     }
 
     private function people_list(): array
     {
-        return ['ricardo', 'sofia', 'hector', 'valeria', 'ana', 'jorge', 'lucia', 'patricia', 'raul'];
+        return ['ricardo'];
     }
 
     private function history(): void
     {
         $this->at($this->weekStart(self::WEEKS)->setTime(9, 0));
-        $done = [5 => ['AMSI-PORT:Migración de usuarios'], 4 => ['AMSI-PORT:Reportes clínicos'], 3 => ['BOR-ERP:Módulo de inventario'], 6 => ['BOR-ERP:Auditoría inicial']];
+        $done = [];
         for ($k = self::WEEKS; $k >= 0; $k--) {
             $this->week($k);
             foreach ($done[$k] ?? [] as $key) {
@@ -636,7 +561,7 @@ class DemoSeeder
         $this->at($this->real);
         foreach (CommissionResult::with('user')->where('company_id', $this->company->id)->where('status', 'released')->get() as $r) {
             if ($r->user->worker_type === 'employee') {
-                $this->sign($this->u['office'], 'commission.paid', $r, ['total' => (float) $r->total, 'user_id' => $r->user_id]);
+                $this->sign($this->u['owner'], 'commission.paid', $r, ['total' => (float) $r->total, 'user_id' => $r->user_id]);
                 $r->update(['status' => 'paid', 'paid_at' => now()]);
             }
         }
@@ -644,6 +569,9 @@ class DemoSeeder
 
     private function week(int $k): void
     {
+        if ($k === 0) {
+            return;   // esta semana no se registra nada
+        }
         foreach ($this->people_list() as $who) {
             [$kind, $comment] = $this->scenario($who, $k) + [1 => null];
             if ($kind === 'parts') {
@@ -727,7 +655,7 @@ class DemoSeeder
     private function invoicePeriod(string $from, string $to, bool $paid, CarbonImmutable $when): void
     {
         $this->at($when);
-        foreach (['ricardo', 'sofia', 'hector', 'valeria'] as $who) {
+        foreach (['ricardo'] as $who) {
             try {
                 $inv = $this->invoices->create($this->u[$who], $from, $to, $this->u[$who], $this->request);
                 if ($paid) {

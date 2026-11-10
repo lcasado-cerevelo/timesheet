@@ -13,7 +13,7 @@ Con `DEMO_MODE=false` (lo normal) todo funciona exactamente como siempre.
 |---|---|
 | Códigos de 6 dígitos | No se piden: ni al entrar (aprobadores, dueño y oficina) ni al decidir una hoja (cuentas de aprobador y enlaces del correo). Todo lo demás del flujo es igual: contraseña para firmar, etapas internas y externas, devoluciones, etc. |
 | Franja | «Demo · datos de ejemplo» arriba de la web y de las páginas de aprobación, y la cabecera `X-Robots-Tag: noindex` en lo que responde PHP. |
-| Pantalla de entrada | Botones «Entrar como …» (dueña, oficina, empleada, consultor, aprobadora interna, aprobador externo, gerente de proyecto del cliente) que llenan el formulario; solo hay que pulsar Continuar. |
+| Pantalla de entrada | Sin botones de acceso rápido: cada persona entra con su correo y la contraseña que se le dio; solo hay que pulsar Continuar. |
 | Contraseñas | No se pueden cambiar ni resetear las de las cuentas de ejemplo. |
 | Correo | No sale ningún correo real (se fuerza `MAIL_MAILER=log`; la siembra no envía nada). |
 
@@ -34,6 +34,7 @@ Con `DEMO_MODE=false` (lo normal) todo funciona exactamente como siempre.
    DB_USERNAME=<el usuario nuevo>
    DB_PASSWORD=<su contraseña>
    DEMO_MODE=true
+   DEMO_PASSWORD=<la contraseña que quieras dar a los tres>
    MAIL_MAILER=log
    ```
 6. **Cron temporal, una sola vez** (*Cron Jobs* → hora y minuto a unos 2 minutos de ahora, y bórralo después). Aplica la base, siembra los datos y renueva las cachés; tarda unos 15 a 30 segundos:
@@ -50,26 +51,21 @@ Con `DEMO_MODE=false` (lo normal) todo funciona exactamente como siempre.
    ```
    Header set X-Robots-Tag "noindex, nofollow"
    ```
-9. **Entra** a `https://timesheet-demo.cerevelo.com/app/` y usa los botones «Entrar como …».
+9. **Entra** a `https://timesheet-demo.cerevelo.com/app/` y entra con uno de los tres correos y la contraseña de la demo.
 
 ## Cuentas de ejemplo
-La contraseña de todas es **`Demo-Timesheet#2026`** (también sale en la pantalla de entrada, solo en la demo). Los correos terminan en `@demo.cerevelo.com`.
+Son tres, y **las tres entran con la misma contraseña**. No hay botones «Entrar como …»: cada persona escribe su correo y la contraseña que se le dé. La contraseña es la de `DEMO_PASSWORD` en el `.env` de la demo (si no se pone ninguna, la de ejemplo `Demo-Timesheet#2026`). Después de sembrar, `tiempo:demo` escribe en su salida los tres correos y la contraseña.
 
-| Rol | Cuenta |
+| Persona | Cuenta |
 |---|---|
-| Dueña | `dueno@demo.cerevelo.com` (Luis Casado) |
-| Oficina | `oficina@demo.cerevelo.com` (Carlos Rivera) |
-| Empleados | `ana.torres@…` (40 h), `jorge.medina@…` (40 h), `lucia.ortiz@…` (32 h por semana) |
-| Consultores (tarifas distintas) | `jarvis.rodriguez@…` ($45), `sofia.mendez@…` ($60), `hector.rosario@…` ($38), `valeria.nunez@…` ($75) |
-| Aprobadores internos | `patricia.colon@…`, `raul.acosta@…` |
-| Aprobadores externos con cuenta | `ketsy.figueroa@…` (**gerente de proyecto** de AMSI: ve «Avance»), `jackeline.robles@…` (Caribe Logística), `gloria.pagan@…` (Grupo Borinquen) |
-| Aprobador externo sin cuenta | Yolanda Reyes: solo decide por el enlace del correo (en la demo, sin código) |
+| Dueño (aprueba por dentro) | `dueno@demo.cerevelo.com` (Luis Casado) |
+| Consultor | `jarvis.rodriguez@demo.cerevelo.com` (Jarvis Rodriguez, $15/h, retención 10 %) |
+| Aprobadora del cliente y gerente de proyecto | `ketsy.figueroa@demo.cerevelo.com` (Ketsy Figueroa: aprueba y ve «Avance») |
 
 ## Qué datos trae
-- 3 clientes (AMSI, Caribe Logística, Grupo Borinquen) y 6 proyectos con sus servicios: por hora desde/hasta y por total del día, con tarifas, con y sin aprobación interna, uno con trabajo de **cortesía** que ve la gerente de proyecto.
-- Tareas abiertas y completadas, con presupuesto de horas, fecha estimada, metas de ahorro y algunas que cuentan para comisión.
-- Hojas en todos los estados: borrador, pendiente de aprobación interna, pendiente del cliente, aprobada con sus firmas digitales, devuelta con comentario (por el aprobador interno, por una cuenta y por el enlace), tardía y enviada por partes. Las semanas anteriores, en su mayoría aprobadas. Entradas con notas (algunas largas), descanso, varias por semana y tipos de hora de empleados (vacaciones, feriado, enfermedad, tiempo extra).
-- Facturas de consultores (pagadas y por pagar), comisiones configuradas con resultados calculados (con bono de equipo, sin llegar a la meta, por liberar/facturadas/pagadas) y suficiente historial para Avance, Reportes y los exportes (CSV, Excel, PDF).
+- Un cliente (AMSI) y un proyecto, **AMSI PITS Upgrade**, con cinco servicios (General, Testing, Design, Development, Implementation) a $125 por total de horas del día, con **aprobación interna (Luis) y del cliente (Ketsy)**, y cuatro tareas con presupuesto y fecha estimada.
+- Horas inventadas de Jarvis: **el mes anterior completo, todo aprobado con las dos aprobaciones**; **la semana pasada, enviada y sin aprobar**; **esta semana, nada**. Las fechas son relativas a hoy, así que cada vez que se siembra se mueven.
+- Facturas de Jarvis (una pagada y otra por pagar), y suficiente historial para Avance, Reportes y los exportes (CSV, Excel, PDF).
 
 Todo se siembra con los servicios reales de la aplicación (entradas, envío, aprobaciones, firmas, comisiones y facturas) mientras el reloj avanza semana a semana, así que las reglas, las firmas y los totales son los de verdad. Lo único que se escribe a mano es el estado «pagada» de las facturas (no hay pantalla que lo marque).
 

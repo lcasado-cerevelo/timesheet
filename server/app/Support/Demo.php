@@ -14,16 +14,19 @@ class Demo
     public const DOMAIN = 'timesheet-demo.cerevelo.com';
     public const COMPANY_SLUG = 'demo';
 
-    /** key => [nombre, correo, etiqueta del botón (es), etiqueta (en)] de las cuentas que salen en la pantalla de entrada. */
+    /** key => [nombre, correo, etiqueta (es), etiqueta (en)] de las cuentas de ejemplo (las tres personas de la demo). */
     public const LOGIN_ACCOUNTS = [
-        'owner' => ['Luis Casado', 'dueno@demo.cerevelo.com', 'Dueña', 'Owner'],
-        'office' => ['Carlos Rivera', 'oficina@demo.cerevelo.com', 'Oficina', 'Office'],
-        'employee' => ['Ana Torres', 'ana.torres@demo.cerevelo.com', 'Empleada', 'Employee'],
+        'owner' => ['Luis Casado', 'dueno@demo.cerevelo.com', 'Dueño', 'Owner'],
         'consultant' => ['Jarvis Rodriguez', 'jarvis.rodriguez@demo.cerevelo.com', 'Consultor', 'Consultant'],
-        'internal' => ['Patricia Colón', 'patricia.colon@demo.cerevelo.com', 'Aprobadora interna', 'Internal approver'],
-        'external' => ['Jackeline Robles', 'jackeline.robles@demo.cerevelo.com', 'Aprobador externo', 'External approver'],
-        'manager' => ['Ketsy Figueroa', 'ketsy.figueroa@demo.cerevelo.com', 'Gerente de proyecto del cliente', 'Client project manager'],
+        'manager' => ['Ketsy Figueroa', 'ketsy.figueroa@demo.cerevelo.com', 'Aprobadora y gerente de proyecto del cliente', 'Approver and client project manager'],
     ];
+
+    /** La contraseña de las tres cuentas: la de DEMO_PASSWORD en el .env, o la de ejemplo si no se puso ninguna. */
+    public static function password(): string
+    {
+        $custom = (string) config('app.demo_password');
+        return $custom !== '' ? $custom : self::PASSWORD;
+    }
 
     /** ¿Es una cuenta de ejemplo? (todo lo que termina en el dominio de ejemplo) */
     public static function isExample(?string $email): bool
@@ -31,18 +34,10 @@ class Demo
         return $email !== null && str_ends_with(strtolower($email), '@demo.cerevelo.com');
     }
 
-    /** Las cuentas que enseña la pantalla de entrada (solo las que existen). */
+    /** La pantalla de entrada ya no trae botones de acceso rápido: cada persona entra con su correo y la contraseña que se le dio. */
     public static function publicAccounts(): array
     {
-        $emails = array_column(self::LOGIN_ACCOUNTS, 1);
-        $found = User::whereIn('email', $emails)->pluck('email')->all();
-        $out = [];
-        foreach (self::LOGIN_ACCOUNTS as $key => [$name, $email, $es, $en]) {
-            if (in_array($email, $found, true)) {
-                $out[] = ['key' => $key, 'name' => $name, 'email' => $email, 'password' => self::PASSWORD, 'label_es' => $es, 'label_en' => $en];
-            }
-        }
-        return $out;
+        return [];
     }
 
     /** En demostración, las cuentas de ejemplo no cambian su contraseña (ni se la anulan con un reseteo o una invitación). */
