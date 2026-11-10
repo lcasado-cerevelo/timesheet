@@ -91,13 +91,19 @@ class DemoSeeder
         return $this->counts();
     }
 
-    /** Borra solo la compañía demo y todo lo suyo. */
+    /**
+     * Borra solo la compañía demo y todo lo suyo, y la que haya creado el instalador con el dominio de la demo (si no, su dominio, que es
+     * único, choca con el de la compañía demo que se siembra).
+     */
     public function wipe(): void
     {
-        $company = Company::where('slug', Demo::COMPANY_SLUG)->first();
-        if (! $company) {
-            return;
+        foreach (Company::where('slug', Demo::COMPANY_SLUG)->orWhere('domain', Demo::DOMAIN)->get() as $company) {
+            $this->wipeCompany($company);
         }
+    }
+
+    private function wipeCompany(Company $company): void
+    {
         $cid = $company->id;
         DB::transaction(function () use ($cid, $company) {
             foreach (['signatures', 'commission_results', 'commissions', 'time_entries', 'timesheets', 'contractor_invoices', 'sales_invoice_syncs', 'export_logs', 'export_templates',
