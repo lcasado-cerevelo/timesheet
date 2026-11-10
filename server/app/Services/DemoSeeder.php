@@ -212,9 +212,16 @@ class DemoSeeder
         $this->company = Company::create([
             'slug' => Demo::COMPANY_SLUG, 'name' => 'Cerevelo', 'timezone' => $this->tz, 'locale' => 'es', 'invoice_prefix' => 'DEM',
             'domain' => in_array($host, ['localhost', '127.0.0.1'], true) ? null : strtolower($host),
-            'rules' => ['week_starts_on' => 0, 'partial_submission' => true, 'flag_late' => true, 'weeks_back' => self::WEEKS, 'deadline_dow' => 1,
+            'rules' => ['week_starts_on' => 0, 'partial_submission' => true, 'flag_late' => true, 'weeks_back' => $this->weeksBack(), 'deadline_dow' => 1,
                 'deadline_time' => '12:00', 'increment' => 0.25, 'remember_days' => 0],
         ]);
+    }
+
+    /** Semanas hacia atrás que la demo tiene llenas (desde el mes anterior): así la aplicación no reclama semanas anteriores sin hoja. */
+    private function weeksBack(): int
+    {
+        $from = $this->real->startOfMonth()->subMonth();
+        return max(1, (int) ceil(abs($this->curStart->diffInDays($from, false)) / 7));
     }
 
     private function applyBrand(string $brand): void
@@ -561,7 +568,11 @@ class DemoSeeder
         // se termina de aprobar; y si aun así no, se avisa en la salida del comando.
         $this->at($this->real);
         foreach (Timesheet::where('company_id', $this->company->id)->where('status', Timesheet::SUBMITTED)->where('week_ending', '<', $this->weekStart(1)->toDateString())->get() as $left) {
-            $this->decide($left);
+            try {
+                $this->decide($left);
+            } catch (\Throwable $e) {
+                $this->notes[] = 'red de seguridad, semana '.$left->week_ending->toDateString().': '.get_class($e).': '.$e->getMessage();
+            }
             if ($left->fresh()->status !== Timesheet::APPROVED) {
                 $this->notes[] = 'La semana que termina el '.$left->week_ending->toDateString().' no quedó aprobada.';
             }
@@ -601,13 +612,17 @@ class DemoSeeder
                 continue;
             }
             $this->at($late ? $this->day($k, 10, '10:00') : $this->day($k, 8 + ($k % 2), '14:00'));
-            match ($kind) {
-                'internal_pending' => $this->decide($sheet, 'internal'),
-                'client_pending', 'late_pending' => $this->decide($sheet, 'external'),
-                'returned_external' => $this->decide($sheet, 'approved', 'external', $comment),
-                'returned_internal' => $this->decide($sheet, 'approved', 'internal', $comment),
-                default => $this->decide($sheet),
-            };
+            try {
+                match ($kind) {
+                    'internal_pending' => $this->decide($sheet, 'internal'),
+                    'client_pending', 'late_pending' => $this->decide($sheet, 'external'),
+                    'returned_external' => $this->decide($sheet, 'approved', 'external', $comment),
+                    'returned_internal' => $this->decide($sheet, 'approved', 'internal', $comment),
+                    default => $this->decide($sheet),
+                };
+            } catch (\Throwable $e) {
+                $this->notes[] = 'aprobación de la semana que termina el '.$sheet->week_ending->toDateString().' ('.$kind.'): '.get_class($e).': '.$e->getMessage();
+            }
         }
     }
 
