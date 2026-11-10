@@ -557,6 +557,15 @@ class DemoSeeder
                 $this->invoicePeriod($this->weekStart(4)->toDateString(), $this->weekStart(3)->addDays(6)->toDateString(), false, $this->day(2, 6, '12:00'));
             }
         }
+        // Red de seguridad: todo lo anterior a la semana pasada tiene que quedar aprobado (interna y del cliente). Si alguna hoja se quedó a medias,
+        // se termina de aprobar; y si aun así no, se avisa en la salida del comando.
+        $this->at($this->real);
+        foreach (Timesheet::where('company_id', $this->company->id)->where('status', Timesheet::SUBMITTED)->where('week_ending', '<', $this->weekStart(1)->toDateString())->get() as $left) {
+            $this->decide($left);
+            if ($left->fresh()->status !== Timesheet::APPROVED) {
+                $this->notes[] = 'La semana que termina el '.$left->week_ending->toDateString().' no quedó aprobada.';
+            }
+        }
         // Un empleado con comisión liberada: la oficina la marca como pagada.
         $this->at($this->real);
         foreach (CommissionResult::with('user')->where('company_id', $this->company->id)->where('status', 'released')->get() as $r) {
