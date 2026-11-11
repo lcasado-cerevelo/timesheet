@@ -178,3 +178,15 @@ Luis quiere que Timesheet y Employee Tracker (`F:\Visual Studio 2022\Projects\Em
 - El gerente de proyecto (aprobador con cuenta y la marca) ve en **Reportes** las mismas pantallas y opciones que el dueño, solo de los clientes de los que es parte: **Hours report** (con sus botones CSV/Excel/PDF de la tabla) y **Client timesheet** (vista previa, PDF/Excel/CSV y envío por correo). **No** tiene la pantalla **Export** (la de Consultorio 1500).
 - Hours report: las horas de todos en los proyectos de sus clientes (`/api/approver/reports/summary`, y `/api/tables/report/export` para exportar). Client timesheet: `/api/approver/client-timesheet/{options,preview,download,email}`. Cuenta lo que ya salió de la etapa interna (enviado al cliente o aprobado); borradores y etapa interna nunca; lo no facturable solo si el proyecto muestra la cortesía. `ManagerReportService`.
 - Aplica a web, demo y producción por igual; el móvil no se tocó.
+
+## Aprobar varias semanas a la vez (Luis, 2026-11-11) — SOLO ANALIZADO, nada construido
+Idea: en Aprobaciones, casillas para marcar varias hojas y aprobarlas juntas; el panel derecho muestra todas las marcadas.
+Decisiones recomendadas (por confirmar con Luis):
+1. Solo **aprobar** en lote; **devolver** sigue de una en una (cada devolución lleva su comentario).
+2. Se pueden **mezclar personas y semanas** en un mismo lote.
+3. **Tope de 25 hojas** por lote.
+4. **Una sola contraseña** por lote; cada hoja guarda su propia firma digital, historial y versión (como si se aprobara una a una).
+5. **Solo web** por ahora (el móvil no).
+Diseño: casilla en cada fila + «seleccionar todas las visibles»; sin nada marcado, el panel sigue como hoy (la hoja que se toca); con varias marcadas, el panel apila todas (persona, semana, líneas, notas, firmas) y un botón «Aprobar N semanas». Al terminar, resumen: cuántas se aprobaron y cuáles fallaron y por qué (cambió después de enviarse, ya la aprobó otro, etc.); las que fallan quedan sin aprobar.
+Construcción: una ruta de lote por tipo de cuenta (dueño/oficina `/sheets/approve-many`, interno `/internal/sheets/approve-many`, externo con cuenta `/approver/sheets/approve-many`) que verifique la contraseña una vez y llame a la lógica de una hoja (`SheetService`) una por una, sin debilitar reglas (nadie aprueba lo suyo, la etapa externa no la sustituye el dueño, se compara la versión). Pruebas: lote completo, fallo parcial, hoja ya aprobada, hoja de otro, contraseña incorrecta.
+Quedan fuera los aprobadores por enlace del correo (aprueban hoja por hoja).
