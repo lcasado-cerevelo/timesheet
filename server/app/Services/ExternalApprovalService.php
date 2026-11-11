@@ -208,6 +208,7 @@ class ExternalApprovalService
             'service' => Parts::serviceName($p['project'], $p['service']),
             'status' => $p['status'],
             'approved_by' => $p['approved_by'] ? ['id' => $p['approved_by']->id, 'name' => $p['approved_by']->name] : null,
+            'approved_at' => $p['row']?->approved_at?->toIso8601String(),
             'approvers' => $p['eligible']->map(fn ($a) => ['id' => $a->id, 'name' => $a->name])->values()->all(),
         ])->values()->all();
     }

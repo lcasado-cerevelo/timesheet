@@ -16,6 +16,9 @@
     'tick several to approve them together, up to': 'marca varias para aprobarlas juntas, hasta',
     'One password signs all of them; each timesheet keeps its own signature and history. To return one with a comment, pick it alone.': 'Una sola contraseña las firma todas; cada hoja conserva su propia firma e historial. Para devolver una con un comentario, escógela sola.',
     'You can approve up to 25 timesheets at once.': 'Puedes aprobar hasta 25 hojas a la vez.', 'Tick at least two timesheets.': 'Marca al menos dos hojas.',
+    'week ending': 'semana que termina el', 'weeks': 'semanas', 'week': 'semana', 'approved by': 'aprobada por', 'waiting for': 'esperando a', 'today': 'hoy', 'yesterday': 'ayer',
+    'Approvals and signatures': 'Aprobaciones y firmas', 'Internal': 'Interno', 'External': 'Externo',
+    'Pick a timesheet, or tick several, to see them here.': 'Escoge una hoja, o marca varias, para verlas aquí.',
     'You cannot change your own role.': 'No puedes cambiar tu propio rol.',
     'Office sees everything and approves as an internal approver, but cannot change rules, people or rates.': 'La oficina ve todo y aprueba como aprobador interno, pero no cambia reglas, personas ni tarifas.', 'Send invitation': 'Enviar invitación',
     'All roles': 'Todos los roles', 'Users': 'Usuarios', 'Email': 'Correo', 'ID number': 'Número de ID', '2-step': '2 pasos',
@@ -54,6 +57,7 @@
     'Person': 'Persona', 'Week ending': 'Semana que termina', 'Project': 'Proyecto', 'Hours': 'Horas', 'Line': 'Línea', 'Total': 'Total',
     'No timesheet selected.': 'Ninguna hoja seleccionada.', 'Nothing is waiting for approval.': 'No hay nada esperando aprobación.', 'No timesheet matches the filter.': 'Ninguna hoja coincide con el filtro.',
   });
+  d.patterns.push([/^(\d+) days ago$/, 'hace $1 días']);
   d.patterns.push(
     [/^Showing (\d+) of (\d+) users\. The search also filters the contractor billing terms below\.$/, 'Mostrando $1 de $2 usuarios. La búsqueda también filtra los términos de cobro de contratistas más abajo.'],
     [/^Pending \((\d+)\)$/, 'Pendientes ($1)'], [/^Approved \((\d+)\)$/, 'Aprobadas ($1)'], [/^Returned \((\d+)\)$/, 'Devueltas ($1)'], [/^All \((\d+)\)$/, 'Todas ($1)'],

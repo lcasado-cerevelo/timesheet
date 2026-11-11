@@ -73,3 +73,9 @@
 .cmtask{border-top:1px solid var(--line);padding:10px 0}.cmtask:first-of-type{border-top:0}
 /* Approvals: tick several timesheets to approve them together */
 .pp .rvrow{display:flex;align-items:center;gap:6px}.pp .rvrow .rowbtn{flex:1;min-width:0}.pp .rvchk{width:22px;flex:0 0 22px;height:18px;cursor:pointer}
+/* Approvals: a person's weeks in one panel, and the approvals as one compact line with the detail folded */
+.pp .rvweek{border-top:1px solid var(--line);padding-top:14px;margin-top:16px}.pp .twin .card>.rvweek:first-of-type{border-top:0;padding-top:0;margin-top:12px}
+.pp .rvapp{margin:8px 0 10px}.pp .rvapp>summary{cursor:pointer;display:flex;flex-wrap:wrap;gap:4px 18px;font-size:13px;color:var(--muted);list-style:none}
+.pp .rvapp>summary::-webkit-details-marker{display:none}.pp .rvapp>summary::before{content:"▸";color:var(--muted)}.pp .rvapp[open]>summary::before{content:"▾"}
+.pp .rvst b{color:var(--text,inherit)}.pp .rvst.w{color:#92400e}.pp .rvst.ok{color:#14603B}
+.pp .rvapp[open]>.wkint{margin-top:8px}

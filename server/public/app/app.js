@@ -1312,7 +1312,7 @@ async function reviewScreen() {
   const svcOpts = opt.services.filter(x => !R.proj.length || R.proj.includes(x.project_id)), taskOpts = opt.tasks.filter(x => !R.proj.length || R.proj.includes(x.project_id));
   R.svc = R.svc.filter(id => svcOpts.some(x => x.id === id)); R.task = R.task.filter(id => taskOpts.some(x => x.id === id));
   const msf = (key, lbl, ph, list, sel) => `<div class="flbl" style="flex:1 1 200px;min-width:0"><span>${lbl}</span><div data-rv-ms="${key}">${msel({ label: lbl, placeholder: ph, options: list, selected: sel, name: 'rv_' + key, empty: 'Nothing to choose from yet.' })}</div></div>`;
-  const sel = sheets.find(s => s.id === S.cache.apSel) || sheets[0];
+  const sel = sheets.find(s => s.id === S.cache.apSel) || null;   // nothing is shown on the right until a timesheet is picked or ticked
   const stColor = { submitted: 'amber', pending: 'amber', approved: 'green', returned: 'red' };
   const stName = s => (s === 'submitted' || s === 'pending' ? 'Pending' : STATUS[s] || s);
   // The owner sees which stage a pending sheet is in: waiting for the internal approvers or for the client.
@@ -1348,8 +1348,8 @@ async function reviewScreen() {
         <div class="decided"><button class="btn danger" data-act="sheet-reopen" data-id="${sel.id}">${T('Reopen (return to the person)')}</button></div></div>`
       : (sel.decided_at ? `<p class="muted" style="margin:0">Decided on ${esc(String(sel.decided_at).slice(0, 10))}.</p>` : '');
     const cell = (v, extra = '', html = '') => `<div class="mono" style="text-align:center;${extra}">${v ? (html || h1(v)) : ''}</div>`;
-    return `<div class="card ${solo ? 'r' : ''}"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><div><h2 style="font-size:19px">${esc(nameOf(sel))}</h2><p style="margin:0">${typeName(sel)} · week ending ${nice(sel.week_ending)}${sel.is_part ? ' · ' + T('Part') + ' ' + sel.part + ' (' + nice(sel.period_starting) + (sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)) + ')' : ''}</p></div>${pill(stOf(sel), stColor[sel.status] || 'gray')}</div>${wkParts(d && (d.internal || d.external) ? d : sel, 'in') || waitTxt(sel)}
-      ${(d?.warnings || sel.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('')}${ret}${sigLines(d?.signatures)}${histLines(d?.history)}
+    return `<div class="${solo ? 'card r' : 'rvweek'}"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><div>${solo ? `<h2 style="font-size:19px">${esc(nameOf(sel))}</h2>` : ''}<p style="margin:0">${solo ? typeName(sel) + ' · ' : ''}<b>${T('week ending')} ${nice(sel.week_ending)}</b>${sel.is_part ? ' · ' + T('Part') + ' ' + sel.part + ' (' + nice(sel.period_starting) + (sel.period_starting === sel.period_ending ? '' : ' – ' + nice(sel.period_ending)) + ')' : ''}</p></div>${pill(stOf(sel), stColor[sel.status] || 'gray')}</div>${rvApprovals(d && (d.internal || d.external) ? d : sel, sel, sigLines(d?.signatures) + histLines(d?.history)) || waitTxt(sel)}
+      ${(d?.warnings || sel.warnings || []).map(w => `<div class="msg warn">${esc(w.message)}</div>`).join('')}${ret}
       <div class="scrollx"><div style="min-width:440px"><div class="hd cols-det"><div class="th">Line</div>${days.map(x => `<div class="th c">${dow(parse(x).getDay())}</div>`).join('')}<div class="th r">Total</div></div>
       ${[...lines.values()].map(r => `<div class="rw cols-det"><div style="font-size:14px">${esc([r.p?.code, r.p?.name, r.s?.name, r.t?.name].filter(Boolean).join(' · '))}</div>${days.map(x => cell(r.by[x], '', aprHours(r, x))).join('')}<div class="mono" style="text-align:right;font-weight:500">${h1(Object.values(r.by).reduce((a, v) => a + v, 0))}</div></div>`).join('')}
       <div class="tot"><span>Total hours</span><span class="mono">${h1(sel.total_hours)}</span></div></div></div>
@@ -1362,16 +1362,24 @@ async function reviewScreen() {
   // The right side loads on its own: the tick and the list answer at once, and the details fill in when they arrive (right away if already loaded).
   const compose = async () => {
     if (picked.length > 1) {
-      const chosen = sheets.filter(s => picked.includes(s.id));
-      const cards = await Promise.all(chosen.map(s => buildDetail(s, false)));
+      // One panel per person; inside, one section per week (oldest first).
+      const chosen = sheets.filter(s => picked.includes(s.id)).sort((a, b) => String(a.week_ending).localeCompare(String(b.week_ending)));
+      const byPerson = new Map();
+      for (const s of chosen) { const k = s.user_id ?? s.user?.id ?? nameOf(s); if (!byPerson.has(k)) byPerson.set(k, []); byPerson.get(k).push(s); }
+      const panels = await Promise.all([...byPerson.values()].map(async list => {
+        const weeks = await Promise.all(list.map(w => buildDetail(w, false)));
+        const hrs = list.reduce((a, w) => a + Number(w.total_hours || 0), 0);
+        return `<div class="card"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:baseline"><h2 style="font-size:19px;margin:0">${esc(nameOf(list[0]))}</h2><span class="muted">${typeName(list[0])} · ${list.length} ${T(list.length === 1 ? 'week' : 'weeks')} · <b>${h1(hrs)} h</b></span></div>${weeks.join('')}</div>`;
+      }));
       const hours = chosen.reduce((a, s) => a + Number(s.total_hours || 0), 0);
       return `<div class="r"><div class="card" style="position:sticky;top:8px;z-index:2"><h2 style="margin:0 0 6px">${T('Approve')} ${picked.length} ${T('timesheets')} · ${h1(hours)} h</h2>
       <p class="note" style="margin:0 0 10px">${T('One password signs all of them; each timesheet keeps its own signature and history. To return one with a comment, pick it alone.')}</p>
-      ${sigField()}<div class="decided"><button class="btn" data-act="rv-approve-many">${T('Approve')} ${picked.length} ${T('timesheets')}</button> <button class="btn ghost" data-act="rv-clear">${T('Clear selection')}</button></div></div>${cards.join('')}</div>`;
+      ${sigField()}<div class="decided"><button class="btn" data-act="rv-approve-many">${T('Approve')} ${picked.length} ${T('timesheets')}</button> <button class="btn ghost" data-act="rv-clear">${T('Clear selection')}</button></div></div>${panels.join('')}</div>`;
     }
-    return sel ? buildDetail(sel) : '<div class="card r"><div class="empty">No timesheet selected.</div></div>';
+    const one = picked.length === 1 ? sheets.find(s => s.id === picked[0]) : sel;
+    return one ? buildDetail(one) : `<div class="card r"><div class="empty">${T('Pick a timesheet, or tick several, to see them here.')}</div></div>`;
   };
-  const wanted = picked.length > 1 ? sheets.filter(s => picked.includes(s.id)) : sel ? [sel] : [];
+  const wanted = picked.length > 1 ? sheets.filter(s => picked.includes(s.id)) : picked.length === 1 ? sheets.filter(s => s.id === picked[0]) : sel ? [sel] : [];
   const tk = S.cache.rvTk = (S.cache.rvTk || 0) + 1;
   // In the background, load the details of the first pending timesheets so that ticking one later shows it at once.
   if (!quick) setTimeout(async () => { for (const s of sheets.filter(pickable).slice(0, 10)) { if (S.cache.rvMem !== mem) return; try { await getD(s); } catch { return; } } }, 600);
@@ -1383,7 +1391,7 @@ async function reviewScreen() {
   }
   const pillBtn = ([k, l]) => `<button type="button" class="pill ${k === R.status ? 'on' : ''}" aria-pressed="${k === R.status}" data-act="rv-status" data-s="${k}">${l}${k === 'progress' ? '' : ` (${cnt[k] ?? 0})`}</button>`;
   const per = ([k, l]) => `<button type="button" class="pill ${R.period === k ? 'on' : ''}" data-act="rv-period" data-p="${k}" ${pend ? 'disabled' : ''}>${l}</button>`;
-  const rows = sheets.map(s => `<div class="rvrow">${pickable(s) ? `<input type="checkbox" class="rvchk" data-act="rv-check" data-id="${s.id}" aria-label="${esc(T('Select'))}" ${picked.includes(s.id) ? 'checked' : ''}>` : '<span class="rvchk"></span>'}<button type="button" class="rowbtn cols-rev ${(picked.length > 1 ? picked.includes(s.id) : sel && s.id === sel.id) ? 'sel' : ''}" data-act="rv-pick" data-id="${s.id}"><span><span style="font-weight:500">${esc(nameOf(s))}</span>${s.late ? ' <span class="bd amber">Late</span>' : ''}</span>
+  const rows = sheets.map(s => `<div class="rvrow">${pickable(s) ? `<input type="checkbox" class="rvchk" data-act="rv-check" data-id="${s.id}" aria-label="${esc(T('Select'))}" ${picked.includes(s.id) ? 'checked' : ''}>` : '<span class="rvchk"></span>'}<button type="button" class="rowbtn cols-rev ${(picked.length ? picked.includes(s.id) : sel && s.id === sel.id) ? 'sel' : ''}" data-act="rv-pick" data-id="${s.id}"><span><span style="font-weight:500">${esc(nameOf(s))}</span>${s.late ? ' <span class="bd amber">Late</span>' : ''}</span>
     <span>${wkWeekCell(s)}</span><span>${typeName(s)}</span><span>${esc(projOf(s))}</span><span class="mono" style="text-align:right">${h1(s.total_hours)}</span><span>${pill(stOf(s), stColor[s.status] || 'gray')}${s.status === 'returned' && s.return_comment ? ` <span class="cmt" role="button" tabindex="0" data-act="rv-reason" data-id="${s.id}" title="${esc(T('See the reason'))}" aria-label="${esc(T('See the reason'))}">💬</span>` : ''}</span></button></div>`).join('');
   return `<div class="pp"><div><h1>Approvals</h1><p class="sub">${inn ? 'These are hours waiting for your approval. After you approve, they go to the external approver.' : 'Approving replaces the manager signature. Weeks filled in after the deadline are flagged as late.'}</p></div>
     <div class="twin"><div class="card l"><div class="pillrow" style="margin-bottom:12px">${[['pending', 'Pending'], ['approved', 'Approved'], ['returned', 'Returned'], ['all', 'All'], ...(isStf() ? [['progress', 'In progress']] : [])].map(pillBtn).join('')}</div>
@@ -1963,6 +1971,36 @@ const wkParts = (sheet, cls = '') => {
   const rows = (sheet?.internal || []).map(i => one('Internal', i)).concat((sheet?.external || []).map(i => one('External', i)));
   return rows.length ? `<div class="wkint ${cls}">${rows.join('')}</div>` : '';
 };
+/* Approvals of a timesheet in the review screen: one compact line (Internal 5/5 · by Luis · 4 Nov — External 0/5 · waiting for Ketsy · since 4 Nov), and the
+   detail per service with its dates (plus the signatures and history) folded under it. */
+const rvDay = iso => (iso ? nice(String(iso).slice(0, 10)) : '');
+const rvAgo = iso => { if (!iso) return ''; const n = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 864e5)); return n === 0 ? T('today') : n === 1 ? T('yesterday') : T(n + ' days ago'); };
+function rvApprovals(src, sel, extra = '') {
+  const inn = src?.internal || [], ext = src?.external || [];
+  const who = i => i.approved_by?.name || i.approved_by || '';
+  const names = list => [...new Set(list.flatMap(i => (i.approvers || []).map(a => a.name || a)))].join(', ');
+  const lastOf = list => list.map(i => i.approved_at).filter(Boolean).sort().pop() || '';
+  const stage = (list, label, since) => {
+    if (!list.length) return '';
+    const done = list.filter(i => i.status === 'approved' || i.status === 'skipped'), wait = list.filter(i => i.status === 'pending');
+    const by = [...new Set(done.map(who).filter(Boolean))].join(', '), last = lastOf(done);
+    const tail = wait.length ? `${T('waiting for')} ${esc(names(wait))}${since ? ` · ${T('since')} ${esc(rvDay(since))} (${esc(rvAgo(since))})` : ''}`
+      : `${by ? T('approved by') + ' ' + esc(by) : T('skipped')}${last ? ' · ' + esc(rvDay(last)) : ''}`;
+    return `<span class="rvst ${wait.length ? 'w' : 'ok'}"><b>${T(label)}</b> ${done.length}/${list.length} · ${tail}</span>`;
+  };
+  const sinceExt = lastOf(inn.filter(i => i.status !== 'pending')) || sel?.submitted_at;
+  const line = [stage(inn, 'Internal', sel?.submitted_at), stage(ext, 'External', sinceExt)].filter(Boolean).join('');
+  const row = (kind, i, since) => {
+    const proj = typeof i.project === 'string' ? i.project : [i.project?.code, i.project?.name].filter(Boolean).join(' · ');
+    const svc = typeof i.service === 'string' ? i.service : i.service?.name;
+    const txt = i.status === 'approved' ? `${T('approved by')} ${esc(who(i) || names([i]))}${i.approved_at ? ' · ' + esc(rvDay(i.approved_at)) : ''}` : i.status === 'skipped' ? T('skipped')
+      : `${T('waiting for')} ${esc(names([i]))}${since ? ` · ${T('since')} ${esc(rvDay(since))}` : ''}`;
+    return `<div><span class="wkk">${T(kind)}</span><span>${esc([proj, svc].filter(Boolean).join(' · '))} — ${txt}</span></div>`;
+  };
+  const rows = inn.map(i => row('Internal', i, sel?.submitted_at)).concat(ext.map(i => row('External', i, sinceExt)));
+  if (!line && !extra) return '';
+  return `<details class="rvapp"><summary>${line || T('Approvals and signatures')}</summary>${rows.length ? `<div class="wkint in">${rows.join('')}</div>` : ''}${extra}</details>`;
+}
 const wkPL = p => (p ? `${p.code} · ${p.name}` : '—');
 const wkClose = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 const wkClock = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;

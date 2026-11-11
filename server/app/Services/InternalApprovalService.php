@@ -208,6 +208,7 @@ class InternalApprovalService
             'service' => Parts::serviceName($p['project'], $p['service']),
             'status' => $p['status'],
             'approved_by' => $p['approved_by'] ? ['id' => $p['approved_by']->id, 'name' => $p['approved_by']->name] : null,
+            'approved_at' => $p['rows']->first()?->approved_at?->toIso8601String(),
             'approvers' => $p['eligible']->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->values()->all(),
         ];
     }
@@ -247,6 +248,7 @@ class InternalApprovalService
                             'service' => Parts::serviceName($p, $svc),
                             'status' => $done ? 'approved' : 'skipped',
                             'approved_by' => $done?->approvedBy ? ['id' => $done->approvedBy->id, 'name' => $done->approvedBy->name] : null,
+                            'approved_at' => ($done ?? $rows->first())->approved_at?->toIso8601String(),
                             'approvers' => ($svc ? $this->eligibleFor($svc, $s) : $p->internalApprovers->filter(fn ($u) => $u->active && $u->id !== $s->user_id))
                                 ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->values()->all(),
                         ];
