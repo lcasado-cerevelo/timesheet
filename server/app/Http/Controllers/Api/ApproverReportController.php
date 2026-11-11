@@ -3,42 +3,31 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Approver;
-use App\Models\TimeEntry;
-use App\Models\Timesheet;
-use App\Services\ProjectProgressService;
+use App\Services\ManagerReportService;
 use App\Support\Week;
 use Illuminate\Http\Request;
 
 /**
  * Reporte de horas para el gerente de proyecto (aprobador con cuenta y la marca): solo los proyectos de los clientes de los que es parte, de
  * todas las personas, sin nombres ni tarifas. Cuentan las horas que ya salieron de la etapa interna (enviadas al cliente o aprobadas), y las
- * que no se cobran solo si el proyecto muestra la cortesía. Sin exportar: es solo para verlo.
+ * que no se cobran solo si el proyecto muestra la cortesía.
  */
 class ApproverReportController extends Controller
 {
-    public function __construct(private ProjectProgressService $progress)
+    public function __construct(private ManagerReportService $manager)
     {
     }
 
     public function summary(Request $request)
     {
-        $a = Approver::with('company')->findOrFail($request->user()->approver_profile_id);
-        abort_unless($a->project_manager && $a->active, 403, __('Esta cuenta no es de gerente de proyecto.'));
+        $a = $this->manager->manager($request->user());
         $d = $request->validate([
             'from' => 'required|date_format:Y-m-d',
             'to' => 'required|date_format:Y-m-d|after_or_equal:from',
             'group' => 'in:project,day,week,customer',
             'project_id' => 'nullable|integer',
         ]);
-        $projects = $this->progress->projectsFor($a);
-        $ids = $projects->pluck('id');
-        $entries = TimeEntry::with('project.customer')->whereIn('project_id', $ids)
-            ->when(! empty($d['project_id']), fn ($q) => $q->where('project_id', $d['project_id']))
-            ->where('running', false)->whereBetween('work_date', [$d['from'], $d['to']])
-            ->whereHas('timesheet', fn ($t) => $t->whereIn('status', [Timesheet::SUBMITTED, Timesheet::APPROVED])->releasedToExternal())
-            ->get()
-            ->filter(fn ($e) => $e->billable || $e->project->show_courtesy);
+        $entries = $this->manager->entries($a, $d['from'], $d['to'], ! empty($d['project_id']) ? (int) $d['project_id'] : null);
 
         $group = $d['group'] ?? 'project';
         $weekStart = $a->company->rules()->weekStart();

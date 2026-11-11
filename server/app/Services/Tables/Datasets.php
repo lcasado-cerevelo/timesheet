@@ -92,9 +92,15 @@ class Datasets
     {
         $v = validator($p, ['from' => 'required|date_format:Y-m-d', 'to' => 'required|date_format:Y-m-d|after_or_equal:from', 'group' => 'nullable|in:project,day,week,customer', 'project_id' => 'nullable|integer'])->validate();
         $group = $v['group'] ?? 'project';
-        $entries = TimeEntry::with('project.customer')->where('user_id', $u->id)->where('running', false)
-            ->whereBetween('work_date', [$v['from'], $v['to']])
-            ->when(! empty($v['project_id']), fn ($q) => $q->where('project_id', $v['project_id']))->get();
+        if ($u->isApprover()) {
+            // El gerente de proyecto: lo mismo, pero las horas de todos en los proyectos de sus clientes.
+            $mgr = app(\App\Services\ManagerReportService::class);
+            $entries = $mgr->entries($mgr->manager($u), $v['from'], $v['to'], ! empty($v['project_id']) ? (int) $v['project_id'] : null);
+        } else {
+            $entries = TimeEntry::with('project.customer')->where('user_id', $u->id)->where('running', false)
+                ->whereBetween('work_date', [$v['from'], $v['to']])
+                ->when(! empty($v['project_id']), fn ($q) => $q->where('project_id', $v['project_id']))->get();
+        }
         $projCode = ! empty($v['project_id']) ? Project::where('company_id', $u->company_id)->find($v['project_id'])?->code : null;
         $rows = $entries->groupBy(fn ($e) => match ($group) {
             'day' => $e->work_date->toDateString(),

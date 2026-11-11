@@ -8,11 +8,24 @@ use App\Models\Customer;
 use App\Services\ClientTimesheetService;
 use Illuminate\Http\Request;
 
-/** Hoja de tiempo para entregarle a un cliente. Solo el dueño de la compañía. */
+/** Hoja de tiempo para entregarle a un cliente. El dueño (todos los clientes) y el gerente de proyecto (solo los clientes de los que es parte). */
 class ClientTimesheetController extends Controller
 {
-    public function __construct(private ClientTimesheetService $service, private \App\Services\Tables\TableExporter $tables)
+    public function __construct(private ClientTimesheetService $service, private \App\Services\Tables\TableExporter $tables, private \App\Services\ManagerReportService $manager, private \App\Services\ProjectProgressService $progress)
     {
+    }
+
+    /** Lo que el gerente de proyecto puede escoger: sus clientes, los proyectos de esos clientes y las personas con horas en ellos. */
+    public function options(Request $request)
+    {
+        $a = $this->manager->manager($request->user());
+        $projects = $this->progress->projectsFor($a);
+        $people = \App\Models\User::whereIn('id', \App\Models\TimeEntry::whereIn('project_id', $projects->pluck('id'))->select('user_id'))->orderBy('name')->get(['id', 'name']);
+        return response()->json([
+            'customers' => $a->customers()->orderBy('customers.name')->get(['customers.id', 'customers.name', 'customers.email']),
+            'projects' => $projects->map(fn ($p) => ['id' => $p->id, 'customer_id' => $p->customer_id, 'code' => $p->code, 'name' => $p->name])->values(),
+            'users' => $people,
+        ]);
     }
 
     /** Vista previa (datos) de la hoja. */
@@ -78,6 +91,11 @@ class ClientTimesheetController extends Controller
             'format' => 'nullable|in:pdf,xlsx,csv',
         ]);
         $customer = Customer::where('company_id', $request->user()->company_id)->findOrFail($v['customer_id']);
+        if ($request->user()->isApprover()) {
+            $a = $this->manager->manager($request->user());
+            abort_unless($a->customers()->where('customers.id', $customer->id)->exists(), 404);
+            $v['released_only'] = true;
+        }
         foreach (['include_pending', 'include_non_billable', 'show_amounts'] as $k) {
             $v[$k] = filter_var($v[$k] ?? false, FILTER_VALIDATE_BOOLEAN);
         }

@@ -184,7 +184,7 @@ const isAp = () => S.me?.role === 'approver';
 const isStf = () => S.me?.role === 'owner' || S.me?.role === 'office';   // owner or office: the back office
 /* The approver (an outside person with an account) only has Approvals, plus My account to change the password. */
 const isIn = () => !!S.me?.internal_approver && S.me.role !== 'owner' && !isAp();   // an employee who approves hours internally
-const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' || ((k === 'progress' || k === 'reports') && !!S.me.project_manager) : ROUTES[k].pm ? isStf() : ROUTES[k].mine ? !!S.me.has_commissions : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (ROUTES[k].office && S.me.role === 'office') || (k === 'approvals' && isIn()));
+const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' || ((k === 'progress' || k === 'reports' || k === 'clientsheet') && !!S.me.project_manager) : ROUTES[k].pm ? isStf() : ROUTES[k].mine ? !!S.me.has_commissions : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (ROUTES[k].office && S.me.role === 'office') || (k === 'approvals' && isIn()));
 const home = () => (isAp() ? 'approvals' : 'week');
 const roleLabel = u => (u.role === 'approver' ? 'Approver' : u.role === 'owner' ? 'Owner' : u.role === 'office' ? 'Office' : u.worker_type === 'employee' ? 'Employee' : 'Consultant');
 const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
@@ -456,7 +456,7 @@ async function weeksView() {
 async function reportsView() {
   const q = S.cache.rep || { from: addDays(today(), -30), to: today(), group: 'project' };
   S.cache.rep = q;
-  const pm = isAp();   // the client's project manager: all people's hours, only the projects of their clients, no export
+  const pm = isAp();   // the client's project manager: the same report, with the hours of everyone but only on the projects of their clients
   const projs = await api(pm ? '/approver/progress' : '/projects');
   const r = await api(`${pm ? '/approver' : ''}/reports/summary?from=${q.from}&to=${q.to}&group=${q.group}${q.project_id ? '&project_id=' + q.project_id : ''}`);
   return `<h1>Hours report</h1><p class="sub">${pm ? 'Hours of the projects of your clients, by project, day, week or client for any period.' : 'Hours by project, day, week or client for any period.'}</p>
@@ -465,7 +465,7 @@ async function reportsView() {
     <div><label>Group by</label><select name="group">${[['project', 'Project'], ['day', 'Day'], ['week', 'Week'], ['customer', 'Client']].map(([v, t]) => `<option value="${v}" ${q.group === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
     <div><label>Project</label><select name="project_id"><option value="">All</option>${projs.map(p => `<option value="${p.id}" ${Number(q.project_id) === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select></div>
     <button class="btn pri" type="submit">Show</button></form></div>
-    <div class="card">${pm ? '' : `<div style="text-align:right">${exportBar('report', { from: q.from, to: q.to, group: q.group, ...(q.project_id ? { project_id: q.project_id } : {}) })}</div>`}
+    <div class="card"><div style="text-align:right">${exportBar('report', { from: q.from, to: q.to, group: q.group, ...(q.project_id ? { project_id: q.project_id } : {}) })}</div>
     <table style="margin-top:6px"><tr><th></th><th class="r">Hours</th><th class="r">Billable</th><th class="r">Non-billable</th></tr>
     ${r.rows.map(x => `<tr><td>${esc(x.label)}</td><td class="r">${hrs(x.hours)}</td><td class="r">${hrs(x.billable_hours)}</td><td class="r">${hrs(x.non_billable_hours)}</td></tr>`).join('')}
     <tr><td><b>Total</b></td><td class="r"><b>${hrs(r.total_hours)}</b></td><td class="r"><b>${hrs(r.billable_hours)}</b></td><td></td></tr></table></div>`;
@@ -946,7 +946,8 @@ async function integrationsView() {
 
 /* --- Client timesheet (owner) --- */
 async function clientSheetView() {
-  const [customers, projects, users] = await Promise.all([api('/customers'), api('/projects'), api('/users')]);
+  // The client's project manager gets the same screen, limited to the clients they belong to.
+  const [customers, projects, users] = isAp() ? await api('/approver/client-timesheet/options').then(o => [o.customers, o.projects, o.users]) : await Promise.all([api('/customers'), api('/projects'), api('/users')]);
   const q = S.cache.cs || { customer_id: customers[0]?.id, from: addDays(today(), -30), to: today() };
   const pv = S.cache.csPreview;
   const cust = customers.find(c => c.id === Number(q.customer_id));
@@ -970,6 +971,7 @@ async function clientSheetView() {
       <div style="grid-column:span 2"><label>Message (optional)</label><input name="message" maxlength="1000"></div></div>
       <p><button class="btn pri" type="submit" ${pv.entry_count ? '' : 'disabled'}>Send the timesheet by email</button></p></form></div>` : ''}`;
 }
+const csBase = () => (isAp() ? '/approver' : '');   // the project manager's own routes
 const csTimes = l => l.entered_as === 'times' || (!l.entered_as && !!l.start);   // hours typed as From–To vs just a total
 function csPreviewHtml(d) {
   if (!d.projects.length) return '<div class="card"><p class="muted">There are no hours for this client in the period.</p></div>';
@@ -1128,9 +1130,9 @@ const actions = {
     await download(`/tables/${el.dataset.ds}/export`, { method: 'POST', body: { ...q, format: el.dataset.fmt } }, 'table.' + el.dataset.fmt);
     flash(fmtName + ' file created.'); render();
   },
-  async 'cs-csv'() { const b = csBody(document.querySelector('form[data-form=cs]')); await download('/client-timesheet/download', { method: 'POST', body: { ...b, format: 'csv' } }, 'timesheet.csv'); flash('CSV file created.'); render(); },
-  async 'cs-pdf'() { const b = csBody(document.querySelector('form[data-form=cs]')); await download('/client-timesheet/download', { method: 'POST', body: { ...b, format: 'pdf' } }, 'timesheet.pdf'); flash('PDF file created.'); render(); },
-  async 'cs-xlsx'() { const b = csBody(document.querySelector('form[data-form=cs]')); await download('/client-timesheet/download', { method: 'POST', body: { ...b, format: 'xlsx' } }, 'timesheet.xlsx'); flash('Excel file created.'); render(); },
+  async 'cs-csv'() { const b = csBody(document.querySelector('form[data-form=cs]')); await download(csBase() + '/client-timesheet/download', { method: 'POST', body: { ...b, format: 'csv' } }, 'timesheet.csv'); flash('CSV file created.'); render(); },
+  async 'cs-pdf'() { const b = csBody(document.querySelector('form[data-form=cs]')); await download(csBase() + '/client-timesheet/download', { method: 'POST', body: { ...b, format: 'pdf' } }, 'timesheet.pdf'); flash('PDF file created.'); render(); },
+  async 'cs-xlsx'() { const b = csBody(document.querySelector('form[data-form=cs]')); await download(csBase() + '/client-timesheet/download', { method: 'POST', body: { ...b, format: 'xlsx' } }, 'timesheet.xlsx'); flash('Excel file created.'); render(); },
   async 'sales-preview'() { const f = document.querySelector('form[data-form=sales]'); const o = formObj(f); try { S.cache.salesPreview = await api('/integrations/accountisi/sales-preview', { method: 'POST', body: o }); } catch (e) { flash(e.message, 'err'); } render(); },
 };
 async function aprDecide(el, kind, base = '/approver/sheets/') {
@@ -1200,12 +1202,12 @@ const forms = {
     await api('/export-templates', { method: 'POST', body: { name: o.name, format: o.format, config: { sheet_name: o.name.slice(0, 30), group_by: o.group ? o.group.split(',') : [], filters: { status: 'approved' }, columns } } });
     flash('Template created.'); render();
   },
-  async cs(f) { S.cache.csPreview = await api('/client-timesheet/preview', { method: 'POST', body: csBody(f) }); S.cache.csEmail = undefined; render(); },
+  async cs(f) { S.cache.csPreview = await api(csBase() + '/client-timesheet/preview', { method: 'POST', body: csBody(f) }); S.cache.csEmail = undefined; render(); },
   async 'cs-email'(f) {
     const o = formObj(f); const body = { ...S.cache.cs }; delete body.user_id;
     if (!confirm(T('Send the timesheet to') + ' ' + o.email_to + '?')) return;
     S.cache.csEmail = o.email_to;
-    const r = await api('/client-timesheet/email', { method: 'POST', body: { ...body, email_to: o.email_to, message: o.message || undefined } });
+    const r = await api(csBase() + '/client-timesheet/email', { method: 'POST', body: { ...body, email_to: o.email_to, message: o.message || undefined } });
     flash('Timesheet sent to ' + r.sent_to + ' (' + hrs(r.total_hours) + ' h).'); render();
   },
   async brand(f) {

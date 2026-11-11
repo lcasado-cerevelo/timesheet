@@ -41,6 +41,9 @@ class ClientTimesheetService
             ->orderBy('work_date')->orderBy('start_time')->orderBy('id');
         if (empty($opts['include_pending'])) {
             $q->whereHas('timesheet', fn ($t) => $t->where('status', Timesheet::APPROVED));
+        } elseif (! empty($opts['released_only'])) {
+            // El gerente de proyecto no ve borradores ni lo que sigue en la etapa interna.
+            $q->whereHas('timesheet', fn ($t) => $t->whereIn('status', [Timesheet::SUBMITTED, Timesheet::APPROVED])->releasedToExternal());
         }
         $entries = $q->get();
         $showAmounts = ! empty($opts['show_amounts']);
