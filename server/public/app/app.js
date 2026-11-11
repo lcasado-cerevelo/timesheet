@@ -1300,7 +1300,12 @@ async function reviewScreen() {
   if (R.proj.length) qs.set('project_ids', R.proj.join(','));
   if (R.svc.length) qs.set('service_ids', R.svc.join(','));
   if (R.task.length) qs.set('task_ids', R.task.join(','));
-  const res = await api((ap ? '/approver/review?' : inn ? '/internal/review?' : '/review/sheets?') + qs.toString());
+  // Ticking, unticking or picking a row only changes what is shown: the list and the details already loaded are reused (no round trip to the server).
+  const quick = !!S.cache.rvQuick; S.cache.rvQuick = false;
+  const memKey = (ap ? 'a' : inn ? 'i' : 's') + qs.toString();
+  let mem = S.cache.rvMem;
+  if (!quick || !mem || mem.key !== memKey) mem = S.cache.rvMem = { key: memKey, res: await api((ap ? '/approver/review?' : inn ? '/internal/review?' : '/review/sheets?') + qs.toString()), det: {}, dd: {} };
+  const res = mem.res;
   const sheets = res.sheets || [], cnt = res.counts || {}; S.cache.rvSheets = sheets;
   // Project, service and task filters: services and tasks follow the projects chosen; a choice that no longer applies is dropped.
   const opt = res.options || { projects: [], services: [], tasks: [] };
@@ -1317,8 +1322,9 @@ async function reviewScreen() {
   const nameOf = s => s.user?.name ?? s.name ?? s.worker_name ?? '';
   const projOf = s => (s.projects || []).map(p => (typeof p === 'string' ? p : [p.code, p.name].filter(Boolean).join(' · '))).join(', ');
   // The detail of one timesheet. solo = it is the only one on the right (with its Approve / Return actions); stacked ones have no actions.
+  const getD = sel => (mem.det[sel.id] ??= api((ap ? '/approver/sheets/' : inn ? '/internal/sheets/' : '/sheets/') + sel.id).then(r => (mem.dd[sel.id] = r), e => { delete mem.det[sel.id]; if (e.message === 'Session expired') throw e; mem.dd[sel.id] = null; return null; }));
   const buildDetail = async (sel, solo = true) => {
-    let d = null; try { d = await api((ap ? '/approver/sheets/' : inn ? '/internal/sheets/' : '/sheets/') + sel.id); } catch (e) { if (e.message === 'Session expired') throw e; }
+    const d = await getD(sel);
     const days = Array.from({ length: wkSpan(d?.period_starting || addDays(sel.week_ending, -6), d?.period_ending || sel.week_ending) }, (_, i) => addDays(d?.period_starting || addDays(sel.week_ending, -6), i));
     const lines = new Map();
     for (const e of (d?.entries || [])) { const k = e.project_id + '|' + (e.service_id || '') + '|' + (e.task_id || ''); if (!lines.has(k)) lines.set(k, { p: e.project, s: e.service, t: e.task, by: {}, es: {} }); const r = lines.get(k); r.by[e.work_date] = (r.by[e.work_date] || 0) + e.hours; (r.es[e.work_date] ||= []).push(e); }
@@ -1353,15 +1359,28 @@ async function reviewScreen() {
   const pickable = s => pend && (s.status === 'submitted' || s.status === 'pending') && (ap ? !s.needs_code : inn ? true : s.can_approve === true);
   const picked = (S.cache.rvSel || []).filter(id => sheets.some(s => s.id === id && pickable(s)));
   S.cache.rvSel = picked;
-  let detail = '<div class="card r"><div class="empty">No timesheet selected.</div></div>';
-  if (picked.length > 1) {
-    const chosen = sheets.filter(s => picked.includes(s.id));
-    const cards = await Promise.all(chosen.map(s => buildDetail(s, false)));
-    const hours = chosen.reduce((a, s) => a + Number(s.total_hours || 0), 0);
-    detail = `<div class="r"><div class="card" style="position:sticky;top:8px;z-index:2"><h2 style="margin:0 0 6px">${T('Approve')} ${picked.length} ${T('timesheets')} · ${h1(hours)} h</h2>
+  // The right side loads on its own: the tick and the list answer at once, and the details fill in when they arrive (right away if already loaded).
+  const compose = async () => {
+    if (picked.length > 1) {
+      const chosen = sheets.filter(s => picked.includes(s.id));
+      const cards = await Promise.all(chosen.map(s => buildDetail(s, false)));
+      const hours = chosen.reduce((a, s) => a + Number(s.total_hours || 0), 0);
+      return `<div class="r"><div class="card" style="position:sticky;top:8px;z-index:2"><h2 style="margin:0 0 6px">${T('Approve')} ${picked.length} ${T('timesheets')} · ${h1(hours)} h</h2>
       <p class="note" style="margin:0 0 10px">${T('One password signs all of them; each timesheet keeps its own signature and history. To return one with a comment, pick it alone.')}</p>
       ${sigField()}<div class="decided"><button class="btn" data-act="rv-approve-many">${T('Approve')} ${picked.length} ${T('timesheets')}</button> <button class="btn ghost" data-act="rv-clear">${T('Clear selection')}</button></div></div>${cards.join('')}</div>`;
-  } else if (sel) detail = await buildDetail(sel);
+    }
+    return sel ? buildDetail(sel) : '<div class="card r"><div class="empty">No timesheet selected.</div></div>';
+  };
+  const wanted = picked.length > 1 ? sheets.filter(s => picked.includes(s.id)) : sel ? [sel] : [];
+  const tk = S.cache.rvTk = (S.cache.rvTk || 0) + 1;
+  // In the background, load the details of the first pending timesheets so that ticking one later shows it at once.
+  if (!quick) setTimeout(async () => { for (const s of sheets.filter(pickable).slice(0, 10)) { if (S.cache.rvMem !== mem) return; try { await getD(s); } catch { return; } } }, 600);
+  let detail;
+  if (wanted.every(s => s.id in mem.dd)) detail = await compose();
+  else {
+    detail = `<div class="card r" id="rv-right"><div class="loading">${T('Loading…')}</div></div>`;
+    setTimeout(async () => { const html = await compose(); const el = document.getElementById('rv-right'); if (el && S.cache.rvTk === tk) el.outerHTML = html; }, 0);
+  }
   const pillBtn = ([k, l]) => `<button type="button" class="pill ${k === R.status ? 'on' : ''}" aria-pressed="${k === R.status}" data-act="rv-status" data-s="${k}">${l}${k === 'progress' ? '' : ` (${cnt[k] ?? 0})`}</button>`;
   const per = ([k, l]) => `<button type="button" class="pill ${R.period === k ? 'on' : ''}" data-act="rv-period" data-p="${k}" ${pend ? 'disabled' : ''}>${l}</button>`;
   const rows = sheets.map(s => `<div class="rvrow">${pickable(s) ? `<input type="checkbox" class="rvchk" data-act="rv-check" data-id="${s.id}" aria-label="${esc(T('Select'))}" ${picked.includes(s.id) ? 'checked' : ''}>` : '<span class="rvchk"></span>'}<button type="button" class="rowbtn cols-rev ${(picked.length > 1 ? picked.includes(s.id) : sel && s.id === sel.id) ? 'sel' : ''}" data-act="rv-pick" data-id="${s.id}"><span><span style="font-weight:500">${esc(nameOf(s))}</span>${s.late ? ' <span class="bd amber">Late</span>' : ''}</span>
@@ -1423,17 +1442,17 @@ document.addEventListener('mselchange', e => {
 });
 Object.assign(actions, {
   'rv-status'(el) { rvState().status = el.dataset.s; S.cache.apSel = null; render(); },
-  'rv-pick'(el) { S.cache.apSel = Number(el.dataset.id); S.cache.rvSel = []; render(); },
+  'rv-pick'(el) { S.cache.apSel = Number(el.dataset.id); S.cache.rvSel = []; S.cache.rvQuick = true; render(); },
   'rv-check'(el) {
     const id = Number(el.dataset.id); const set = new Set(S.cache.rvSel || []);
     if (set.has(id)) set.delete(id); else { if (set.size >= 25) { el.checked = false; throw new Error('You can approve up to 25 timesheets at once.'); } set.add(id); }
-    S.cache.rvSel = [...set]; render();
+    S.cache.rvSel = [...set]; S.cache.rvQuick = true; render();
   },
   'rv-all'(el) {
     const ids = (S.cache.rvSheets || []).filter(s => (s.status === 'submitted' || s.status === 'pending') && (isAp() ? !s.needs_code : isIn() ? true : s.can_approve === true)).map(s => s.id);
-    S.cache.rvSel = el.checked ? ids.slice(0, 25) : []; render();
+    S.cache.rvSel = el.checked ? ids.slice(0, 25) : []; S.cache.rvQuick = true; render();
   },
-  'rv-clear'() { S.cache.rvSel = []; render(); },
+  'rv-clear'() { S.cache.rvSel = []; S.cache.rvQuick = true; render(); },
   async 'rv-approve-many'() {
     const base = isAp() ? '/approver/sheets/' : isIn() ? '/internal/sheets/' : '/sheets/';
     const chosen = (S.cache.rvSheets || []).filter(s => (S.cache.rvSel || []).includes(s.id));
