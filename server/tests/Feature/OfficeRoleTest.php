@@ -74,7 +74,7 @@ class OfficeRoleTest extends TestCase
         $base = ['name' => 'Ana Torres', 'email' => 'ana@cerevelo.test', 'capture_mode' => 'from_to', 'worker_type' => 'consultant'];
         $this->putJson('/api/users/'.$this->worker->id, $base + ['role' => 'office'])->assertOk()->assertJsonPath('role', 'office');
         $this->assertSame('office', $this->worker->fresh()->role);
-        $this->putJson('/api/users/'.$this->owner->id, ['name' => 'Luis', 'email' => 'luis@cerevelo.test', 'capture_mode' => 'from_to', 'role' => 'member'])->assertOk();
+        $this->putJson('/api/users/'.$this->owner->id, ['name' => 'Luis', 'email' => 'luis@cerevelo.test', 'capture_mode' => 'from_to', 'worker_type' => 'consultant', 'role' => 'member'])->assertOk();
         $this->assertSame('owner', $this->owner->fresh()->role);
     }
 

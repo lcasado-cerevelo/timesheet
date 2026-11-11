@@ -150,7 +150,8 @@ class ScreensContractsTest extends TestCase
         $this->assertSame(['id', 'user_id', 'approver_id', 'name', 'email', 'role', 'user_role', 'approver_kind', 'worker_type', 'employee_number', 'two_step', 'status', 'can_login'], array_keys($all[0]));
         $by = collect($all)->keyBy('email');
         $this->assertSame(['worker', 'consultant', 'active', true], [$by['ana@cerevelo.test']['role'], $by['ana@cerevelo.test']['worker_type'], $by['ana@cerevelo.test']['status'], $by['ana@cerevelo.test']['can_login']]);
-        $this->assertSame(['backoffice', null], [$by['luis@cerevelo.test']['role'], $by['luis@cerevelo.test']['worker_type']]);
+        // El tipo del dueño ahora sale en la lista (antes salía vacío aunque tuviera uno guardado): quien factura sus horas es Consultant.
+        $this->assertSame(['backoffice', 'consultant'], [$by['luis@cerevelo.test']['role'], $by['luis@cerevelo.test']['worker_type']]);
         $this->assertSame(['approver', null, false, false], [$by['arbol@cliente.test']['role'], $by['arbol@cliente.test']['user_id'], $by['arbol@cliente.test']['can_login'], $by['arbol@cliente.test']['two_step']]);
         $this->assertNotNull($by['arbol@cliente.test']['approver_id']);
 
