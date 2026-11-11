@@ -71,3 +71,5 @@
 .ck{font-weight:700}.ck.ok{color:#14603B}.ck.no{color:var(--danger)}
 .cmcalc{list-style:none;margin:6px 0 0;padding:0}.cmcalc li{margin:2px 0}
 .cmtask{border-top:1px solid var(--line);padding:10px 0}.cmtask:first-of-type{border-top:0}
+/* Approvals: tick several timesheets to approve them together */
+.pp .rvrow{display:flex;align-items:center;gap:6px}.pp .rvrow .rowbtn{flex:1;min-width:0}.pp .rvchk{width:22px;flex:0 0 22px;height:18px;cursor:pointer}

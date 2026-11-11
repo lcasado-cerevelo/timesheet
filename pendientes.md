@@ -179,7 +179,7 @@ Luis quiere que Timesheet y Employee Tracker (`F:\Visual Studio 2022\Projects\Em
 - Hours report: las horas de todos en los proyectos de sus clientes (`/api/approver/reports/summary`, y `/api/tables/report/export` para exportar). Client timesheet: `/api/approver/client-timesheet/{options,preview,download,email}`. Cuenta lo que ya salió de la etapa interna (enviado al cliente o aprobado); borradores y etapa interna nunca; lo no facturable solo si el proyecto muestra la cortesía. `ManagerReportService`.
 - Aplica a web, demo y producción por igual; el móvil no se tocó.
 
-## Aprobar varias semanas a la vez (Luis, 2026-11-11) — SOLO ANALIZADO, nada construido
+## Aprobar varias semanas a la vez (Luis, 2026-11-11) — HECHO y probado (435 pruebas + navegador)
 Idea: en Aprobaciones, casillas para marcar varias hojas y aprobarlas juntas; el panel derecho muestra todas las marcadas.
 Decisiones recomendadas (por confirmar con Luis):
 1. Solo **aprobar** en lote; **devolver** sigue de una en una (cada devolución lleva su comentario).
@@ -195,3 +195,5 @@ Quedan fuera los aprobadores por enlace del correo (aprueban hoja por hoja).
 - El Hours report era personal (solo las horas de quien lo abre, en cualquier estado). Ahora, para el dueño y la oficina, muestra las horas de **toda la compañía**; para el gerente de proyecto, las de todos en los proyectos de sus clientes (solo lo que ya salió de la etapa interna); para los demás, las suyas.
 - Filtros: persona, cliente y proyecto. **Agrupar por**: proyecto, día, semana, cliente y **persona**.
 - Cada total sale separado por estado de la hoja: aprobadas, enviadas (esperando), devueltas y borrador, para que cuadre con la hoja del cliente (que solo lleva las aprobadas). La tabla exportable (CSV/Excel/PDF) trae las mismas columnas. `HoursReportService`.
+
+Construido tal como se recomendó: `POST /sheets/approve-many` (dueño/oficina), `/internal/sheets/approve-many` (internos) y `/approver/sheets/approve-many` (externos con cuenta); `BatchApprovalService` (tope 25, una contraseña, cada hoja con su firma, lo que falla no detiene a las demás y el resultado dice por qué). En Aprobaciones (Pendientes): casilla por fila y «Marcar todos»; con 2 o más marcadas el panel derecho apila todas con un solo botón «Aprobar N hojas» arriba; con una o ninguna sigue como antes. Las que piden código de 6 dígitos o que el dueño no puede aprobar (con el cliente) no se pueden marcar. Devolver sigue de una en una. Pruebas: `BatchApprovalTest`.

@@ -83,6 +83,22 @@ class ApproverSheetController extends Controller
         return response()->json($this->present($sheet, $approver, false));
     }
 
+    /** Aprueba varias hojas con una sola contraseña (cada una con su firma); la lógica es la misma que la de aprobar una. Las que piden código se aprueban solas. */
+    public function approveMany(Request $request, \App\Services\BatchApprovalService $batch)
+    {
+        $approver = $this->approver($request);
+        $v = $batch->validate($request);
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $request->user());
+        return response()->json($batch->run($v['sheets'], function (int $id, int $version) use ($request, $approver, $sig) {
+            $sheet = Timesheet::findOrFail($id);
+            $this->own($sheet, $approver);
+            $this->checkCode($sheet, $approver, null);
+            $sheet = $this->sheets->approve($sheet, $approver, null, 'app', $version);
+            $sig->record($request, $request->user(), 'sheet.approve', $sheet, ['version' => $version, 'stage' => 'external']);
+        }));
+    }
+
     public function return(Request $request, Timesheet $sheet)
     {
         $approver = $this->approver($request);

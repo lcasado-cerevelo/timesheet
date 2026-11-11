@@ -44,6 +44,21 @@ class InternalSheetController extends Controller
         return response()->json($this->present($sheet, $user, false));
     }
 
+    /** Aprueba varias hojas con una sola contraseña (cada una con su firma); la lógica es la misma que la de aprobar una. */
+    public function approveMany(Request $request, \App\Services\BatchApprovalService $batch)
+    {
+        $user = $request->user();
+        $v = $batch->validate($request);
+        $sig = app(SignatureService::class);
+        $sig->verifyPassword($request, $user);
+        return response()->json($batch->run($v['sheets'], function (int $id, int $version) use ($request, $user, $sig) {
+            $sheet = Timesheet::findOrFail($id);
+            $this->authorizeSheet($sheet, $user);
+            $sheet = $this->sheets->internalApprove($sheet, $user, $version);
+            $sig->record($request, $user, 'sheet.approve', $sheet, ['version' => $version, 'stage' => 'internal']);
+        }));
+    }
+
     public function return(Request $request, Timesheet $sheet)
     {
         $user = $request->user();

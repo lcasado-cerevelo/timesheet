@@ -45,6 +45,7 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::get('/sheets', [ApproverSheetController::class, 'index']);
         Route::get('/sheets/{sheet}', [ApproverSheetController::class, 'show']);
         Route::post('/sheets/{sheet}/code', [ApproverSheetController::class, 'code'])->middleware('throttle:5,1');
+        Route::post('/sheets/approve-many', [ApproverSheetController::class, 'approveMany']);
         Route::post('/sheets/{sheet}/approve', [ApproverSheetController::class, 'approve']);
         Route::post('/sheets/{sheet}/return', [ApproverSheetController::class, 'return']);
         // Gerente de proyecto: Avance de los proyectos de sus clientes (solo lectura)
@@ -62,6 +63,7 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
     Route::middleware('internal')->prefix('internal')->group(function () {
         Route::get('/review', [InternalSheetController::class, 'review']);
         Route::get('/sheets/{sheet}', [InternalSheetController::class, 'show']);
+        Route::post('/sheets/approve-many', [InternalSheetController::class, 'approveMany']);
         Route::post('/sheets/{sheet}/approve', [InternalSheetController::class, 'approve']);
         Route::post('/sheets/{sheet}/return', [InternalSheetController::class, 'return']);
     });
@@ -128,6 +130,7 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::get('/sheets-pending', [SheetController::class, 'pending']);
         Route::get('/review/sheets', [SheetController::class, 'review']);
         Route::get('/in-progress', [\App\Http\Controllers\Api\InProgressController::class, 'index']);
+        Route::post('/sheets/approve-many', [SheetController::class, 'approveMany']);
         Route::post('/sheets/{sheet}/approve', [SheetController::class, 'approve']);
         Route::post('/sheets/{sheet}/return', [SheetController::class, 'return']);
     });

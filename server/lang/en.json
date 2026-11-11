@@ -462,5 +462,7 @@
     "Aprobadas": "Approved",
     "Enviadas": "Sent",
     "Devueltas": "Returned",
-    "Horas de la compañía": "Company hours"
+    "Horas de la compañía": "Company hours",
+    "No encontramos esa hoja o no te toca aprobarla.": "We could not find that timesheet, or it is not yours to approve.",
+    "No se pudo aprobar esta hoja.": "This timesheet could not be approved."
 }
