@@ -320,6 +320,7 @@ window.I18N_ES = {
     'Created in Accountisi as a draft.': 'Creada en Accountisi como borrador.',
     // reports
     'Hours by project, day, week or client for any period.': 'Horas por proyecto, día, semana o cliente en cualquier período.',
+    'Hours of the projects of your clients, by project, day, week or client for any period.': 'Horas de los proyectos de tus clientes, por proyecto, día, semana o cliente en cualquier período.',
     'Group by': 'Agrupar por', 'Week': 'Semana', 'Billable': 'Facturable', 'Non-billable': 'No facturable',
     // client timesheet
     "A client's hours for a period, with a description of the work. By default only approved billable hours appear, without rates.": 'Las horas de un cliente en un período, con la descripción de lo trabajado. Por omisión solo salen las horas aprobadas y facturables, sin tarifas.',

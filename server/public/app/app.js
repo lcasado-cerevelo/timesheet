@@ -184,7 +184,7 @@ const isAp = () => S.me?.role === 'approver';
 const isStf = () => S.me?.role === 'owner' || S.me?.role === 'office';   // owner or office: the back office
 /* The approver (an outside person with an account) only has Approvals, plus My account to change the password. */
 const isIn = () => !!S.me?.internal_approver && S.me.role !== 'owner' && !isAp();   // an employee who approves hours internally
-const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' || (k === 'progress' && !!S.me.project_manager) : ROUTES[k].pm ? isStf() : ROUTES[k].mine ? !!S.me.has_commissions : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (ROUTES[k].office && S.me.role === 'office') || (k === 'approvals' && isIn()));
+const canSee = k => ROUTES[k] && (isAp() ? k === 'approvals' || k === 'account' || ((k === 'progress' || k === 'reports') && !!S.me.project_manager) : ROUTES[k].pm ? isStf() : ROUTES[k].mine ? !!S.me.has_commissions : ROUTES[k].staff ? S.me.role === 'owner' || isIn() : !ROUTES[k].owner || S.me.role === 'owner' || (ROUTES[k].office && S.me.role === 'office') || (k === 'approvals' && isIn()));
 const home = () => (isAp() ? 'approvals' : 'week');
 const roleLabel = u => (u.role === 'approver' ? 'Approver' : u.role === 'owner' ? 'Owner' : u.role === 'office' ? 'Office' : u.worker_type === 'employee' ? 'Employee' : 'Consultant');
 const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
@@ -456,15 +456,16 @@ async function weeksView() {
 async function reportsView() {
   const q = S.cache.rep || { from: addDays(today(), -30), to: today(), group: 'project' };
   S.cache.rep = q;
-  const projs = await api('/projects');
-  const r = await api(`/reports/summary?from=${q.from}&to=${q.to}&group=${q.group}${q.project_id ? '&project_id=' + q.project_id : ''}`);
-  return `<h1>Hours report</h1><p class="sub">Hours by project, day, week or client for any period.</p>
+  const pm = isAp();   // the client's project manager: all people's hours, only the projects of their clients, no export
+  const projs = await api(pm ? '/approver/progress' : '/projects');
+  const r = await api(`${pm ? '/approver' : ''}/reports/summary?from=${q.from}&to=${q.to}&group=${q.group}${q.project_id ? '&project_id=' + q.project_id : ''}`);
+  return `<h1>Hours report</h1><p class="sub">${pm ? 'Hours of the projects of your clients, by project, day, week or client for any period.' : 'Hours by project, day, week or client for any period.'}</p>
     <div class="card"><form data-form="report" class="fbar" style="margin-top:0">
     <div><label>From</label><input type="date" name="from" value="${q.from}"></div><div><label>To</label><input type="date" name="to" value="${q.to}"></div>
     <div><label>Group by</label><select name="group">${[['project', 'Project'], ['day', 'Day'], ['week', 'Week'], ['customer', 'Client']].map(([v, t]) => `<option value="${v}" ${q.group === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
     <div><label>Project</label><select name="project_id"><option value="">All</option>${projs.map(p => `<option value="${p.id}" ${Number(q.project_id) === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select></div>
     <button class="btn pri" type="submit">Show</button></form></div>
-    <div class="card"><div style="text-align:right">${exportBar('report', { from: q.from, to: q.to, group: q.group, ...(q.project_id ? { project_id: q.project_id } : {}) })}</div>
+    <div class="card">${pm ? '' : `<div style="text-align:right">${exportBar('report', { from: q.from, to: q.to, group: q.group, ...(q.project_id ? { project_id: q.project_id } : {}) })}</div>`}
     <table style="margin-top:6px"><tr><th></th><th class="r">Hours</th><th class="r">Billable</th><th class="r">Non-billable</th></tr>
     ${r.rows.map(x => `<tr><td>${esc(x.label)}</td><td class="r">${hrs(x.hours)}</td><td class="r">${hrs(x.billable_hours)}</td><td class="r">${hrs(x.non_billable_hours)}</td></tr>`).join('')}
     <tr><td><b>Total</b></td><td class="r"><b>${hrs(r.total_hours)}</b></td><td class="r"><b>${hrs(r.billable_hours)}</b></td><td></td></tr></table></div>`;

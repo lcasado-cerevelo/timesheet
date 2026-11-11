@@ -48,6 +48,7 @@ Route::middleware(['auth:sanctum', 'approver.scope'])->group(function () {
         Route::post('/sheets/{sheet}/approve', [ApproverSheetController::class, 'approve']);
         Route::post('/sheets/{sheet}/return', [ApproverSheetController::class, 'return']);
         // Gerente de proyecto: Avance de los proyectos de sus clientes (solo lectura)
+        Route::get('/reports/summary', [\App\Http\Controllers\Api\ApproverReportController::class, 'summary']);
         Route::get('/progress', [ApproverProgressController::class, 'index']);
         Route::get('/progress/{project}', [ApproverProgressController::class, 'show']);
         Route::get('/progress/{project}/export', [ApproverProgressController::class, 'export']);
