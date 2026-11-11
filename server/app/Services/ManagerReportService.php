@@ -31,7 +31,7 @@ class ManagerReportService
     public function entries(Approver $a, string $from, string $to, ?int $projectId = null): Collection
     {
         $ids = $this->progress->projectsFor($a)->pluck('id');
-        return TimeEntry::with('project.customer')->whereIn('project_id', $ids)
+        return TimeEntry::with('project.customer', 'user:id,name', 'timesheet:id,status,stage')->whereIn('project_id', $ids)
             ->when($projectId, fn ($q) => $q->where('project_id', $projectId))
             ->where('running', false)->whereBetween('work_date', [$from, $to])
             ->whereHas('timesheet', fn ($t) => $t->whereIn('status', [Timesheet::SUBMITTED, Timesheet::APPROVED])->releasedToExternal())

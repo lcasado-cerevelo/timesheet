@@ -90,34 +90,25 @@ class Datasets
 
     private function report(User $u, array $p): array
     {
-        $v = validator($p, ['from' => 'required|date_format:Y-m-d', 'to' => 'required|date_format:Y-m-d|after_or_equal:from', 'group' => 'nullable|in:project,day,week,customer', 'project_id' => 'nullable|integer'])->validate();
-        $group = $v['group'] ?? 'project';
-        if ($u->isApprover()) {
-            // El gerente de proyecto: lo mismo, pero las horas de todos en los proyectos de sus clientes.
-            $mgr = app(\App\Services\ManagerReportService::class);
-            $entries = $mgr->entries($mgr->manager($u), $v['from'], $v['to'], ! empty($v['project_id']) ? (int) $v['project_id'] : null);
-        } else {
-            $entries = TimeEntry::with('project.customer')->where('user_id', $u->id)->where('running', false)
-                ->whereBetween('work_date', [$v['from'], $v['to']])
-                ->when(! empty($v['project_id']), fn ($q) => $q->where('project_id', $v['project_id']))->get();
-        }
+        $v = validator($p, ['from' => 'required|date_format:Y-m-d', 'to' => 'required|date_format:Y-m-d|after_or_equal:from', 'group' => 'nullable|in:'.implode(',', \App\Services\HoursReportService::GROUPS),
+            'project_id' => 'nullable|integer', 'user_id' => 'nullable|integer', 'customer_id' => 'nullable|integer'])->validate();
+        $r = app(\App\Services\HoursReportService::class)->summary($u, $v);
+        $group = $r['group'];
         $projCode = ! empty($v['project_id']) ? Project::where('company_id', $u->company_id)->find($v['project_id'])?->code : null;
-        $rows = $entries->groupBy(fn ($e) => match ($group) {
-            'day' => $e->work_date->toDateString(),
-            'week' => Week::ending($e->work_date, $u->company->rules()->weekStart()),
-            'customer' => $e->project->customer?->name ?? __('(sin cliente)'),
-            default => $e->project->code.' · '.$e->project->name,
-        })->sortKeys()->map(fn ($g, $k) => [
-            $k, round((float) $g->sum('hours'), 2), round((float) $g->where('billable', true)->sum('hours'), 2), round((float) $g->where('billable', false)->sum('hours'), 2),
-        ])->values()->all();
-        $label = ['project' => __('Proyecto'), 'day' => __('Día'), 'week' => __('Semana que termina'), 'customer' => __('Cliente')][$group];
+        $personName = ! empty($v['user_id']) ? User::where('company_id', $u->company_id)->find($v['user_id'])?->name : null;
+        $customerName = ! empty($v['customer_id']) ? \App\Models\Customer::where('company_id', $u->company_id)->find($v['customer_id'])?->name : null;
+        $cols = ['hours', 'billable_hours', 'non_billable_hours', 'approved_hours', 'submitted_hours', 'returned_hours', 'draft_hours'];
+        $label = ['project' => __('Proyecto'), 'day' => __('Día'), 'week' => __('Semana que termina'), 'customer' => __('Cliente'), 'person' => __('Persona')][$group];
+        $who = $u->isStaff() || $u->isApprover() ? __('Horas de la compañía') : $u->name;
         return [
             'title' => __('Reporte de horas'),
-            'subtitle' => __(':name · :from a :to · por :group', ['name' => $u->name, 'from' => $v['from'], 'to' => $v['to'], 'group' => mb_strtolower($label)])
-                .$this->describe([$projCode ? __('proyecto :code', ['code' => $projCode]) : null]),
-            'columns' => [['h' => $label, 't' => $group === 'day' || $group === 'week' ? 'date' : 'text'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Facturables'), 't' => 'hours'], ['h' => __('No facturables'), 't' => 'hours']],
-            'rows' => $rows,
-            'total' => [__('Total'), round((float) $entries->sum('hours'), 2), round((float) $entries->where('billable', true)->sum('hours'), 2), round((float) $entries->where('billable', false)->sum('hours'), 2)],
+            'subtitle' => __(':name · :from a :to · por :group', ['name' => $who, 'from' => $v['from'], 'to' => $v['to'], 'group' => mb_strtolower($label)])
+                .$this->describe([$projCode ? __('proyecto :code', ['code' => $projCode]) : null, $personName ? __('persona :name', ['name' => $personName]) : null,
+                    $customerName ? __('cliente :name', ['name' => $customerName]) : null]),
+            'columns' => [['h' => $label, 't' => $group === 'day' || $group === 'week' ? 'date' : 'text'], ['h' => __('Horas'), 't' => 'hours'], ['h' => __('Facturables'), 't' => 'hours'],
+                ['h' => __('No facturables'), 't' => 'hours'], ['h' => __('Aprobadas'), 't' => 'hours'], ['h' => __('Enviadas'), 't' => 'hours'], ['h' => __('Devueltas'), 't' => 'hours'], ['h' => __('Borrador'), 't' => 'hours']],
+            'rows' => array_map(fn ($row) => array_merge([$row['label']], array_map(fn ($c) => $row[$c], $cols)), $r['rows']),
+            'total' => array_merge([__('Total')], array_map(fn ($c) => $r['total'][$c], $cols)),
         ];
     }
 

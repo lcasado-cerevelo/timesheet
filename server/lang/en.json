@@ -458,5 +458,9 @@
     "sin cliente (interno)": "no client (internal)",
     "Listo. Cuentas de ejemplo (la misma contraseña para todas):": "Done. Example accounts (the same password for all):",
     "Contraseña: :password": "Password: :password",
-    "Hojas por semana (semana que termina, estado, horas):": "Timesheets by week (week ending, status, hours):"
+    "Hojas por semana (semana que termina, estado, horas):": "Timesheets by week (week ending, status, hours):",
+    "Aprobadas": "Approved",
+    "Enviadas": "Sent",
+    "Devueltas": "Returned",
+    "Horas de la compañía": "Company hours"
 }

@@ -456,19 +456,28 @@ async function weeksView() {
 async function reportsView() {
   const q = S.cache.rep || { from: addDays(today(), -30), to: today(), group: 'project' };
   S.cache.rep = q;
-  const pm = isAp();   // the client's project manager: the same report, with the hours of everyone but only on the projects of their clients
-  const projs = await api(pm ? '/approver/progress' : '/projects');
-  const r = await api(`${pm ? '/approver' : ''}/reports/summary?from=${q.from}&to=${q.to}&group=${q.group}${q.project_id ? '&project_id=' + q.project_id : ''}`);
-  return `<h1>Hours report</h1><p class="sub">${pm ? 'Hours of the projects of your clients, by project, day, week or client for any period.' : 'Hours by project, day, week or client for any period.'}</p>
+  // Owner, office and the client's project manager see everyone's hours (the project manager only on the projects of their clients); the rest see their own.
+  const pm = isAp(), wide = pm || isStf();
+  let projs, people = [], customers = [];
+  if (pm) { const o = await api('/approver/client-timesheet/options'); projs = o.projects; people = o.users; customers = o.customers; }
+  else if (wide) [projs, people, customers] = await Promise.all([api('/projects'), api('/users'), api('/customers')]);
+  else projs = await api('/projects');
+  const qs = new URLSearchParams({ from: q.from, to: q.to, group: q.group, ...(q.project_id ? { project_id: q.project_id } : {}), ...(wide && q.user_id ? { user_id: q.user_id } : {}), ...(wide && q.customer_id ? { customer_id: q.customer_id } : {}) });
+  const r = await api(`${pm ? '/approver' : ''}/reports/summary?${qs}`);
+  const groups = [['project', 'Project'], ['day', 'Day'], ['week', 'Week'], ['customer', 'Client'], ...(wide ? [['person', 'Person']] : [])];
+  const t = r.total || {};
+  return `<h1>Hours report</h1><p class="sub">${wide ? 'Hours of the whole company' : 'Your hours'} by ${wide ? 'person, ' : ''}project, day, week or client for any period, split by status. Only approved hours go on the client timesheet.</p>
     <div class="card"><form data-form="report" class="fbar" style="margin-top:0">
     <div><label>From</label><input type="date" name="from" value="${q.from}"></div><div><label>To</label><input type="date" name="to" value="${q.to}"></div>
-    <div><label>Group by</label><select name="group">${[['project', 'Project'], ['day', 'Day'], ['week', 'Week'], ['customer', 'Client']].map(([v, t]) => `<option value="${v}" ${q.group === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div><label>Group by</label><select name="group">${groups.map(([v, l]) => `<option value="${v}" ${q.group === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    ${wide ? `<div><label>Person</label><select name="user_id"><option value="">All</option>${people.map(p => `<option value="${p.id}" ${Number(q.user_id) === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
+    <div><label>Client</label><select name="customer_id"><option value="">All</option>${customers.map(c => `<option value="${c.id}" ${Number(q.customer_id) === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>` : ''}
     <div><label>Project</label><select name="project_id"><option value="">All</option>${projs.map(p => `<option value="${p.id}" ${Number(q.project_id) === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select></div>
     <button class="btn pri" type="submit">Show</button></form></div>
-    <div class="card"><div style="text-align:right">${exportBar('report', { from: q.from, to: q.to, group: q.group, ...(q.project_id ? { project_id: q.project_id } : {}) })}</div>
-    <table style="margin-top:6px"><tr><th></th><th class="r">Hours</th><th class="r">Billable</th><th class="r">Non-billable</th></tr>
-    ${r.rows.map(x => `<tr><td>${esc(x.label)}</td><td class="r">${hrs(x.hours)}</td><td class="r">${hrs(x.billable_hours)}</td><td class="r">${hrs(x.non_billable_hours)}</td></tr>`).join('')}
-    <tr><td><b>Total</b></td><td class="r"><b>${hrs(r.total_hours)}</b></td><td class="r"><b>${hrs(r.billable_hours)}</b></td><td></td></tr></table></div>`;
+    <div class="card"><div style="text-align:right">${exportBar('report', { from: q.from, to: q.to, group: q.group, ...(q.project_id ? { project_id: q.project_id } : {}), ...(wide && q.user_id ? { user_id: q.user_id } : {}), ...(wide && q.customer_id ? { customer_id: q.customer_id } : {}) })}</div>
+    <div class="scroll"><table style="margin-top:6px"><tr><th></th><th class="r">Hours</th><th class="r">Billable</th><th class="r">Non-billable</th><th class="r">Approved</th><th class="r">Sent</th><th class="r">Returned</th><th class="r">Draft</th></tr>
+    ${r.rows.map(x => `<tr><td>${esc(x.label)}</td><td class="r">${hrs(x.hours)}</td><td class="r">${hrs(x.billable_hours)}</td><td class="r">${hrs(x.non_billable_hours)}</td><td class="r">${hrs(x.approved_hours)}</td><td class="r">${hrs(x.submitted_hours)}</td><td class="r">${hrs(x.returned_hours)}</td><td class="r">${hrs(x.draft_hours)}</td></tr>`).join('')}
+    <tr><td><b>Total</b></td><td class="r"><b>${hrs(t.hours ?? r.total_hours)}</b></td><td class="r"><b>${hrs(t.billable_hours ?? r.billable_hours)}</b></td><td class="r"><b>${hrs(t.non_billable_hours)}</b></td><td class="r"><b>${hrs(t.approved_hours)}</b></td><td class="r"><b>${hrs(t.submitted_hours)}</b></td><td class="r"><b>${hrs(t.returned_hours)}</b></td><td class="r"><b>${hrs(t.draft_hours)}</b></td></tr></table></div></div>`;
 }
 
 /* --- Approvals (owner): list on the left, the selected timesheet on the right --- */
