@@ -1371,7 +1371,7 @@ async function reviewScreen() {
       ${aprNotes(d?.entries, d || sel)}${solo ? acts : ''}</div>`;
   };
   // Several timesheets ticked (pending list): all of them are stacked on the right, with one Approve button and one password for the lot.
-  const pickable = s => s.bucket === 'pending' && (s.status === 'submitted' || s.status === 'pending') && (ap ? !s.needs_code : inn ? true : s.can_approve === true);   // in any tab: Pending or All
+  const pickable = s => pend && (s.status === 'submitted' || s.status === 'pending') && (ap ? !s.needs_code : inn ? true : s.can_approve === true);
   const picked = (S.cache.rvSel || []).filter(id => sheets.some(s => s.id === id && pickable(s)));
   S.cache.rvSel = picked;
   // The right side loads on its own: the tick and the list answer at once, and the details fill in when they arrive (right away if already loaded).
@@ -1473,7 +1473,7 @@ Object.assign(actions, {
     S.cache.rvSel = [...set]; S.cache.rvQuick = true; render();
   },
   'rv-all'(el) {
-    const ids = (S.cache.rvSheets || []).filter(s => s.bucket === 'pending' && (s.status === 'submitted' || s.status === 'pending') && (isAp() ? !s.needs_code : isIn() ? true : s.can_approve === true)).map(s => s.id);
+    const ids = (S.cache.rvSheets || []).filter(s => (s.status === 'submitted' || s.status === 'pending') && (isAp() ? !s.needs_code : isIn() ? true : s.can_approve === true)).map(s => s.id);
     S.cache.rvSel = el.checked ? ids.slice(0, 25) : []; S.cache.rvQuick = true; render();
   },
   'rv-clear'() { S.cache.rvSel = []; S.cache.rvQuick = true; render(); },
