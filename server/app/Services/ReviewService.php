@@ -76,7 +76,8 @@ class ReviewService
         };
 
         return [
-            'sheets' => $pick->values()->map($present)->values()->all(),
+            // bucket: en qué estado cae cada hoja para quien mira (la web pide todo de una vez y cambia de estado y de fechas sin volver a pedir).
+            'sheets' => $pick->values()->map(fn (Timesheet $s) => $present($s) + ['bucket' => $is($s, 'pending') ? 'pending' : ($is($s, 'approved') ? 'approved' : 'returned')])->values()->all(),
             'counts' => [
                 'pending' => $pending->count(),
                 'approved' => $approved->count(),

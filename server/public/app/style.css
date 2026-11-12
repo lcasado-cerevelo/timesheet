@@ -185,3 +185,9 @@ body.mdl-open{overflow:hidden}
 .hist{margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:13px}
 .hist .hl{padding:3px 0}.hist .hc{margin:2px 0 4px 0;padding:6px 10px;border-left:3px solid var(--danger);background:#fdecea;border-radius:4px;white-space:pre-wrap}
 .cmt{cursor:pointer;margin-left:4px}
+/* The server is working: a moving bar at the top and the wait cursor; the control that was clicked dims until it answers */
+#busybar{position:fixed;top:0;left:0;right:0;height:3px;z-index:9999;background:linear-gradient(90deg,transparent,var(--primary,#1f4e79),transparent);background-size:40% 100%;background-repeat:no-repeat;animation:busybar 1s linear infinite}
+#busybar[hidden]{display:none}@keyframes busybar{from{background-position:-40% 0}to{background-position:140% 0}}
+html.busy,html.busy *{cursor:progress}.working{opacity:.6}
+/* A scrolling table never sits beside the export buttons (they float right): it always starts below them */
+.scroll,.scrollx,.revscroll{clear:both}

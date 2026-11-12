@@ -49,13 +49,23 @@ const pill = (text, color = 'gray') => `<span class="bd ${color}">${esc(text)}</
 const accountPill = s => ({ pending: pill('Invited', 'amber'), active: pill('Active', 'green'), disabled: pill('Disabled', 'red') }[s] || pill('None'));
 const activePill = on => (on ? pill('Active', 'green') : pill('Inactive'));
 
+/* Something is always seen while the server works: a moving bar at the top of the page (after 150 ms, so quick answers do not flicker) and the wait cursor. */
+let BUSY = 0, BUSYT = null;
+function busy(d) {
+  BUSY = Math.max(0, BUSY + d);
+  let bar = document.getElementById('busybar');
+  if (!bar) { bar = document.createElement('div'); bar.id = 'busybar'; bar.hidden = true; bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-label', T('Loading…')); document.body.appendChild(bar); }
+  if (BUSY > 0) { BUSYT ??= setTimeout(() => { bar.hidden = false; document.documentElement.classList.add('busy'); }, 150); }
+  else { clearTimeout(BUSYT); BUSYT = null; bar.hidden = true; document.documentElement.classList.remove('busy'); }
+}
 async function api(path, o = {}) {
   const headers = { Accept: 'application/json', 'X-Locale': LANG() };
   if (S.token && !o.anon) headers.Authorization = 'Bearer ' + S.token;
   let body;
   if (o.body instanceof FormData) body = o.body;
   else if (o.body !== undefined) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(o.body); }
-  const r = await fetch(BASE + '/api' + path, { method: o.method || 'GET', headers, body });
+  busy(1);
+  let r; try { r = await fetch(BASE + '/api' + path, { method: o.method || 'GET', headers, body }); } finally { busy(-1); }
   if (o.blob) { if (!r.ok) throw new Error('The file could not be downloaded'); return r; }
   const data = await r.json().catch(() => ({}));
   if (r.status === 401 && S.token && !o.anon) { logout('Your session expired. Sign in again.'); throw new Error('Session expired'); }
@@ -475,7 +485,7 @@ async function reportsView() {
     <div><label>Project</label><select name="project_id"><option value="">All</option>${projs.map(p => `<option value="${p.id}" ${Number(q.project_id) === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select></div>
     <button class="btn pri" type="submit">Show</button></form></div>
     <div class="card"><div style="text-align:right">${exportBar('report', { from: q.from, to: q.to, group: q.group, ...(q.project_id ? { project_id: q.project_id } : {}), ...(wide && q.user_id ? { user_id: q.user_id } : {}), ...(wide && q.customer_id ? { customer_id: q.customer_id } : {}) })}</div>
-    <div class="scroll"><table style="margin-top:6px"><tr><th></th><th class="r">Hours</th><th class="r">Billable</th><th class="r">Non-billable</th><th class="r">Approved</th><th class="r">Sent</th><th class="r">Returned</th><th class="r">Draft</th></tr>
+    <div class="scroll" style="clear:both"><table style="margin-top:6px"><tr><th></th><th class="r">Hours</th><th class="r">Billable</th><th class="r">Non-billable</th><th class="r">Approved</th><th class="r">Sent</th><th class="r">Returned</th><th class="r">Draft</th></tr>
     ${r.rows.map(x => `<tr><td>${esc(x.label)}</td><td class="r">${hrs(x.hours)}</td><td class="r">${hrs(x.billable_hours)}</td><td class="r">${hrs(x.non_billable_hours)}</td><td class="r">${hrs(x.approved_hours)}</td><td class="r">${hrs(x.submitted_hours)}</td><td class="r">${hrs(x.returned_hours)}</td><td class="r">${hrs(x.draft_hours)}</td></tr>`).join('')}
     <tr><td><b>Total</b></td><td class="r"><b>${hrs(t.hours ?? r.total_hours)}</b></td><td class="r"><b>${hrs(t.billable_hours ?? r.billable_hours)}</b></td><td class="r"><b>${hrs(t.non_billable_hours)}</b></td><td class="r"><b>${hrs(t.approved_hours)}</b></td><td class="r"><b>${hrs(t.submitted_hours)}</b></td><td class="r"><b>${hrs(t.returned_hours)}</b></td><td class="r"><b>${hrs(t.draft_hours)}</b></td></tr></table></div></div>`;
 }
@@ -1285,18 +1295,16 @@ async function peopleScreen() {
 }
 /* Approvals (owner and approver see the same screen): status pills with counts, filters, list on the left, the selected timesheet on the right. */
 function rvState() {
-  const R = (S.cache.rv ??= { status: 'pending', q: '', type: '', client: '', period: 'all', from: '', to: '', proj: [], svc: [], task: [] });
+  const R = (S.cache.rv ??= { status: 'pending', q: '', type: '', client: '', period: '4w', from: '', to: '', proj: [], svc: [], task: [] });
   R.proj ??= []; R.svc ??= []; R.task ??= [];
   if (R.period === '4w') { R.from = addDays(today(), -28); R.to = ''; } else if (R.period === '3m') { R.from = addDays(today(), -91); R.to = ''; } else if (R.period === 'all') { R.from = ''; R.to = ''; }
   return R;
 }
 async function reviewScreen() {
   const ap = isAp(), inn = isIn(); const R = rvState(); const pend = R.status === 'pending';
-  if (R.status === 'progress' && isStf()) return progressScreen(R);
-  const qs = new URLSearchParams({ status: R.status });
-  if (R.q.trim()) qs.set('q', R.q.trim());
-  if (R.type) qs.set('type', R.type);
-  if (R.from) qs.set('from', R.from); if (R.to) qs.set('to', R.to);   // the filters apply to every status alike
+  if (R.status === 'progress' && isStf()) { S.cache.rvQuick = false; return progressScreen(R); }
+  // One request brings every timesheet; the status, the dates, the person and the type are applied right here, so changing them is instant.
+  const qs = new URLSearchParams({ status: 'all' });
   if (R.proj.length) qs.set('project_ids', R.proj.join(','));
   if (R.svc.length) qs.set('service_ids', R.svc.join(','));
   if (R.task.length) qs.set('task_ids', R.task.join(','));
@@ -1306,7 +1314,14 @@ async function reviewScreen() {
   let mem = S.cache.rvMem;
   if (!quick || !mem || mem.key !== memKey) mem = S.cache.rvMem = { key: memKey, res: await api((ap ? '/approver/review?' : inn ? '/internal/review?' : '/review/sheets?') + qs.toString()), det: {}, dd: {} };
   const res = mem.res;
-  const sheets = res.sheets || [], cnt = res.counts || {}; S.cache.rvSheets = sheets;
+  const every = (res.sheets || []).filter(s => matchQ(R.q, [s.user?.name ?? s.name ?? s.worker_name ?? '']) && (!R.type || s.worker_type === R.type)
+    && (!R.from || String(s.week_ending) >= R.from) && (!R.to || String(s.week_ending) <= R.to));
+  const cnt = { pending: 0, approved: 0, returned: 0, all: every.length }; for (const s of every) cnt[s.bucket] = (cnt[s.bucket] || 0) + 1;
+  const stamp = (s, k) => String(s[k] || ''), byDecided = (a, b) => stamp(b, 'decided_at').localeCompare(stamp(a, 'decided_at')), bySent = (a, b) => stamp(a, 'submitted_at').localeCompare(stamp(b, 'submitted_at')) || a.id - b.id;
+  const sheets = R.status === 'pending' ? every.filter(s => s.bucket === 'pending').sort(bySent) : R.status === 'approved' ? every.filter(s => s.bucket === 'approved').sort(byDecided)
+    : R.status === 'returned' ? every.filter(s => s.bucket === 'returned').sort(byDecided)
+    : [...every.filter(s => s.bucket === 'pending').sort(bySent), ...every.filter(s => s.bucket !== 'pending').sort((a, b) => String(b.week_ending).localeCompare(String(a.week_ending)) || b.id - a.id)];
+  S.cache.rvSheets = sheets;
   // Project, service and task filters: services and tasks follow the projects chosen; a choice that no longer applies is dropped.
   const opt = res.options || { projects: [], services: [], tasks: [] };
   const svcOpts = opt.services.filter(x => !R.proj.length || R.proj.includes(x.project_id)), taskOpts = opt.tasks.filter(x => !R.proj.length || R.proj.includes(x.project_id));
@@ -1450,7 +1465,7 @@ document.addEventListener('mselchange', e => {
   clearTimeout(rvTimer); rvTimer = setTimeout(() => { S.cache.apSel = null; render(); }, 700);
 });
 Object.assign(actions, {
-  'rv-status'(el) { rvState().status = el.dataset.s; S.cache.apSel = null; render(); },
+  'rv-status'(el) { rvState().status = el.dataset.s; S.cache.apSel = null; S.cache.rvSel = []; S.cache.rvQuick = true; render(); },
   'rv-pick'(el) { S.cache.apSel = Number(el.dataset.id); S.cache.rvSel = []; S.cache.rvQuick = true; render(); },
   'rv-check'(el) {
     const id = Number(el.dataset.id); const set = new Set(S.cache.rvSel || []);
@@ -1476,11 +1491,11 @@ Object.assign(actions, {
     modalOpen({ title: 'Returned for correction', sub: `${x.user?.name ?? x.name ?? ''} · ${T('Week ending').toLowerCase()} ${nice(x.week_ending)}`, size: 'sm', save: 'Close',
       body: `<div class="msg err" style="white-space:pre-wrap">${esc(x.return_comment || '')}</div>${x.return_by ? `<p class="muted" style="margin:8px 0 0">${T('Returned by')} ${esc(x.return_by)}</p>` : ''}`, async onSubmit(mm) { mm.close(true); } });
   },
-  'rv-period'(el) { if (el.disabled) return; rvState().period = el.dataset.p; render(); },
+  'rv-period'(el) { if (el.disabled) return; rvState().period = el.dataset.p; S.cache.rvQuick = true; render(); },
 });
 document.addEventListener('change', e => {
   const rv = e.target.closest('[data-rv]');
-  if (rv) { const R = rvState(); R[rv.dataset.rv] = rv.value; if (rv.dataset.rv === 'from' || rv.dataset.rv === 'to') R.period = ''; S.cache.apSel = null; render(); return; }
+  if (rv) { const R = rvState(); R[rv.dataset.rv] = rv.value; if (rv.dataset.rv === 'from' || rv.dataset.rv === 'to') R.period = ''; S.cache.apSel = null; S.cache.rvQuick = true; render(); return; }
   const role = e.target.closest('[data-pp-role]');
   if (role) { const w = role.closest('form').querySelector('[data-pp-wt]'); if (w) w.hidden = role.value !== 'worker'; return; }
   const b = e.target.closest('[data-bill]');
@@ -2529,7 +2544,7 @@ document.addEventListener('change', e => { const el = e.target.closest('[data-ac
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="wk-pick"]'); if (el) { S.weekDate = el.value; render(); } });
 document.addEventListener('change', e => { const el = e.target.closest('[data-act-change="exp-refresh"]'); if (el) { const f = el.closest('form'); const o = formObj(f); S.cache.exp = { ...o, picked: ['customer_id', 'from', 'to', 'user_id'].includes(el.name) ? null : (o.project_ids || null) }; render(); } });
 document.addEventListener('change', e => { const el = e.target.closest('[data-filter]'); if (el) { FL(el.dataset.filter)[el.name] = el.value; render(); } });
-document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (el && actions[el.dataset.act]) { e.preventDefault(); guard(actions[el.dataset.act])(el); } });
+document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (el && actions[el.dataset.act]) { e.preventDefault(); el.classList.add('working'); Promise.resolve(guard(actions[el.dataset.act])(el)).finally(() => el.classList.remove('working')); } });
 document.addEventListener('submit', e => { const f = e.target.closest('form[data-form]'); if (f && forms[f.dataset.form]) { e.preventDefault(); guard(forms[f.dataset.form])(f); } });
 /* Password fields: the eye button never takes the focus away from the input; Caps Lock notice; strength bar. */
 document.addEventListener('mousedown', e => { if (e.target.closest('.eye')) e.preventDefault(); });
