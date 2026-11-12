@@ -132,18 +132,23 @@ class ApprovalService
         $sheet->loadMissing('user', 'company');
         // La persona que trabaja recibe el correo en su propio idioma.
         $lang = $sheet->user->lang();
-        Lang::with($lang, function () use ($sheet, $decision, $lang, $by) {
-            $week = $sheet->weekLabel();
-            Mail::to($sheet->user->email, $sheet->user->name)->locale($lang)->send(new BrandedMail(
-                $sheet->company,
-                $decision === 'approved'
-                    ? __('Hoja aprobada: semana :week', ['week' => $week])
-                    : __('Hoja devuelta para corregir: semana :week', ['week' => $week]),
-                'mail.sheet-decision',
-                ['decision' => $decision, 'week' => $week, 'comment' => $sheet->return_comment,
-                 'name' => $sheet->user->name, 'by' => $by]
-            ));
-        });
+        // La decisión ya quedó guardada y firmada: si el correo de aviso falla, se anota en el registro y la decisión no se cae con él.
+        try {
+            Lang::with($lang, function () use ($sheet, $decision, $lang, $by) {
+                $week = $sheet->weekLabel();
+                Mail::to($sheet->user->email, $sheet->user->name)->locale($lang)->send(new BrandedMail(
+                    $sheet->company,
+                    $decision === 'approved'
+                        ? __('Hoja aprobada: semana :week', ['week' => $week])
+                        : __('Hoja devuelta para corregir: semana :week', ['week' => $week]),
+                    'mail.sheet-decision',
+                    ['decision' => $decision, 'week' => $week, 'comment' => $sheet->return_comment,
+                     'name' => $sheet->user->name, 'by' => $by]
+                ));
+            });
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     public function sendCode(ApprovalToken $token): void

@@ -115,4 +115,18 @@ class BatchApprovalTest extends TestCase
         $this->assertSame(Timesheet::APPROVED, $a->fresh()->status);
         $this->assertSame(Timesheet::APPROVED, $b->fresh()->status);
     }
+
+    public function test_a_failing_notice_email_does_not_break_an_approval_already_saved(): void
+    {
+        $a = $this->sent('2026-10-20');
+        Sanctum::actingAs($this->sara);
+        $this->postJson('/api/internal/sheets/approve-many', ['sheets' => $this->items($a), 'signature' => 'secret-password'])->assertOk();
+        $this->approver->update(['can_login' => true, 'require_code' => false]);
+        $jorge = User::create(['company_id' => $this->company->id, 'name' => 'Jorge Ramos', 'email' => 'jorge@cliente.test', 'password' => 'secret-password',
+            'role' => 'approver', 'approver_profile_id' => $this->approver->id]);
+        Mail::shouldReceive('to')->andThrow(new \RuntimeException('el servidor de correo no responde'));
+        Sanctum::actingAs($jorge);
+        $this->postJson('/api/approver/sheets/'.$a->id.'/approve', ['version' => (int) $a->fresh()->version, 'signature' => 'secret-password'])->assertOk()->assertJsonPath('status', 'approved');
+        $this->assertSame(Timesheet::APPROVED, $a->fresh()->status);
+    }
 }
