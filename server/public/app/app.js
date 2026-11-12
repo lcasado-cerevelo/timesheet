@@ -1374,7 +1374,7 @@ async function reviewScreen() {
       const hours = chosen.reduce((a, s) => a + Number(s.total_hours || 0), 0);
       return `<div class="r"><div class="card" style="position:sticky;top:8px;z-index:2"><h2 style="margin:0 0 6px">${T('Approve')} ${picked.length} ${T('timesheets')} · ${h1(hours)} h</h2>
       <p class="note" style="margin:0 0 10px">${T('One password signs all of them; each timesheet keeps its own signature and history. To return one with a comment, pick it alone.')}</p>
-      ${sigField()}<div class="decided"><button class="btn" data-act="rv-approve-many">${T('Approve')} ${picked.length} ${T('timesheets')}</button> <button class="btn ghost" data-act="rv-clear">${T('Clear selection')}</button></div></div>${panels.join('')}</div>`;
+      <div style="display:flex;flex-direction:column;gap:12px">${sigField()}<div class="decided"><button class="btn" data-act="rv-approve-many">${T('Approve')} ${picked.length} ${T('timesheets')}</button> <button class="btn ghost" data-act="rv-clear">${T('Clear selection')}</button></div></div></div>${panels.join('')}</div>`;
     }
     const one = picked.length === 1 ? sheets.find(s => s.id === picked[0]) : sel;
     return one ? buildDetail(one) : `<div class="card r"><div class="empty">${T('Pick a timesheet, or tick several, to see them here.')}</div></div>`;
