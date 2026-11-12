@@ -1285,7 +1285,7 @@ async function peopleScreen() {
 }
 /* Approvals (owner and approver see the same screen): status pills with counts, filters, list on the left, the selected timesheet on the right. */
 function rvState() {
-  const R = (S.cache.rv ??= { status: 'pending', q: '', type: '', client: '', period: '4w', from: '', to: '', proj: [], svc: [], task: [] });
+  const R = (S.cache.rv ??= { status: 'pending', q: '', type: '', client: '', period: 'all', from: '', to: '', proj: [], svc: [], task: [] });
   R.proj ??= []; R.svc ??= []; R.task ??= [];
   if (R.period === '4w') { R.from = addDays(today(), -28); R.to = ''; } else if (R.period === '3m') { R.from = addDays(today(), -91); R.to = ''; } else if (R.period === 'all') { R.from = ''; R.to = ''; }
   return R;
@@ -1296,7 +1296,7 @@ async function reviewScreen() {
   const qs = new URLSearchParams({ status: R.status });
   if (R.q.trim()) qs.set('q', R.q.trim());
   if (R.type) qs.set('type', R.type);
-  if (!pend) { if (R.from) qs.set('from', R.from); if (R.to) qs.set('to', R.to); }
+  if (R.from) qs.set('from', R.from); if (R.to) qs.set('to', R.to);   // the filters apply to every status alike
   if (R.proj.length) qs.set('project_ids', R.proj.join(','));
   if (R.svc.length) qs.set('service_ids', R.svc.join(','));
   if (R.task.length) qs.set('task_ids', R.task.join(','));
@@ -1390,22 +1390,23 @@ async function reviewScreen() {
     setTimeout(async () => { const html = await compose(); const el = document.getElementById('rv-right'); if (el && S.cache.rvTk === tk) el.outerHTML = html; }, 0);
   }
   const pillBtn = ([k, l]) => `<button type="button" class="pill ${k === R.status ? 'on' : ''}" aria-pressed="${k === R.status}" data-act="rv-status" data-s="${k}">${l}${k === 'progress' ? '' : ` (${cnt[k] ?? 0})`}</button>`;
-  const per = ([k, l]) => `<button type="button" class="pill ${R.period === k ? 'on' : ''}" data-act="rv-period" data-p="${k}" ${pend ? 'disabled' : ''}>${l}</button>`;
+  const per = ([k, l]) => `<button type="button" class="pill ${R.period === k ? 'on' : ''}" data-act="rv-period" data-p="${k}">${l}</button>`;
   const rows = sheets.map(s => `<div class="rvrow">${pickable(s) ? `<input type="checkbox" class="rvchk" data-act="rv-check" data-id="${s.id}" aria-label="${esc(T('Select'))}" ${picked.includes(s.id) ? 'checked' : ''}>` : '<span class="rvchk"></span>'}<button type="button" class="rowbtn cols-rev ${(picked.length ? picked.includes(s.id) : sel && s.id === sel.id) ? 'sel' : ''}" data-act="rv-pick" data-id="${s.id}"><span><span style="font-weight:500">${esc(nameOf(s))}</span>${s.late ? ' <span class="bd amber">Late</span>' : ''}</span>
     <span>${wkWeekCell(s)}</span><span>${typeName(s)}</span><span>${esc(projOf(s))}</span><span class="mono" style="text-align:right">${h1(s.total_hours)}</span><span>${pill(stOf(s), stColor[s.status] || 'gray')}${s.status === 'returned' && s.return_comment ? ` <span class="cmt" role="button" tabindex="0" data-act="rv-reason" data-id="${s.id}" title="${esc(T('See the reason'))}" aria-label="${esc(T('See the reason'))}">💬</span>` : ''}</span></button></div>`).join('');
   return `<div class="pp"><div><h1>Approvals</h1><p class="sub">${inn ? 'These are hours waiting for your approval. After you approve, they go to the external approver.' : 'Approving replaces the manager signature. Weeks filled in after the deadline are flagged as late.'}</p></div>
-    <div class="twin"><div class="card l"><div class="pillrow" style="margin-bottom:12px">${[['pending', 'Pending'], ['approved', 'Approved'], ['returned', 'Returned'], ['all', 'All'], ...(isStf() ? [['progress', 'In progress']] : [])].map(pillBtn).join('')}</div>
+    <div class="twin"><div class="card l">
       <div class="fpanel"><label class="flbl" style="flex:1 1 160px">Search person<input type="search" data-rv="q" placeholder="Name" value="${esc(R.q)}"></label>
       <label class="flbl" style="flex:1 1 140px">Type<select data-rv="type">${optHtml('', 'All types', R.type)}${optHtml('employee', 'Employees', R.type)}${optHtml('consultant', 'Contractors', R.type)}</select></label>
-      <label class="flbl" style="flex:1 1 150px">Week ending from<input type="date" data-rv="from" ${pend ? 'disabled' : ''} value="${esc(R.from)}"></label>
-      <label class="flbl" style="flex:1 1 150px">to<input type="date" data-rv="to" ${pend ? 'disabled' : ''} value="${esc(R.to)}"></label>
+      <label class="flbl" style="flex:1 1 150px">Week ending from<input type="date" data-rv="from" value="${esc(R.from)}"></label>
+      <label class="flbl" style="flex:1 1 150px">to<input type="date" data-rv="to" value="${esc(R.to)}"></label>
       <div class="frow3">${msf('proj', 'Project', 'Search project', opt.projects, R.proj)}${msf('svc', 'Service', 'Search service', svcOpts, R.svc)}${msf('task', 'Task', 'Search task', taskOpts, R.task)}</div>
-      <div style="flex:1 1 100%;text-align:right">${exportBar('sheets', { from: pend || !R.from ? addDays(today(), -365) : R.from, to: pend || !R.to ? today() : R.to, ...(R.q ? { q: R.q } : {}), ...(R.proj.length ? { project_ids: R.proj.join(',') } : {}), ...(R.svc.length ? { service_ids: R.svc.join(',') } : {}), ...(R.task.length ? { task_ids: R.task.join(',') } : {}), ...({ pending: { status: 'submitted' }, approved: { status: 'approved' }, returned: { status: 'returned' } }[R.status] || {}) })}</div>
+      <div style="flex:1 1 100%;text-align:right">${exportBar('sheets', { from: !R.from ? addDays(today(), -365) : R.from, to: !R.to ? today() : R.to, ...(R.q ? { q: R.q } : {}), ...(R.proj.length ? { project_ids: R.proj.join(',') } : {}), ...(R.svc.length ? { service_ids: R.svc.join(',') } : {}), ...(R.task.length ? { task_ids: R.task.join(',') } : {}), ...({ pending: { status: 'submitted' }, approved: { status: 'approved' }, returned: { status: 'returned' } }[R.status] || {}) })}</div>
       <div class="pillrow" style="flex:1 1 100%"><span class="note">Quick period:</span>${[['4w', 'Last 4 weeks'], ['3m', 'Last 3 months'], ['all', 'All time']].map(per).join('')}</div></div>
-      <p class="note" style="margin:0 0 8px">Pending always shows everything waiting for you, whatever the dates. The period applies to Approved, Returned and All.</p>
+      <p class="note" style="margin:0 0 6px">${T('The filters above apply to every status; the numbers show what each one has with those filters.')}</p>
+      <div class="pillrow" style="margin-bottom:12px">${[['pending', 'Pending'], ['approved', 'Approved'], ['returned', 'Returned'], ['all', 'All'], ...(isStf() ? [['progress', 'In progress']] : [])].map(pillBtn).join('')}</div>
       ${sheets.some(pickable) ? `<p class="note" style="margin:0 0 8px"><label class="chk"><input type="checkbox" data-act="rv-all" ${sheets.filter(pickable).every(s => picked.includes(s.id)) ? 'checked' : ''}> ${T('Select all')} (${sheets.filter(pickable).length}) · ${T('tick several to approve them together, up to')} 25</label></p>` : ''}
       <div class="revscroll"><div style="min-width:620px"><div class="hd cols-rev" style="padding:0 8px 8px 34px"><div class="th">Person</div><div class="th">Week ending</div><div class="th">Type</div><div class="th">Project</div><div class="th r">Hours</div><div class="th">Status</div></div>
-      ${rows || `<div class="empty">${pend && !R.q && !R.type ? 'Nothing is waiting for approval.' : 'No timesheet matches the filter.'}</div>`}</div></div></div>${detail}</div></div>`;
+      ${rows || `<div class="empty">${pend && !R.q && !R.type && !R.from && !R.to ? 'Nothing is waiting for approval.' : 'No timesheet matches the filter.'}</div>`}</div></div></div>${detail}</div></div>`;
 }
 /* A comment is typed: this is a return, so Approve is disabled until the comment is cleared (no wrong button by mistake). */
 document.addEventListener('input', e => {

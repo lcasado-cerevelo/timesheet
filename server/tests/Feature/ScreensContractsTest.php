@@ -219,7 +219,7 @@ class ScreensContractsTest extends TestCase
         return $s;
     }
 
-    public function test_review_lists_filter_and_count_with_the_pending_always_rule(): void
+    public function test_review_lists_filter_and_count_with_the_same_filters_for_every_status(): void
     {
         $this->world();
         $emp = $this->employee();
@@ -240,17 +240,22 @@ class ScreensContractsTest extends TestCase
         $this->assertSame('E-77', $r->json('sheets.1.employee_number'));
         $this->assertSame('Jorge Ramos', $r->json('sheets.0.approver.name'));
 
-        // Periodo: pendiente sigue completo; aprobadas/devueltas/todas se recortan; en Todas lo pendiente se queda.
+        // Periodo: aplica a todos los estados por igual (también a lo pendiente), y los conteos salen de los mismos filtros.
         $q = '?from=2026-10-01&to=2026-10-31';
         $r = $this->getJson('/api/review/sheets'.$q)->assertOk();
-        $this->assertSame(['pending' => 2, 'approved' => 1, 'returned' => 1, 'all' => 4], $r->json('counts'));
-        $this->assertCount(2, $r->json('sheets'));
+        $this->assertSame(['pending' => 1, 'approved' => 1, 'returned' => 1, 'all' => 3], $r->json('counts'));
+        $this->assertSame([$p2->id], collect($r->json('sheets'))->pluck('id')->all());
         $this->assertSame([$ap->id], collect($this->getJson('/api/review/sheets'.$q.'&status=approved')->json('sheets'))->pluck('id')->all());
         $this->assertSame([$ret->id], collect($this->getJson('/api/review/sheets'.$q.'&status=returned')->json('sheets'))->pluck('id')->all());
         $all = collect($this->getJson('/api/review/sheets'.$q.'&status=all')->json('sheets'))->pluck('id')->all();
-        $this->assertEqualsCanonicalizing([$old->id, $p2->id, $ap->id, $ret->id], $all);
-        $this->assertSame([$old->id, $p2->id], array_slice($all, 0, 2));
+        $this->assertEqualsCanonicalizing([$p2->id, $ap->id, $ret->id], $all);
         $this->assertNotContains($ap2->id, $all);
+        $this->assertNotContains($old->id, $all);
+        // El número de cada estado es lo que se ve al entrar en él, con cualquier estado escogido.
+        foreach (['pending', 'approved', 'returned', 'all'] as $st) {
+            $x = $this->getJson('/api/review/sheets'.$q.'&status='.$st)->json();
+            $this->assertCount($x['counts'][$st], $x['sheets']);
+        }
 
         // q (sin tildes) y type recortan también los conteos, sin tocar status.
         $r = $this->getJson('/api/review/sheets?q=rios&status=returned')->assertOk();

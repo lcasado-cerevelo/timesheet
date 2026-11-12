@@ -19,6 +19,7 @@
     'week ending': 'semana que termina el', 'weeks': 'semanas', 'week': 'semana', 'approved by': 'aprobada por', 'waiting for': 'esperando a', 'today': 'hoy', 'yesterday': 'ayer',
     'Approvals and signatures': 'Aprobaciones y firmas', 'Internal': 'Interno', 'External': 'Externo',
     'Pick a timesheet, or tick several, to see them here.': 'Escoge una hoja, o marca varias, para verlas aquí.',
+    'The filters above apply to every status; the numbers show what each one has with those filters.': 'Los filtros de arriba aplican a todos los estados; los números muestran lo que tiene cada uno con esos filtros.',
     'You cannot change your own role.': 'No puedes cambiar tu propio rol.',
     'Office sees everything and approves as an internal approver, but cannot change rules, people or rates.': 'La oficina ve todo y aprueba como aprobador interno, pero no cambia reglas, personas ni tarifas.', 'Send invitation': 'Enviar invitación',
     'All roles': 'Todos los roles', 'Users': 'Usuarios', 'Email': 'Correo', 'ID number': 'Número de ID', '2-step': '2 pasos',

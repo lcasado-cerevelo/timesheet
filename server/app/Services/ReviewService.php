@@ -8,9 +8,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 
 /**
- * Listas de revisión (aprobaciones) con filtros y conteos. Regla del diseño: "Pendientes" muestra siempre todo
- * lo que espera, sin importar las fechas; el periodo aplica a Aprobadas, Devueltas y Todas (en Todas, lo pendiente
- * se queda visible aunque caiga fuera del periodo).
+ * Listas de revisión (aprobaciones) con filtros y conteos. Los filtros (persona, tipo, fechas, proyecto, servicio y tarea) aplican a todos
+ * los estados por igual, y los conteos de cada estado salen de esos mismos filtros: lo que dice el número es lo que se ve al entrar.
+ * Sin fechas (lo normal al abrir la pantalla) no se esconde nada pendiente.
  */
 class ReviewService
 {
@@ -63,7 +63,7 @@ class ReviewService
             ? fn (Timesheet $s, string $k) => $classify($s) === $k
             : fn (Timesheet $s, string $k) => $s->status === self::STATUS[$k];
 
-        $pending = $all->filter(fn ($s) => $is($s, 'pending'));
+        $pending = $all->filter(fn ($s) => $is($s, 'pending') && $inPeriod($s));
         $approved = $all->filter(fn ($s) => $is($s, 'approved') && $inPeriod($s));
         $returned = $all->filter(fn ($s) => $is($s, 'returned') && $inPeriod($s));
 
