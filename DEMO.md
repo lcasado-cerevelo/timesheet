@@ -54,13 +54,13 @@ Con `DEMO_MODE=false` (lo normal) todo funciona exactamente como siempre.
 9. **Entra** a `https://timesheet-demo.cerevelo.com/app/` y entra con uno de los tres correos y la contraseña de la demo.
 
 ## Cuentas de ejemplo
-Son tres, y **las tres entran con la misma contraseña**. No hay botones «Entrar como …»: cada persona escribe su correo y la contraseña que se le dé. La contraseña es la de `DEMO_PASSWORD` en el `.env` de la demo (si no se pone ninguna, la de ejemplo `Demo-Timesheet#2026`). Después de sembrar, `tiempo:demo` escribe en su salida los tres correos y la contraseña.
+Son seis, y **todas entran con la misma contraseña**. No hay botones «Entrar como …»: cada persona escribe su correo y la contraseña que se le dé. La contraseña es la de `DEMO_PASSWORD` en el `.env` de la demo (si no se pone ninguna, la de ejemplo `Demo-Timesheet#2026`). Después de sembrar, `tiempo:demo` escribe en su salida los tres correos y la contraseña.
 
 | Persona | Cuenta |
 |---|---|
 | Dueño (aprueba por dentro) | `lcasado@cerevelo.com` (Luis Casado) |
 | Consultor | `jrodriguez@cerevelo.com` (Jarvis Rodriguez, $15/h, retención 10 %) |
-| Aprobadora del cliente y gerente de proyecto | `kfigueroa@amsipr.com` (Ketsy Figueroa: aprueba y ve «Avance») |
+| Aprobadores del cliente y gerentes de proyecto (basta que apruebe uno) | `kfigueroa@amsipr.com` (Ketsy Figueroa), `jpereira@amsipr.com` (Jose Pereira), `vcolon@amsipr.com` (Vivian Colon), `msolivan@amsipr.com` (Maribel Solivan): aprueban y ven «Avance» y «Reportes» |
 
 ## Qué datos trae
 - Un cliente (AMSI) y un proyecto, **AMSI PITS Upgrade**, con cinco servicios (General, Testing, Design, Development, Implementation) a $125 por total de horas del día, con **aprobación interna (Luis) y del cliente (Ketsy)**, y cuatro tareas con presupuesto y fecha estimada.

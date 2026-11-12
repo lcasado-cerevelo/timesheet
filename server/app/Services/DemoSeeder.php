@@ -278,6 +278,10 @@ class DemoSeeder
         $this->customers['AMSI'] = Customer::create(['company_id' => $cid, 'name' => 'AMSI', 'email' => 'amsi@cliente.demo']);
         // Solo estas tres personas: la aprobadora del cliente (gerente de proyecto), el dueño (que aprueba por dentro) y el consultor.
         $this->approver('elena', 'Ketsy Figueroa', 'kfigueroa@amsipr.com', ['AMSI'], true, true);
+        // Otras tres personas del cliente con la misma cuenta que Ketsy: aprueban (basta una) y ven Avance y Reportes.
+        $this->approver('jose', 'Jose Pereira', 'jpereira@amsipr.com', ['AMSI'], true, true);
+        $this->approver('vivian', 'Vivian Colon', 'vcolon@amsipr.com', ['AMSI'], true, true);
+        $this->approver('maribel', 'Maribel Solivan', 'msolivan@amsipr.com', ['AMSI'], true, true);
         $this->user('owner', 'Luis Casado', 'lcasado@cerevelo.com', ['role' => 'owner', 'capture_mode' => 'full_day']);
         $u = $this->user('ricardo', 'Jarvis Rodriguez', 'jrodriguez@cerevelo.com', ['worker_type' => 'consultant', 'capture_mode' => 'full_day']);
         ContractorTerms::create(['user_id' => $u->id, 'rate' => 15, 'retention_pct' => 10, 'ivu_agent' => false, 'ivu_pct' => 0, 'terms_days' => 30]);
@@ -318,9 +322,10 @@ class DemoSeeder
     {
         $this->project('AMSIPITS', 'AMSI PITS Upgrade', 'AMSI', 125, 120, ['ricardo']);
         $first = $this->p['AMSIPITS']->services()->first();
-        $this->service($this->p['AMSIPITS'], 'General', 'total', 'both', 125, ['owner'], ['elena'], true, false, $first);
+        $client = ['elena', 'jose', 'vivian', 'maribel'];
+        $this->service($this->p['AMSIPITS'], 'General', 'total', 'both', 125, ['owner'], $client, true, false, $first);
         foreach (['Testing', 'Design', 'Development', 'Implementation'] as $name) {
-            $this->service($this->p['AMSIPITS'], $name, 'total', 'both', 125, ['owner'], ['elena']);
+            $this->service($this->p['AMSIPITS'], $name, 'total', 'both', 125, ['owner'], $client);
         }
         // Las cuatro tareas del proyecto (comisionables, con presupuesto); todas abiertas y reciben el trabajo normal.
         $this->task('AMSIPITS', 'Evaluación técnica, seguridad, integridad de datos y medición de lentitud', 20, -6, 10, true, true);

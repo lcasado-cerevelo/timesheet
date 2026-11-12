@@ -19,6 +19,9 @@ class Demo
         'owner' => ['Luis Casado', 'lcasado@cerevelo.com', 'Dueño', 'Owner'],
         'consultant' => ['Jarvis Rodriguez', 'jrodriguez@cerevelo.com', 'Consultor', 'Consultant'],
         'manager' => ['Ketsy Figueroa', 'kfigueroa@amsipr.com', 'Aprobadora y gerente de proyecto del cliente', 'Approver and client project manager'],
+        'manager2' => ['Jose Pereira', 'jpereira@amsipr.com', 'Aprobador y gerente de proyecto del cliente', 'Approver and client project manager'],
+        'manager3' => ['Vivian Colon', 'vcolon@amsipr.com', 'Aprobadora y gerente de proyecto del cliente', 'Approver and client project manager'],
+        'manager4' => ['Maribel Solivan', 'msolivan@amsipr.com', 'Aprobadora y gerente de proyecto del cliente', 'Approver and client project manager'],
     ];
 
     /** La contraseña de las tres cuentas: la de DEMO_PASSWORD en el .env, o la de ejemplo si no se puso ninguna. */

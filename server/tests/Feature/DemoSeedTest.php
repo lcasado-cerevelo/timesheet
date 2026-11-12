@@ -42,13 +42,13 @@ class DemoSeedTest extends TestCase
         $c = $this->counts();
 
         // Solo tres personas: el dueño, el consultor y la aprobadora (gerente de proyecto del cliente).
-        $this->assertSame(3, $c['users']);
-        $this->assertSame(1, $c['approvers']);
+        $this->assertSame(6, $c['users']);
+        $this->assertSame(4, $c['approvers']);
         $this->assertSame(1, User::where('company_id', $co->id)->where('role', 'owner')->count());
-        $this->assertSame(1, User::where('company_id', $co->id)->where('role', 'approver')->count());
+        $this->assertSame(4, User::where('company_id', $co->id)->where('role', 'approver')->count());
         $this->assertSame(1, User::where('company_id', $co->id)->where('worker_type', 'consultant')->where('role', 'member')->count());
-        $this->assertSame(1, Approver::where('company_id', $co->id)->where('project_manager', true)->count());
-        $this->assertSame(['Jarvis Rodriguez', 'Ketsy Figueroa', 'Luis Casado'], User::where('company_id', $co->id)->orderBy('name')->pluck('name')->all());
+        $this->assertSame(4, Approver::where('company_id', $co->id)->where('project_manager', true)->count());
+        $this->assertSame(['Jarvis Rodriguez', 'Jose Pereira', 'Ketsy Figueroa', 'Luis Casado', 'Maribel Solivan', 'Vivian Colon'], User::where('company_id', $co->id)->orderBy('name')->pluck('name')->all());
 
         // Un proyecto con cinco servicios de doble aprobación y cuatro tareas.
         $this->assertSame(1, $c['projects']);
